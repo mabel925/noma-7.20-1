@@ -1,3 +1,6 @@
+@import url('https://fonts.googleapis.com/css2?family=Alkatra:wght@400;700&family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
 @font-face {
   font-family: 'Alkatra';
   src: url('/font/Alkatra-SemiBold.ttf') format('truetype');
@@ -5,10 +8,6 @@
   font-style: normal;
   font-display: swap;
 }
-
-@import "tailwindcss";
-
-@import url('https://fonts.googleapis.com/css2?family=Alkatra:wght@400;700&family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
 @theme {
   --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
@@ -123,6 +122,12 @@ html, body {
     padding-bottom: 12px !important;
   }
 
+  .storage-capture-drawer {
+    padding-bottom: 0 !important;
+    margin-bottom: 0 !important;
+    transform: translateY(0) !important;
+  }
+
   body:not(.pwa-standalone) .memory-header-nav {
     padding-top: 0px !important;
     height: 56px !important;
@@ -148,6 +153,12 @@ html, body {
     bottom: 0 !important;
     height: 213px !important;
     background-color: #E9E6E1 !important;
+  }
+
+  .storage-capture-drawer {
+    padding-bottom: 0 !important;
+    margin-bottom: 0 !important;
+    transform: translateY(0) !important;
   }
 }
 
@@ -196,6 +207,24 @@ html, body {
 .animate-polaroid-fly { animation: polaroid-fly-in 0.85s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 @keyframes cursor-blink { from, to { border-color: transparent } 50% { border-color: #3b82f6 } }
 @keyframes cursor-blink-black { from, to { opacity: 0; } 50% { opacity: 1; } }
+
+/* Browser mode runs inside Safari/Chrome chrome, so the virtual keyboard should not reserve
+   its own home-indicator safe area. */
+body:not(.pwa-standalone) .home-keyboard-container {
+  height: 205px !important;
+}
+
+body:not(.pwa-standalone) .home-keyboard-container > div {
+  padding-bottom: 8px !important;
+}
+
+body:not(.pwa-standalone) .virtual-keyboard-mock-indicator {
+  display: none !important;
+}
+
+body:not(.pwa-standalone) .chat-flow-container {
+  bottom: 217px !important;
+}
 
 /* PWA Standalone Mode keyboard & chat container styling for snug bottom fit */
 .pwa-standalone .home-keyboard-container {
@@ -314,4 +343,3 @@ html, body {
   margin-bottom: 0 !important;
   background: black !important; /* 确保背景色填补 */
 }
-

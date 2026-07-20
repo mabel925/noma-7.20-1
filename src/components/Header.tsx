@@ -31,8 +31,10 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* 2. Interactive Memory Crystal Core (High-end 3D Polyhedron SVG) */}
-      <div
-        className="pointer-events-auto cursor-pointer flex items-center justify-center relative w-11 h-11 transition-all duration-200"
+      <button
+        type="button"
+        aria-label="Open Memory List"
+        className="pointer-events-auto cursor-pointer flex items-center justify-center relative w-11 h-11 transition-all duration-200 bg-transparent border-0 p-0"
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         onClick={onMemoryCoreClick}
@@ -82,7 +84,7 @@ export const Header: React.FC<HeaderProps> = ({
             </clipPath>
           </defs>
         </svg>
-      </div>
+      </button>
     </header>,
     document.body
   );

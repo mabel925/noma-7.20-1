@@ -171,16 +171,19 @@ export default function App() {
   const [inputValue, setInputValue] = useState<string>("");
   const [isScanning, setIsScanning] = useState<boolean>(false);
   const [isCaptureOpen, setIsCaptureOpen] = useState<boolean>(false);
+  const [isStandaloneMode, setIsStandaloneMode] = useState<boolean>(false);
 
   const controls = useAnimation();
 
+  const keyboardOffset = isStandaloneMode ? 242 : 205;
+
   useEffect(() => {
     controls.start(isChatActive ? "visible" : "hidden");
-  }, [isChatActive, controls]);
+  }, [isChatActive, controls, keyboardOffset]);
 
   const bgVariants = {
     visible: {
-      y: -242,
+      y: -keyboardOffset,
       scale: 1.05
     },
     hidden: {
@@ -194,7 +197,7 @@ export default function App() {
       y: 0
     },
     hidden: {
-      y: 242
+      y: keyboardOffset
     }
   };
 
@@ -255,9 +258,15 @@ export default function App() {
   // Standalone PWA detection to fix iOS 100vh rendering layout issues
   useEffect(() => {
     const checkStandalone = () => {
-      const isStandalone = 
-        (window.navigator as any).standalone || 
+      const searchParams = new URLSearchParams(window.location.search);
+      const forceStandalonePreview = searchParams.get("pwa") === "1";
+      const isActualStandalone =
+        (window.navigator as any).standalone ||
         window.matchMedia("(display-mode: standalone)").matches;
+      const isStandalone = 
+        forceStandalonePreview ||
+        isActualStandalone;
+      setIsStandaloneMode(isActualStandalone && !forceStandalonePreview);
       
       if (isStandalone) {
         document.documentElement.classList.add("pwa-standalone");
@@ -268,6 +277,11 @@ export default function App() {
       }
     };
     checkStandalone();
+    window.addEventListener("popstate", checkStandalone);
+
+    return () => {
+      window.removeEventListener("popstate", checkStandalone);
+    };
   }, []);
 
   // API Switch config easter egg (5 fast clicks anywhere on home screen layout to toggle IS_API_ENABLED)
@@ -654,6 +668,7 @@ export default function App() {
                 NOMA-AR SPATIAL SCANNER
               </div>
               <button 
+                aria-label="Close scanner"
                 onClick={() => setIsScanning(false)}
                 className="w-8 h-8 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-white"
               >

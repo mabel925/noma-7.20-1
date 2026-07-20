@@ -64,7 +64,7 @@ export function loadRemoveBgConfig(): RemoveBgConfig {
       const parsed = JSON.parse(saved);
       // Deep merge / safeguard default keys
       const loadedConfig: RemoveBgConfig = {
-        mode: "api", // Force api mode as local mode has been deprecated and removed
+        mode: parsed.mode === "local" ? "local" : "api",
         local: { ...DEFAULT_CONFIG.local, ...parsed.local },
         api: { ...DEFAULT_CONFIG.api, ...parsed.api }
       };
@@ -287,15 +287,17 @@ export async function remove_background(
   console.log("[RemoveBgService] Entering remove_background with unified worker.");
 
   try {
+    if (REMOVE_BG_CONFIG.mode === "local") {
+      console.log("[RemoveBgService] Local mode selected. Running Chroma Key fallback directly.");
+      return await localChromaKeyFallback(imageSrc, onProgress);
+    }
+
     // 统一 API 拦截
     try {
       const isEnabled = localStorage.getItem("IS_API_ENABLED") !== "false";
       if (!isEnabled) {
-        console.log("[API Intercept] remove_background is bypassed (IS_API_ENABLED is false). Returning original imageSrc as mock result.");
-        if (onProgress) onProgress("Bypassing API... Loading Mock Cutout...");
-        await new Promise((resolve) => setTimeout(resolve, 800));
-        if (onProgress) onProgress(null);
-        return imageSrc;
+        console.log("[API Intercept] remove_background API is disabled. Running local Chroma Key fallback.");
+        return await localChromaKeyFallback(imageSrc, onProgress);
       }
     } catch (e) {
       console.warn("[RemoveBgService] Failed to read IS_API_ENABLED from localStorage:", e);
