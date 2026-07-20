@@ -1,0 +1,25 @@
+{
+  "short_name": "Noma",
+  "name": "Noma - AI Smart Storage",
+  "description": "Smart storage and home organization powered by AI vision and background removal",
+  "icons": [
+    {
+      "src": "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/logo-noma.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/noma.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#E9E6E1",
+  "theme_color": "#E9E6E1",
+  "display": "standalone",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "portrait"
+}

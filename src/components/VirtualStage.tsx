@@ -1,0 +1,190 @@
+import React, { useRef, useState, useEffect } from "react";
+import { motion } from "motion/react";
+import { NomaSprite } from "./NomaSprite";
+
+interface VirtualStageProps {
+  isChatActive: boolean;
+  bgRoomUrl: string;
+  bgChatUrl: string;
+}
+
+export const VirtualStage: React.FC<VirtualStageProps> = ({
+  isChatActive,
+  bgRoomUrl,
+  bgChatUrl,
+}) => {
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [parentDimensions, setParentDimensions] = useState({ width: 400, height: 844 });
+  // Initialize with exact native background resolution (768x1376) to prevent temporary layout stretch
+  const [aspectRatio, setAspectRatio] = useState<number>(768 / 1376);
+
+  const [bgNaturalHeight, setBgNaturalHeight] = useState<number>(1376);
+  const [nomaNaturalWidth, setNomaNaturalWidth] = useState<number>(422);
+
+  useEffect(() => {
+    if (!stageRef.current) return;
+    const parent = stageRef.current.parentElement;
+    if (!parent) return;
+
+    // Monitor parent's size dynamically to adapt on any window resizing/responsive states
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          setParentDimensions({ width, height });
+        }
+      }
+    });
+
+    observer.observe(parent);
+    
+    // Initial measurement
+    const rect = parent.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      setParentDimensions({ width: rect.width, height: rect.height });
+    }
+
+    return () => observer.disconnect();
+  }, []);
+
+  // Dynamically calculate native aspect ratio of the background image to prevent stretching/cropping
+  useEffect(() => {
+    const img = new Image();
+    img.src = bgRoomUrl;
+    img.onload = () => {
+      if (img.naturalHeight > 0) {
+        setAspectRatio(img.naturalWidth / img.naturalHeight);
+        setBgNaturalHeight(img.naturalHeight);
+      }
+    };
+  }, [bgRoomUrl]);
+
+  // Load Noma's natural dimensions to perfectly scale lock-step with background
+  useEffect(() => {
+    const img = new Image();
+    img.src = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/noma.png";
+    img.onload = () => {
+      if (img.naturalWidth > 0) {
+        setNomaNaturalWidth(img.naturalWidth);
+      }
+    };
+  }, []);
+
+  // The base-state width of virtual stage relative to screen frame height
+  const H_frame = parentDimensions.height;
+  const W_frame = parentDimensions.width;
+  const W_stage = H_frame * aspectRatio;
+
+  // Calculate Noma's scaled width so its scaling factor exactly matches the background image's scale (H_frame / bgNaturalHeight)
+  const scaleMultiplier = bgNaturalHeight > 0 ? H_frame / bgNaturalHeight : 1;
+  const nomaWidth = nomaNaturalWidth * scaleMultiplier;
+
+  // State 1: Default status. Left edge is aligned at 0, scale is 1.0, top is 0.
+  // State 2: Chat active status. Height is scaled by 0.84. Right edge is aligned with W_frame.
+  // Using transformOrigin: "left top", the scaled stage resides in [T_x, T_x + 0.84 * W_stage].
+  // Setting T_x = W_frame - 0.84 * W_stage places the right edge exactly at W_frame.
+  // Translate up-left coordinates gracefully (y-axis offset of -135px to push up with the keyboard).
+  // Background container is NOT scaled per user's request: "背景容器不要缩放"
+  const transformScale = 1.0;
+
+  // Detect PWA standalone mode dynamically to keep layouts and translations synchronized
+  const [isPwa, setIsPwa] = useState<boolean>(false);
+  useEffect(() => {
+    const checkStandalone = () => {
+      const isStandalone = 
+        (window.navigator as any).standalone || 
+        window.matchMedia("(display-mode: standalone)").matches ||
+        document.body.classList.contains("pwa-standalone") ||
+        document.documentElement.classList.contains("pwa-standalone");
+      setIsPwa(!!isStandalone);
+    };
+    checkStandalone();
+    const observer = new MutationObserver(() => {
+      checkStandalone();
+    });
+    observer.observe(document.body, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+
+  // 当 Chat 激活时，水平平移量设定为 -60px，保证在屏幕左侧优雅展现角色，不会因为过大的位移被移出屏幕。
+  const T_x = isChatActive ? -60 : 0;
+
+  return (
+    <motion.div 
+      ref={stageRef}
+      className="virtual-stage absolute top-0 overflow-hidden"
+      style={{
+        width: `${W_stage}px`,
+        height: `${H_frame}px`,
+        left: "0px",
+        transformOrigin: "left top",
+      }}
+      animate={{
+        x: T_x,
+        y: 0,
+        scale: transformScale,
+      }}
+      transition={{
+        duration: 0.4,
+        ease: [0.16, 1, 0.3, 1]
+      }}
+    >
+      {/* 1. ROOM BACKGROUND: Highly atmospheric room illustration. Uses object-cover to prevent standard pixel distortion */}
+      {bgRoomUrl === bgChatUrl ? (
+        <motion.img
+          src={bgRoomUrl}
+          alt="Room background"
+          className="absolute inset-0 w-full h-full object-cover opacity-100"
+          referrerPolicy="no-referrer"
+        />
+      ) : (
+        <>
+          <motion.img
+            src={bgRoomUrl}
+            alt="Cozy room"
+            className="absolute inset-0 w-full h-full object-cover"
+            animate={{
+              opacity: isChatActive ? 0 : 1,
+            }}
+            transition={{
+              duration: 0.4,
+              ease: [0.16, 1, 0.3, 1]
+            }}
+            style={{ pointerEvents: isChatActive ? "none" : "auto" }}
+            referrerPolicy="no-referrer"
+          />
+
+          {/* 2. OUTDOOR/CHAT BACKGROUND: Peaceful rolling hills. Uses object-cover to prevent standard pixel distortion */}
+          <motion.img
+            src={bgChatUrl}
+            alt="Scenic outdoor meadow"
+            className="absolute inset-0 w-full h-full object-cover"
+            animate={{
+              opacity: isChatActive ? 1 : 0,
+            }}
+            transition={{
+              duration: 0.4,
+              ease: [0.16, 1, 0.3, 1]
+            }}
+            style={{ pointerEvents: isChatActive ? "auto" : "none" }}
+            referrerPolicy="no-referrer"
+          />
+        </>
+      )}
+
+      {/* 4. DYNAMIC CHARACTER SPRITE: Noma */}
+      {/* Sprite is locked proportionally with the background image, standing in the bottom-left corner of the screen */}
+      <div
+        className="absolute will-change-transform z-30"
+        style={{
+          bottom: `${260 * scaleMultiplier}px`,
+          left: "30px",
+          width: `${nomaWidth}px`,
+          transformOrigin: "left bottom",
+        }}
+      >
+        <NomaSprite pose={isChatActive ? "chatting" : "reading"} />
+      </div>
+    </motion.div>
+  );
+};

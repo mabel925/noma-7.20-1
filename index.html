@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <!-- 恢复viewport-fit=cover，让视口完全延伸到屏幕边缘 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+    <!-- 保留iOS PWA全屏声明，状态栏设为半透明覆盖模式 -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Noma</title>
+    <link rel="manifest" href="/manifest.json">
+    <style>
+      html, body, #root, .pwa-shell, .iframe-wrap, .home-container {
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        height: 100dvh !important;
+        background-color: #E9E6E1;
+        overflow: hidden;
+        overscroll-behavior: none;
+      }
+      .pwa-standalone,
+      .pwa-standalone html,
+      .pwa-standalone body,
+      .pwa-standalone #root,
+      .pwa-standalone .pwa-shell,
+      .pwa-standalone .iframe-wrap,
+      .pwa-standalone .home-container {
+        height: 100vh !important;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- 页面根容器，让背景色/图片和应用布局自适应自撑满整个视口 -->
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+
+    <!-- 仅在iOS PWA 独立模式下做一次高度校准，彻底规避 WebKit 的可视区计算 bug -->
+    <script>
+      if(/(iPhone|iPod|iPad)/i.test(navigator.userAgent) && window.navigator.standalone === true) {
+        window.addEventListener('load', () => {
+          const fixPwaHeight = () => {
+            // 在 iOS 中 screen.height 已经是 CSS 逻辑高度（如844px），绝对不能除以 devicePixelRatio 否则会缩水到三分之一
+            const fullScreenHeight = window.innerHeight || window.screen.height;
+            document.documentElement.style.setProperty('height', `${fullScreenHeight}px`, 'important');
+            document.body.style.setProperty('height', `${fullScreenHeight}px`, 'important');
+            const rootEl = document.getElementById('root');
+            if (rootEl) {
+              rootEl.style.setProperty('height', `${fullScreenHeight}px`, 'important');
+            }
+          };
+          fixPwaHeight();
+          window.addEventListener('resize', fixPwaHeight);
+          // 延时100ms二次校准，确保WebKit渲染和安全区完全加载
+          setTimeout(fixPwaHeight, 100);
+        });
+      }
+    </script>
+  </body>
+</html>
