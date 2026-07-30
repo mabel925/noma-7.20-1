@@ -90,12 +90,18 @@ export function isApiEnabled(): boolean {
   }
 }
 
+const NOMA_BACKEND_URL = "https://noma.38786547.workers.dev/";
+
+function getRequestOrigin(): string {
+  return typeof window === "undefined" ? "server" : window.location.origin;
+}
+
 /**
  * Unified request sender function to Noma Cloudflare Workers Backend
  */
 export async function callNomaBackend(type: "matting" | "vision" | "title", payload: any): Promise<any> {
   if (!isApiEnabled()) {
-    console.log(`[API Intercept] IS_API_ENABLED is false. Returning high-fidelity mock data for type "${type}".`);
+    console.log(`[API Intercept] IS_API_ENABLED is false. Returning high-fidelity mock data for type "${type}". origin=${getRequestOrigin()}`);
     // Add artificial delay for realistic simulation
     await new Promise((resolve) => setTimeout(resolve, 800));
 
@@ -133,25 +139,41 @@ export async function callNomaBackend(type: "matting" | "vision" | "title", payl
     }
   }
 
-  const url = "https://noma.38786547.workers.dev/";
-  console.log(`[Noma Backend] Sending request of type "${type}" to proxy: ${url}`);
-  
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      type,
-      ...payload
-    }),
-  });
+  console.log(`[Noma Backend] Sending request of type "${type}" to ${NOMA_BACKEND_URL}. origin=${getRequestOrigin()} apiEnabled=${isApiEnabled()}`);
 
-  if (!response.ok) {
-    throw new Error(`Worker proxy returned status ${response.status}`);
+  let response: Response;
+  try {
+    response = await fetch(NOMA_BACKEND_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        type,
+        ...payload
+      }),
+    });
+  } catch (error: any) {
+    throw new Error(`Worker request could not be sent from ${getRequestOrigin()}: ${error?.message || "network/CORS failure"}`);
   }
 
-  return await response.json();
+  const responseText = await response.text();
+  if (!response.ok) {
+    let detail = responseText.replace(/\s+/g, " ").trim().slice(0, 500);
+    try {
+      const parsed = JSON.parse(responseText);
+      detail = typeof parsed?.error === "string" ? parsed.error : JSON.stringify(parsed);
+    } catch {
+      // Keep the plain-text Worker response as the diagnostic detail.
+    }
+    throw new Error(`Worker proxy returned status ${response.status}: ${detail || "(empty response body)"} [origin: ${getRequestOrigin()}]`);
+  }
+
+  try {
+    return JSON.parse(responseText);
+  } catch {
+    throw new Error(`Worker returned invalid JSON [origin: ${getRequestOrigin()}]`);
+  }
 }
 
 /**
@@ -184,7 +206,7 @@ export function parseVisionContent(content: string): { title: string; category: 
       console.log("[AI Parser] Successfully parsed JSON content:", parsed);
       
       title = parsed.title || parsed.name || parsed.item || parsed.itemName || title;
-      category = parsed.category || parsed.type || category;
+      category = parsed.category || parsed.label || parsed.type || category;
       
       if (Array.isArray(parsed.labels)) {
         labels = parsed.labels;

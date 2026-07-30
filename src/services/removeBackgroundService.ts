@@ -311,9 +311,10 @@ export async function remove_background(
     }
 
     if (onProgress) onProgress("Uploading and extracting subject...");
-    console.log("[RemoveBgService] Fetching from proxy https://noma.38786547.workers.dev/ with type: 'matting'...");
+    const workerUrl = "https://noma.38786547.workers.dev/";
+    console.log(`[RemoveBgService] Fetching from proxy ${workerUrl} with type: 'matting'. origin=${window.location.origin} apiEnabled=true`);
 
-    const response = await fetch("https://noma.38786547.workers.dev/", {
+    const response = await fetch(workerUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -324,11 +325,19 @@ export async function remove_background(
       }),
     });
 
+    const responseText = await response.text();
     if (!response.ok) {
-      throw new Error(`Worker proxy returned status ${response.status}`);
+      let detail = responseText.replace(/\s+/g, " ").trim().slice(0, 500);
+      try {
+        const parsed = JSON.parse(responseText);
+        detail = typeof parsed?.error === "string" ? parsed.error : JSON.stringify(parsed);
+      } catch {
+        // Keep the plain-text Worker response as the diagnostic detail.
+      }
+      throw new Error(`Worker proxy returned status ${response.status}: ${detail || "(empty response body)"}`);
     }
 
-    const result = await response.json();
+    const result = JSON.parse(responseText);
     if (result && result.result_base64) {
       let b64 = result.result_base64;
       if (!b64.startsWith("data:")) {
@@ -338,7 +347,9 @@ export async function remove_background(
       console.log("[RemoveBgService] Matting succeeded via unified worker!");
       return b64;
     }
-    throw new Error("Worker response does not contain result_base64 property");
+    const workerMessage = result?.msg_cn || result?.msg || "Worker response does not contain result_base64 property";
+    const workerCode = result?.code !== undefined ? ` (code ${result.code})` : "";
+    throw new Error(`Worker matting failed${workerCode}: ${workerMessage}`);
   } catch (err: any) {
     console.error(`[RemoveBgService] Matting failed: ${err.message || err}. Triggering local Chroma Key fallback.`);
     return await localChromaKeyFallback(imageSrc, onProgress);

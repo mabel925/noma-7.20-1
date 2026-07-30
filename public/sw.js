@@ -1,4 +1,4 @@
-const CACHE_NAME = "noma-app-v1";
+const CACHE_NAME = "noma-app-v2";
 const APP_SHELL = ["/", "/manifest.json"];
 
 self.addEventListener("install", (event) => {

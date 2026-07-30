@@ -268,6 +268,18 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [currentInfoObj, setCurrentInfoObj] = useState<string | null>(null);
 
+  // Allow production/PWA recovery when an old origin-local toggle disabled the real API.
+  useEffect(() => {
+    const apiOverride = new URLSearchParams(window.location.search).get("api");
+    if (apiOverride === "1") {
+      localStorage.setItem("IS_API_ENABLED", "true");
+      setToast("API 已开启");
+    } else if (apiOverride === "0") {
+      localStorage.setItem("IS_API_ENABLED", "false");
+      setToast("API 已关闭");
+    }
+  }, []);
+
   // Dynamic status bar clock (real-time high fidelity)
   const [currentTime, setCurrentTime] = useState<string>("09:41");
 
@@ -417,8 +429,19 @@ export default function App() {
         })
       })
         .then((res) => {
-          if (!res.ok) throw new Error("HTTP status error " + res.status);
-          return res.json();
+          return res.text().then((body) => {
+            if (!res.ok) {
+              let detail = body.replace(/\s+/g, " ").trim().slice(0, 500);
+              try {
+                const parsed = JSON.parse(body);
+                detail = typeof parsed?.error === "string" ? parsed.error : JSON.stringify(parsed);
+              } catch {
+                // Keep the plain-text Worker response as the diagnostic detail.
+              }
+              throw new Error(`HTTP ${res.status}: ${detail || "(empty response body)"}`);
+            }
+            return JSON.parse(body);
+          });
         })
         .then((data) => {
           let imageBase64 = "";
