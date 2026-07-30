@@ -12,12 +12,13 @@ export function useKeyboardReset(isChatActive: boolean, isCaptureOpen: boolean) 
     // If we are not actively in chat, or if the capture/shooting page is open,
     // we must forcibly reset all potential layout shifts caused by the virtual keyboard.
     if (!isChatActive || isCaptureOpen) {
-      // 0. Force blur any active input/textarea to dismiss software keyboard
-      if (document.activeElement && (
-        document.activeElement.tagName === "INPUT" || 
-        document.activeElement.tagName === "TEXTAREA"
+      // 0. Force blur any active text editor to dismiss software keyboard
+      if (document.activeElement instanceof HTMLElement && (
+        document.activeElement.tagName === "INPUT" ||
+        document.activeElement.tagName === "TEXTAREA" ||
+        document.activeElement.isContentEditable
       )) {
-        (document.activeElement as HTMLElement).blur();
+        document.activeElement.blur();
       }
 
       // 1. Remove keyboard-related classes
@@ -26,6 +27,7 @@ export function useKeyboardReset(isChatActive: boolean, isCaptureOpen: boolean) 
 
       // 2. Reset CSS custom variables
       document.documentElement.style.setProperty("--keyboard-height", "0px");
+      document.documentElement.style.setProperty("--chat-native-keyboard-height", "0px");
 
       // 3. Clear any dynamic inline styles that might have been applied
       const elementsToReset = [

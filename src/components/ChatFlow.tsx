@@ -2,6 +2,7 @@ import React from "react";
 import { Camera, X } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useKeyboardReset } from "../hooks/useKeyboardReset";
+import { MemoryCoreButton } from "./MemoryCoreButton";
 
 interface ChatMessage {
   sender: "noma" | "user";
@@ -14,6 +15,7 @@ interface ChatFlowProps {
   onInputChange: (val: string) => void;
   onClearInput: () => void;
   onTriggerCamera: () => void;
+  onMemoryCoreClick: () => void;
   isChatActive: boolean;
   isCaptureOpen: boolean;
   onPresetSearch: (preset: string) => void;
@@ -25,6 +27,7 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
   onInputChange,
   onClearInput,
   onTriggerCamera,
+  onMemoryCoreClick,
   isChatActive,
   isCaptureOpen,
   onPresetSearch,
@@ -64,63 +67,6 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, isChatActive]);
-
-  // Synchronized keyboard and background tracking logic
-  React.useEffect(() => {
-    const shouldBeActive = isChatActive && !isCaptureOpen;
-
-    const updateKeyboardHeight = () => {
-      if (!shouldBeActive) {
-        document.body.classList.remove("keyboard-active");
-        document.documentElement.style.setProperty("--keyboard-height", "0px");
-        return;
-      }
-
-      const visualViewport = window.visualViewport;
-      if (!visualViewport) return;
-
-      let keyboardHeight = window.innerHeight - visualViewport.height;
-
-      // 性能兜底：如果在计算出的 shift 值在 0 到 10px 之间，请强制设为 0，避免键盘收起过程中产生微小的背景抖动。
-      if (keyboardHeight >= 0 && keyboardHeight <= 10) {
-        keyboardHeight = 0;
-      }
-
-      if (keyboardHeight > 0) {
-        document.body.classList.add("keyboard-active");
-        document.documentElement.style.setProperty("--keyboard-height", `${keyboardHeight}px`);
-      } else {
-        document.body.classList.add("keyboard-active");
-        document.documentElement.style.setProperty("--keyboard-height", "242px"); // 242px virtual keyboard
-      }
-    };
-
-    if (shouldBeActive) {
-      document.body.classList.add("keyboard-active");
-      updateKeyboardHeight();
-      if (window.visualViewport) {
-        window.visualViewport.addEventListener("resize", updateKeyboardHeight);
-        window.visualViewport.addEventListener("scroll", updateKeyboardHeight);
-        window.visualViewport.onresize = updateKeyboardHeight;
-        window.visualViewport.onscroll = updateKeyboardHeight;
-      }
-    } else {
-      document.body.classList.remove("keyboard-active");
-      document.documentElement.style.setProperty("--keyboard-height", "0px");
-    }
-
-    return () => {
-      // 生命期保证：确保移除 .keyboard-active 类，并将 --keyboard-height 重置为 0px，确保页面返回首页时没有任何状态残留。
-      document.body.classList.remove("keyboard-active");
-      document.documentElement.style.setProperty("--keyboard-height", "0px");
-      if (window.visualViewport) {
-        window.visualViewport.removeEventListener("resize", updateKeyboardHeight);
-        window.visualViewport.removeEventListener("scroll", updateKeyboardHeight);
-        window.visualViewport.onresize = null;
-        window.visualViewport.onscroll = null;
-      }
-    };
-  }, [isChatActive, isCaptureOpen]);
 
   // Defensive Layout Alignment: Use lossless resize/visualViewport triggers
   // when returning to Chat page (whenever isChatActive is true and isCaptureOpen is false)
@@ -177,8 +123,8 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                 maxHeight: "100%",
               }}
             >
-              <div className="w-full h-full overflow-y-auto no-scrollbar flex flex-col justify-end gap-3 py-2 px-0">
-                <div className="flex flex-col gap-3">
+              <div className="w-full h-full overflow-y-auto no-scrollbar flex flex-col justify-end gap-4 py-2 px-0">
+                <div className="flex flex-col gap-[27px]">
                   <AnimatePresence initial={false}>
                     {messages.map((msg, index) => {
                       const isNoma = msg.sender === "noma";
@@ -194,7 +140,14 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                             ease: "easeOut",
                           }}
                           className={`flex w-full ${isNoma ? "justify-start" : "justify-end"}`}
-                          style={index === 0 ? { marginTop: "auto" } : undefined}
+                          style={
+                            index === 0
+                              ? {
+                                  marginTop: "auto",
+                                  marginBottom: messages.length === 1 && isNoma ? "30px" : undefined,
+                                }
+                              : undefined
+                          }
                         >
                           <div
                             className={`relative max-w-[222px] px-[18px] py-[12px] transition-all duration-300 ${
@@ -251,7 +204,7 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
         ref={outerRef}
         className={`chat-flow-container absolute inset-x-0 bottom-[254px] z-40 flex flex-col gap-4 select-none transform ${
           isChatActive ? "translate-y-0 opacity-100" : "translate-y-[242px] opacity-0 pointer-events-none"
-        }`}
+        } ${isChatActive && !isCaptureOpen ? "chat-virtual-keyboard-active" : ""}`}
         style={{
           transition: "transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1)"
         }}
@@ -299,7 +252,7 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                 duration: 0.3,
                 ease: "easeOut",
               }}
-              className="flex gap-6 items-center w-full px-5"
+              className="flex gap-5 items-center w-full px-5"
             >
               {/* White Pill Capsule */}
               <div className="flex-1 bg-white/95 backdrop-blur-md rounded-full px-4 h-[54px] flex items-center gap-2.5 shadow-[0_6px_20px_rgba(0,0,0,0.12)] border border-white/40">
@@ -322,11 +275,19 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                     inputMode="none"
                     value={inputValue}
                     onChange={(e) => onInputChange(e.target.value)}
-                    onFocus={() => setIsFocused(true)}
-                    onBlur={() => setIsFocused(false)}
+                    onFocus={() => {
+                      setIsFocused(true);
+                    }}
+                    onBlur={() => {
+                      setIsFocused(false);
+                    }}
                     placeholder=""
-                    className="w-full bg-transparent border-none outline-none text-[16px] text-neutral-800 placeholder-transparent font-sans"
-                    style={{ caretColor: "black" }}
+                    className="w-full min-w-0 bg-transparent border-none outline-none text-[16px] text-neutral-800 placeholder-transparent font-sans overflow-hidden whitespace-nowrap"
+                    style={{
+                      caretColor: "black",
+                      WebkitUserSelect: "text",
+                      userSelect: "text",
+                    }}
                   />
                   {/* Custom placeholder + blinking black caret line when empty and not focused */}
                   {!inputValue && !isFocused && (
@@ -356,43 +317,7 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                 </button>
               </div>
   
-              {/* Memory jewel button with transparent layout (no background circle) */}
-              <button
-                onClick={onTriggerCamera}
-                className="w-[28px] h-[28px] flex items-center justify-center active:scale-95 transition-all cursor-pointer text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.4)] hover:scale-105 shrink-0"
-              >
-                <svg
-                  width="28"
-                  height="28"
-                  viewBox="0 0 30 30"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="w-[28px] h-[28px] text-white"
-                >
-                  <g clipPath="url(#clip0_66_764_chat)">
-                    <path
-                      d="M29.1911 18.4354C29.6692 19.8577 29.1397 21.4242 27.8968 22.2647L16.8683 29.7233C15.6587 30.5413 14.0579 30.4784 12.9163 29.568L2.85144 21.5415C1.7339 20.6503 1.30767 19.1466 1.79136 17.8015L6.32408 5.1966C6.71738 4.10286 7.65121 3.29239 8.78942 3.05692L20.1334 0.710116C21.7873 0.367953 23.4363 1.31486 23.9744 2.91581L29.1911 18.4354ZM4.92693 19.4713C4.41854 19.6975 4.33095 20.3822 4.76603 20.7292L13.6031 27.7764C14.0053 28.0972 14.6041 27.9211 14.7686 27.4336L19.1298 14.5123C19.3365 13.8999 18.7157 13.3344 18.1252 13.5972L4.92693 19.4713ZM17.3165 25.6038C17.0894 26.2768 17.8467 26.8535 18.4351 26.4556L26.8826 20.7426C27.2463 20.4966 27.318 19.9903 27.0369 19.653L22.3969 14.0854C22.0255 13.6398 21.3095 13.7735 21.124 14.3231L17.3165 25.6038ZM4.23804 16.4022C4.01696 17.017 4.64099 17.5968 5.23788 17.3311L17.6803 11.7934C18.249 11.5403 18.272 10.7417 17.7189 10.4563L8.90381 5.90681C8.50542 5.7012 8.01709 5.89318 7.86539 6.31505L4.23804 16.4022ZM22.198 10.6257C22.1734 10.8288 22.2337 11.0329 22.3646 11.19L23.9555 13.0989C24.4811 13.7297 25.4903 13.1659 25.2287 12.3876L23.8894 8.40304C23.6375 7.65376 22.5447 7.76542 22.4496 8.55015L22.198 10.6257ZM12.4117 4.17516C11.727 4.31681 11.6004 5.24033 12.2217 5.561L19.5063 9.32055C19.9658 9.5577 20.5208 9.26385 20.5831 8.75051L21.2377 3.34853C21.2988 2.84491 20.8477 2.42995 20.3509 2.53272L12.4117 4.17516ZM29.1911 18.4354C29.6692 19.8577 29.1397 21.4242 27.8968 22.2647L16.8683 29.7233C15.6587 30.5413 14.0579 30.4784 12.9163 29.568L2.85144 21.5415C1.7339 20.6503 1.30767 19.1466 1.79136 17.8015L6.32408 5.1966C6.71738 4.10286 7.65121 3.29239 8.78942 3.05692L20.1334 0.710116C21.7873 0.367953 23.4363 1.31486 23.9744 2.91581L29.1911 18.4354ZM15.091 27.5626C15.2386 28.0378 15.8029 28.2358 16.2151 27.957L25.9641 21.3638C26.443 21.0399 26.3839 20.3171 25.8588 20.0753L12.0908 13.7361C11.5073 13.4674 10.8813 14.0168 11.072 14.6302L15.091 27.5626ZM3.85485 19.0307C3.58727 19.3502 3.63523 19.8274 3.96105 20.0872L11.2358 25.8886C11.8073 26.3443 12.6238 25.7863 12.4069 25.0883L9.12317 14.5218C8.94887 13.961 8.22298 13.8154 7.84588 14.2656L3.85485 19.0307ZM11.8367 10.4066C11.3924 10.746 11.4689 11.4363 11.9768 11.6702L25.8087 18.0389C26.3995 18.311 27.0295 17.7452 26.8223 17.1286L22.2932 3.65433C22.1312 3.17246 21.5436 2.99252 21.1396 3.3011L11.8367 10.4066ZM5.3706 13.2526C5.23036 13.6426 5.73798 13.934 6.00407 13.6163L7.8815 11.3747C8.02657 11.2015 8.08481 10.9717 8.03971 10.7503L7.66431 8.90736C7.58943 8.53979 7.07867 8.50288 6.95173 8.85587L5.3706 13.2526ZM9.44663 4.78857C9.04624 4.8714 8.78833 5.26255 8.86994 5.6632L9.46351 8.57714C9.5728 9.11366 10.2057 9.35102 10.6409 9.01866L16.0936 4.8539C16.7207 4.37492 16.2657 3.37788 15.493 3.53774L9.44663 4.78857Z"
-                      fill="currentColor"
-                    />
-                  </g>
-                  <defs>
-                    <radialGradient
-                      id="paint0_radial_66_764_chat"
-                      cx="0"
-                      cy="0"
-                      r="1"
-                      gradientUnits="userSpaceOnUse"
-                      gradientTransform="translate(20.7672 12.6476) rotate(105.958) scale(19.1902 17.9702)"
-                    >
-                      <stop offset="0.30755" stopColor="currentColor" stopOpacity="0.39" />
-                      <stop offset="1" stopColor="currentColor" stopOpacity="0" />
-                    </radialGradient>
-                    <clipPath id="clip0_66_764_chat">
-                      <rect width="30" height="30" fill="currentColor" />
-                    </clipPath>
-                  </defs>
-                </svg>
-              </button>
+              <MemoryCoreButton onClick={onMemoryCoreClick} />
             </motion.div>
           )}
         </AnimatePresence>

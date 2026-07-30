@@ -1,16 +1,19 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
-import { X, Camera, Sparkles, Calendar, DollarSign, Check, ChevronUp, Image as ImageIcon, RotateCcw, Settings, Pencil, ChevronsUpDown } from "lucide-react";
-import { getStoredFirebaseConfig, saveFirebaseConfig, clearFirebaseConfig, FirebaseConfig } from "../lib/firebase";
+import { X, Camera, Check, Image as ImageIcon, RotateCcw, Pencil, ChevronsUpDown } from "lucide-react";
 import { recognizeImage, generateStorageTitle, classifyLocation, prepareImage } from "../services/aiService";
 import { remove_background, REMOVE_BG_CONFIG } from "../services/removeBackgroundService";
 import { motion, AnimatePresence } from "motion/react";
 import { useKeyboardReset } from "../hooks/useKeyboardReset";
 import { useLayoutGuard } from "../hooks/useLayoutGuard";
+import { VirtualKeyboard } from "./VirtualKeyboard";
+
+const PRICE_CURRENCIES = ["$", "€", "£", "¥", "₩"] as const;
 
 interface CaptureScannerProps {
   isOpen: boolean;
   onClose: () => void;
+  existingMemories?: ExistingMemoryLocationSource[];
   onItemAdded?: (item: {
     name: string;
     category: string;
@@ -24,6 +27,29 @@ interface CaptureScannerProps {
     subLocationImg?: string;
   }) => void;
 }
+
+interface ExistingMemoryLocationSource {
+  parentLocationName: string;
+  subLocationName: string;
+  parentLocationImg?: string;
+  subLocationImg?: string;
+}
+
+type ExistingSubLocationOption = {
+  key: string;
+  name: string;
+  parentName: string;
+  imgUrl: string;
+  parentImgUrl?: string;
+  itemCount: number;
+};
+
+type ExistingParentLocationOption = {
+  key: string;
+  name: string;
+  imgUrl: string;
+  itemCount: number;
+};
 
 // Pre-defined cozy item options that fit Noma's room
 interface PredefinedItem {
@@ -129,9 +155,13 @@ const formatStickerTitleLines = (title: string): string[] => {
   ].filter(Boolean);
 };
 
+const YELLOW_BLUR_IMAGE_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/yellowblur.png";
+const FALLBACK_LOCATION_IMAGE_URL = "https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=500&auto=format&fit=crop&q=80";
+
 export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   isOpen,
   onClose,
+  existingMemories = [],
   onItemAdded,
 }) => {
   // Call keyboard reset aggressively when capture page is open to guarantee layout restoration
@@ -148,6 +178,12 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const [subLocationHighlight, setSubLocationHighlight] = useState<{ x: number; y: number } | null>(null);
   const [parentLocationImg, setParentLocationImg] = useState<string | null>(null);
   const [parentLocationName, setParentLocationName] = useState<string>("");
+  const [selectedExistingSubKey, setSelectedExistingSubKey] = useState<string | null>(null);
+  const [selectedExistingParentKey, setSelectedExistingParentKey] = useState<string | null>(null);
+  const [isUsingExistingSubLocation, setIsUsingExistingSubLocation] = useState<boolean>(false);
+  const [isUsingExistingParentLocation, setIsUsingExistingParentLocation] = useState<boolean>(false);
+  const [expandedExistingLocationPicker, setExpandedExistingLocationPicker] = useState<"sub" | "parent" | null>(null);
+  const [frontLocationBubbleWidth, setFrontLocationBubbleWidth] = useState<number>(220);
   const storageScanCanvasRef = useRef<HTMLCanvasElement>(null);
 
   // Bottom drawer gesture drag-to-dismiss states
@@ -156,35 +192,14 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const dragStartYRef = useRef<number>(0);
   const CAPTURE_DRAWER_HEIGHT = 213;
   const CAPTURE_VIEW_DRAWER_OVERLAP = 72;
-
-  // Firebase configuration state variables
-  const [showFirebaseSettings, setShowFirebaseSettings] = useState<boolean>(false);
-  const [fbApiKey, setFbApiKey] = useState<string>("");
-  const [fbAuthDomain, setFbAuthDomain] = useState<string>("");
-  const [fbProjectId, setFbProjectId] = useState<string>("");
-  const [fbStorageBucket, setFbStorageBucket] = useState<string>("");
-  const [fbMessagingSenderId, setFbMessagingSenderId] = useState<string>("");
-  const [fbAppId, setFbAppId] = useState<string>("");
-  const [fbMeasurementId, setFbMeasurementId] = useState<string>("");
-  const [rawConfigJson, setRawConfigJson] = useState<string>("");
+  const RESULT_INPUT_BOTTOM_GAP = 130;
+  const RESULT_BUTTON_INPUT_GAP = 26;
+  const DISINTEGRATE_DURATION = 1850;
+  const CUTOUT_FLIGHT_DELAY = DISINTEGRATE_DURATION * 0.5;
+  const CUTOUT_FLIGHT_DURATION = DISINTEGRATE_DURATION - CUTOUT_FLIGHT_DELAY;
 
   // Apply our custom layout guard to guarantee layout/scroll scrubbing and dynamic app height calculation
   useLayoutGuard(isOpen);
-
-  useEffect(() => {
-    if (isOpen) {
-      const saved = getStoredFirebaseConfig();
-      if (saved) {
-        setFbApiKey(saved.apiKey || "");
-        setFbAuthDomain(saved.authDomain || "");
-        setFbProjectId(saved.projectId || "");
-        setFbStorageBucket(saved.storageBucket || "");
-        setFbMessagingSenderId(saved.messagingSenderId || "");
-        setFbAppId(saved.appId || "");
-        setFbMeasurementId(saved.measurementId || "");
-      }
-    }
-  }, [isOpen]);
 
   useEffect(() => {
     const frame = document.getElementById("noma-iphone-frame");
@@ -208,6 +223,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const [tempIdentifiedTitle, setTempIdentifiedTitle] = useState<string>("");
   const [tempIdentifiedCategory, setTempIdentifiedCategory] = useState<string>("");
   const [isCategorySelectorOpen, setIsCategorySelectorOpen] = useState<boolean>(false);
+  const [isYellowBlurReady, setIsYellowBlurReady] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Pre-defined list of categories for the interactive fan-out switcher
@@ -267,15 +283,20 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
   // Custom metadata input values
   const [priceInput, setPriceInput] = useState<string>("");
+  const [priceCurrencyIndex, setPriceCurrencyIndex] = useState(0);
   const [customDate, setCustomDate] = useState<string>("Today");
   const [isEditingPrice, setIsEditingPrice] = useState<boolean>(false);
-  const [isEditingDate, setIsEditingDate] = useState<boolean>(false);
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState<boolean>(false);
 
   // Video feed references
   const videoRef = useRef<HTMLVideoElement>(null);
   const [cameraActive, setCameraActive] = useState<boolean>(false);
   const [cameraError, setCameraError] = useState<boolean>(false);
   const [cameraErrorMessage, setCameraErrorMessage] = useState<string>("");
+  const [cameraPermissionPending, setCameraPermissionPending] = useState<boolean>(false);
+
+  const cameraPermissionUnavailable = cameraError && !cameraActive;
+  const cameraViewportUnavailable = cameraPermissionUnavailable || cameraPermissionPending;
 
   // Canvases for animation effects
   const particlesCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -287,13 +308,14 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const stickerSizeSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // States for advanced cinematic contour tracing
+  const [alignedCutoutUrl, setAlignedCutoutUrl] = useState<string | null>(null);
+  const [flightCutoutUrl, setFlightCutoutUrl] = useState<string | null>(null);
   const [transparentCutoutUrl, setTransparentCutoutUrl] = useState<string | null>(null);
   const [paddedCutoutUrl, setPaddedCutoutUrl] = useState<string | null>(null);
   const [isTracingContour, setIsTracingContour] = useState<boolean>(false);
   const [traceProgress, setTraceProgress] = useState<number>(0);
   const [traceCompleted, setTraceCompleted] = useState<boolean>(false);
   const [disintegrateStart, setDisintegrateStart] = useState<boolean>(false);
-  const [cutoutFlightStarted, setCutoutFlightStarted] = useState<boolean>(false);
   const [cutoutFlightStartRect, setCutoutFlightStartRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
   const [stickerSizeSettled, setStickerSizeSettled] = useState<boolean>(false);
   const [targetScale, setTargetScale] = useState<number>(0.42);
@@ -311,6 +333,62 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     ? Math.max(0, CAPTURE_DRAWER_HEIGHT - CAPTURE_VIEW_DRAWER_OVERLAP)
     : 0;
   const focusReticleInsetBottom = hasCaptureDrawer ? CAPTURE_VIEW_DRAWER_OVERLAP : 0;
+
+  const existingSubLocations = useMemo<ExistingSubLocationOption[]>(() => {
+    const seen = new Map<string, ExistingSubLocationOption>();
+    existingMemories.forEach((memory) => {
+      const parentName = memory.parentLocationName?.trim();
+      const subName = memory.subLocationName?.trim();
+      const subImg = memory.subLocationImg;
+      const parentImg = memory.parentLocationImg || FALLBACK_LOCATION_IMAGE_URL;
+      if (!parentName || !subName || !subImg) return;
+
+      const key = `${parentName}::${subName}`;
+      const existing = seen.get(key);
+      if (existing) {
+        existing.itemCount += 1;
+        return;
+      }
+
+      seen.set(key, {
+        key,
+        name: subName,
+        parentName,
+        imgUrl: subImg,
+        parentImgUrl: parentImg,
+        itemCount: 1,
+      });
+    });
+    return Array.from(seen.values());
+  }, [existingMemories]);
+
+  const existingParentLocations = useMemo<ExistingParentLocationOption[]>(() => {
+    const seen = new Map<string, ExistingParentLocationOption>();
+    existingMemories.forEach((memory) => {
+      const parentName = memory.parentLocationName?.trim();
+      const parentImg = memory.parentLocationImg || memory.subLocationImg || FALLBACK_LOCATION_IMAGE_URL;
+      if (!parentName) return;
+
+      const existing = seen.get(parentName);
+      if (existing) {
+        existing.itemCount += 1;
+        return;
+      }
+
+      seen.set(parentName, {
+        key: parentName,
+        name: parentName,
+        imgUrl: parentImg,
+        itemCount: 1,
+      });
+    });
+    return Array.from(seen.values());
+  }, [existingMemories]);
+
+  const selectedExistingSubLocation =
+    existingSubLocations.find((location) => location.key === selectedExistingSubKey) || existingSubLocations[0] || null;
+  const selectedExistingParentLocation =
+    existingParentLocations.find((location) => location.key === selectedExistingParentKey) || existingParentLocations[0] || null;
 
   // Measure camera-view dimensions dynamically to ensure perfect viewport layout
   useEffect(() => {
@@ -334,6 +412,30 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       clearTimeout(timer);
     };
   }, [isOpen, cameraViewBottomOffset]);
+
+  useEffect(() => {
+    if (!existingSubLocations.length) {
+      setSelectedExistingSubKey(null);
+      return;
+    }
+
+    setSelectedExistingSubKey((current) => {
+      if (current && existingSubLocations.some((location) => location.key === current)) return current;
+      return existingSubLocations[0].key;
+    });
+  }, [existingSubLocations]);
+
+  useEffect(() => {
+    if (!existingParentLocations.length) {
+      setSelectedExistingParentKey(null);
+      return;
+    }
+
+    setSelectedExistingParentKey((current) => {
+      if (current && existingParentLocations.some((location) => location.key === current)) return current;
+      return existingParentLocations[0].key;
+    });
+  }, [existingParentLocations]);
 
   const getActiveLayout = () => {
     let aspect = 4 / 3; // Default portrait aspect ratio (height / width)
@@ -373,9 +475,27 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const layout = getActiveLayout();
   const initialCenterY = layout.top + layout.height / 2;
   const targetCenterY = fullStageHeight * 0.37;
-  const finalStickerVisualSize = 280;
+  const RESULT_STICKER_VISUAL_SIZE = 250;
+  const RESULT_STICKER_TITLE_WIDTH = 340;
+  const RESULT_STICKER_TITLE_FONT_SIZE = 44;
+  const RESULT_STICKER_TITLE_STROKE = 6;
+  const finalStickerVisualSize = RESULT_STICKER_VISUAL_SIZE;
   const finalStickerLeft = (containerWidth - finalStickerVisualSize) / 2;
   const finalStickerTop = targetCenterY - finalStickerVisualSize / 2;
+  const cutoutFlightSourceRect = cutoutFlightStartRect ?? {
+    left: layout.left,
+    top: layout.top,
+    width: layout.width,
+    height: layout.height,
+  };
+  const cutoutFlightSourceCenterX = cutoutFlightSourceRect.left + cutoutFlightSourceRect.width / 2;
+  const cutoutFlightSourceCenterY = cutoutFlightSourceRect.top + cutoutFlightSourceRect.height / 2;
+  const cutoutFlightTargetCenterX = finalStickerLeft + finalStickerVisualSize / 2;
+  const cutoutFlightTargetCenterY = finalStickerTop + finalStickerVisualSize / 2;
+  const cutoutFlightTranslateX = cutoutFlightTargetCenterX - cutoutFlightSourceCenterX;
+  const cutoutFlightTranslateY = cutoutFlightTargetCenterY - cutoutFlightSourceCenterY;
+  const cutoutFlightTargetScale = finalStickerVisualSize / Math.max(1, cutoutFlightSourceRect.width, cutoutFlightSourceRect.height);
+  const cutoutFlightImageUrl = flightCutoutUrl || alignedCutoutUrl || transparentCutoutUrl || paddedCutoutUrl;
 
   // Active item
   const activeItem = MEMORY_ITEMS[selectedItemIndex];
@@ -393,24 +513,57 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         : 38
     : longestStickerTitleLine > 15
       ? 40
-      : 48;
+      : RESULT_STICKER_TITLE_FONT_SIZE;
   const stickerTitleStyle: React.CSSProperties = {
     fontSize: `${stickerTitleFontSize}px`,
     fontWeight: "700",
     color: "#000000",
-    WebkitTextStroke: isStickerTitleTwoLine ? "5px #ffffff" : `${stickerTitleFontSize >= 44 ? 6 : 5}px #ffffff`,
+    WebkitTextStroke: isStickerTitleTwoLine ? "5px #ffffff" : `${stickerTitleFontSize >= 44 ? RESULT_STICKER_TITLE_STROKE : 5}px #ffffff`,
     paintOrder: "stroke fill",
     lineHeight: isStickerTitleTwoLine ? "1.04" : "1.06",
     bottom: isStickerTitleTwoLine ? "10px" : "18px",
     maxHeight: "92px",
   };
 
-  const beginCutoutTransition = () => {
+  const getCoverLayoutFromDimensions = (sourceWidth?: number, sourceHeight?: number) => {
+    if (!sourceWidth || !sourceHeight) return layout;
+
+    const aspect = sourceHeight / sourceWidth;
+    const viewportWidth = containerWidth;
+    const viewportHeight = Math.max(10, containerHeight);
+    let width = viewportWidth;
+    let height = viewportWidth * aspect;
+    let top = (viewportHeight - height) / 2;
+    let left = 0;
+
+    if (aspect < viewportHeight / viewportWidth) {
+      height = viewportHeight;
+      width = viewportHeight / aspect;
+      top = 0;
+      left = (viewportWidth - width) / 2;
+    }
+
+    return { ...layout, left, top, width, height };
+  };
+
+  const beginCutoutTransition = (sourceWidth?: number, sourceHeight?: number, cutoutBounds?: CutoutBounds | null) => {
+    const sourceLayout = getCoverLayoutFromDimensions(sourceWidth, sourceHeight);
+    const boundsSourceWidth = cutoutBounds?.sourceWidth || sourceWidth || sourceLayout.width;
+    const boundsSourceHeight = cutoutBounds?.sourceHeight || sourceHeight || sourceLayout.height;
+    const flightRect = cutoutBounds
+      ? {
+          left: sourceLayout.left + (cutoutBounds.x / boundsSourceWidth) * sourceLayout.width,
+          top: sourceLayout.top + (cutoutBounds.y / boundsSourceHeight) * sourceLayout.height,
+          width: (cutoutBounds.width / boundsSourceWidth) * sourceLayout.width,
+          height: (cutoutBounds.height / boundsSourceHeight) * sourceLayout.height,
+        }
+      : sourceLayout;
+
     setCutoutFlightStartRect({
-      left: layout.left,
-      top: layout.top,
-      width: layout.width,
-      height: layout.height,
+      left: flightRect.left,
+      top: flightRect.top,
+      width: flightRect.width,
+      height: flightRect.height,
     });
     setStickerSizeSettled(false);
     setTraceCompleted(false);
@@ -442,6 +595,94 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     ctx.drawImage(source, x, y, drawWidth, drawHeight);
   };
 
+  type CutoutBounds = {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    sourceWidth: number;
+    sourceHeight: number;
+  };
+
+  const cropTransparentBoundsWithMeta = (
+    source: HTMLCanvasElement | HTMLImageElement,
+    alphaThreshold: number = 8
+  ): { source: HTMLCanvasElement | HTMLImageElement; bounds: CutoutBounds | null } => {
+    const sourceWidth = source.width;
+    const sourceHeight = source.height;
+    if (!sourceWidth || !sourceHeight) return { source, bounds: null };
+
+    const probeCanvas = document.createElement("canvas");
+    probeCanvas.width = sourceWidth;
+    probeCanvas.height = sourceHeight;
+    const probeCtx = probeCanvas.getContext("2d");
+    if (!probeCtx) return { source, bounds: null };
+
+    probeCtx.clearRect(0, 0, sourceWidth, sourceHeight);
+    probeCtx.drawImage(source, 0, 0, sourceWidth, sourceHeight);
+
+    let imageData: ImageData;
+    try {
+      imageData = probeCtx.getImageData(0, 0, sourceWidth, sourceHeight);
+    } catch (e) {
+      return { source, bounds: null };
+    }
+
+    const data = imageData.data;
+    let minX = sourceWidth;
+    let minY = sourceHeight;
+    let maxX = -1;
+    let maxY = -1;
+
+    for (let y = 0; y < sourceHeight; y++) {
+      for (let x = 0; x < sourceWidth; x++) {
+        const alpha = data[(y * sourceWidth + x) * 4 + 3];
+        if (alpha > alphaThreshold) {
+          minX = Math.min(minX, x);
+          minY = Math.min(minY, y);
+          maxX = Math.max(maxX, x);
+          maxY = Math.max(maxY, y);
+        }
+      }
+    }
+
+    if (maxX < minX || maxY < minY) return { source, bounds: null };
+
+    const padding = Math.ceil(Math.max(maxX - minX + 1, maxY - minY + 1) * 0.035);
+    const cropX = Math.max(0, minX - padding);
+    const cropY = Math.max(0, minY - padding);
+    const cropRight = Math.min(sourceWidth, maxX + padding + 1);
+    const cropBottom = Math.min(sourceHeight, maxY + padding + 1);
+    const cropWidth = Math.max(1, cropRight - cropX);
+    const cropHeight = Math.max(1, cropBottom - cropY);
+
+    const cropCanvas = document.createElement("canvas");
+    cropCanvas.width = cropWidth;
+    cropCanvas.height = cropHeight;
+    const cropCtx = cropCanvas.getContext("2d");
+    if (!cropCtx) return { source, bounds: null };
+    cropCtx.clearRect(0, 0, cropWidth, cropHeight);
+    cropCtx.drawImage(source, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+    return {
+      source: cropCanvas,
+      bounds: {
+        x: cropX,
+        y: cropY,
+        width: cropWidth,
+        height: cropHeight,
+        sourceWidth,
+        sourceHeight,
+      },
+    };
+  };
+
+  const cropTransparentBounds = (
+    source: HTMLCanvasElement | HTMLImageElement,
+    alphaThreshold: number = 8
+  ): HTMLCanvasElement | HTMLImageElement => {
+    return cropTransparentBoundsWithMeta(source, alphaThreshold).source;
+  };
+
   /**
    * Pure Frontend Canvas dilatation / crisp expansion algorithm with full visual fallback & CORS bypass.
    * Generates a solid uniform white border without aliasing by rendering 360 radial steps.
@@ -450,7 +691,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     transparentImgSrc: string,
     borderSize: number = STICKER_BORDER_SIZE,
     borderColor: string = "#FFFFFF",
-    useFallbackMock: boolean = (REMOVE_BG_CONFIG.mode === "api" && !REMOVE_BG_CONFIG.api.apiKey)
+    useFallbackMock: boolean = false
   ): Promise<string> => {
     console.log("[StickerEngine] generatePhysicalSticker starting...");
     console.log("[StickerEngine] Configuration parameters:", { borderSize, borderColor, useFallbackMock });
@@ -482,9 +723,9 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         
         let sourceObject: HTMLCanvasElement | HTMLImageElement = img;
 
-        // Perform circle crop fallback (for photographers without API key)
+        // Optional circular crop fallback for local mock flows.
         if (useFallbackMock) {
-          console.log("[StickerEngine] No API Key -> Generating elegant circular crop as high-fidelity visual mock!");
+          console.log("[StickerEngine] Generating elegant circular crop as high-fidelity visual mock.");
           const tempCanvas = document.createElement("canvas");
           tempCanvas.width = img.width;
           tempCanvas.height = img.height;
@@ -519,6 +760,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
             console.log("[StickerEngine] Off-screen memory circle crop completed successfully.");
           }
         }
+
+        sourceObject = cropTransparentBounds(sourceObject);
 
         const canvas = document.createElement("canvas");
         const ctx = canvas.getContext("2d");
@@ -596,7 +839,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const generateTransparentCutoutWithPadding = (
     transparentImgSrc: string,
     borderSize: number = STICKER_BORDER_SIZE,
-    useFallbackMock: boolean = (REMOVE_BG_CONFIG.mode === "api" && !REMOVE_BG_CONFIG.api.apiKey)
+    useFallbackMock: boolean = false
   ): Promise<string> => {
     return new Promise((resolve) => {
       const img = new Image();
@@ -643,6 +886,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
           }
         }
 
+        sourceObject = cropTransparentBounds(sourceObject);
+
         const canvas = document.createElement("canvas");
         const ctx = canvas.getContext("2d");
         if (!ctx) {
@@ -656,6 +901,157 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         ctx.clearRect(0, 0, size, size);
 
         drawContainCentered(ctx, sourceObject, sourceObject.width, sourceObject.height, size, Math.max(2, borderSize + 2));
+
+        try {
+          resolve(canvas.toDataURL("image/png"));
+        } catch (e) {
+          resolve(transparentImgSrc);
+        }
+      };
+      img.onerror = () => {
+        resolve(transparentImgSrc);
+      };
+    });
+  };
+
+  const generateFlightCutout = (
+    transparentImgSrc: string,
+    sourceWidth: number,
+    sourceHeight: number,
+    useFallbackMock: boolean = false
+  ): Promise<{ url: string; bounds: CutoutBounds | null }> => {
+    return new Promise((resolve) => {
+      const targetWidth = Math.max(1, Math.round(sourceWidth || 500));
+      const targetHeight = Math.max(1, Math.round(sourceHeight || 500));
+      const img = new Image();
+      if (!transparentImgSrc.startsWith("data:") && !transparentImgSrc.startsWith("blob:")) {
+        img.crossOrigin = "anonymous";
+      }
+
+      let finalSrc = transparentImgSrc;
+      if (!transparentImgSrc.startsWith("data:") && !transparentImgSrc.startsWith("blob:")) {
+        const separator = transparentImgSrc.includes("?") ? "&" : "?";
+        finalSrc = `${transparentImgSrc}${separator}t=${Date.now()}`;
+      }
+
+      img.src = finalSrc;
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve({ url: transparentImgSrc, bounds: null });
+          return;
+        }
+
+        ctx.clearRect(0, 0, targetWidth, targetHeight);
+
+        if (useFallbackMock) {
+          const cx = targetWidth / 2;
+          const cy = targetHeight / 2;
+          const r = Math.min(targetWidth, targetHeight) * 0.4;
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(cx, cy, r, 0, Math.PI * 2);
+          ctx.closePath();
+          ctx.clip();
+          ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+          ctx.restore();
+        } else {
+          const imageWidth = img.naturalWidth || img.width;
+          const imageHeight = img.naturalHeight || img.height;
+          const sameCanvasAspect = Math.abs((imageWidth / imageHeight) - (targetWidth / targetHeight)) < 0.01;
+
+          if (sameCanvasAspect) {
+            ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+          } else {
+            const scale = Math.min(targetWidth / imageWidth, targetHeight / imageHeight);
+            const drawWidth = imageWidth * scale;
+            const drawHeight = imageHeight * scale;
+            const x = (targetWidth - drawWidth) / 2;
+            const y = (targetHeight - drawHeight) / 2;
+            ctx.drawImage(img, x, y, drawWidth, drawHeight);
+          }
+        }
+
+        const cropped = cropTransparentBoundsWithMeta(canvas);
+        try {
+          if (cropped.source instanceof HTMLCanvasElement) {
+            resolve({ url: cropped.source.toDataURL("image/png"), bounds: cropped.bounds });
+          } else {
+            resolve({ url: transparentImgSrc, bounds: null });
+          }
+        } catch (e) {
+          resolve({ url: transparentImgSrc, bounds: null });
+        }
+      };
+      img.onerror = () => {
+        resolve({ url: transparentImgSrc, bounds: null });
+      };
+    });
+  };
+
+  const generateViewportAlignedCutout = (
+    transparentImgSrc: string,
+    sourceWidth: number,
+    sourceHeight: number,
+    useFallbackMock: boolean = false
+  ): Promise<string> => {
+    return new Promise((resolve) => {
+      const targetWidth = Math.max(1, Math.round(sourceWidth || 500));
+      const targetHeight = Math.max(1, Math.round(sourceHeight || 500));
+      const img = new Image();
+      if (!transparentImgSrc.startsWith("data:") && !transparentImgSrc.startsWith("blob:")) {
+        img.crossOrigin = "anonymous";
+      }
+
+      let finalSrc = transparentImgSrc;
+      if (!transparentImgSrc.startsWith("data:") && !transparentImgSrc.startsWith("blob:")) {
+        const separator = transparentImgSrc.includes("?") ? "&" : "?";
+        finalSrc = `${transparentImgSrc}${separator}t=${Date.now()}`;
+      }
+
+      img.src = finalSrc;
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(transparentImgSrc);
+          return;
+        }
+
+        ctx.clearRect(0, 0, targetWidth, targetHeight);
+
+        if (useFallbackMock) {
+          const cx = targetWidth / 2;
+          const cy = targetHeight / 2;
+          const r = Math.min(targetWidth, targetHeight) * 0.4;
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(cx, cy, r, 0, Math.PI * 2);
+          ctx.closePath();
+          ctx.clip();
+          ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+          ctx.restore();
+        } else {
+          const imageWidth = img.naturalWidth || img.width;
+          const imageHeight = img.naturalHeight || img.height;
+          const sameCanvasAspect = Math.abs((imageWidth / imageHeight) - (targetWidth / targetHeight)) < 0.01;
+
+          if (sameCanvasAspect) {
+            ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+          } else {
+            const scale = Math.min(targetWidth / imageWidth, targetHeight / imageHeight);
+            const drawWidth = imageWidth * scale;
+            const drawHeight = imageHeight * scale;
+            const x = (targetWidth - drawWidth) / 2;
+            const y = (targetHeight - drawHeight) / 2;
+            ctx.drawImage(img, x, y, drawWidth, drawHeight);
+          }
+        }
 
         try {
           resolve(canvas.toDataURL("image/png"));
@@ -757,10 +1153,14 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       // 1. Calculate target scale synchronously and trigger instant transition
       calculateTargetScaleFromDimensions(iw, ih);
 
+      const alignedCutout = await generateViewportAlignedCutout(transparentCutout, iw, ih, useFallbackMock);
+      const flightCutout = await generateFlightCutout(transparentCutout, iw, ih, useFallbackMock);
       const normalizedCutout = await generateTransparentCutoutWithPadding(transparentCutout, 0, useFallbackMock);
-      setTransparentCutoutUrl(normalizedCutout);
+      setAlignedCutoutUrl(alignedCutout);
+      setFlightCutoutUrl(flightCutout.url);
+      setTransparentCutoutUrl(transparentCutout);
       setTraceCompleted(false);
-      beginCutoutTransition();
+      beginCutoutTransition(iw, ih, flightCutout.bounds);
       setAiProgress("Done");
 
       // 🌟 Trigger AI classification has already been initiated immediately on capture
@@ -794,11 +1194,14 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       let ih = height || 500;
       calculateTargetScaleFromDimensions(iw, ih);
 
+      const flightCutout = await generateFlightCutout(sourceUrl, iw, ih, false);
       generatePhysicalSticker(sourceUrl, STICKER_BORDER_SIZE, "#FFFFFF", false).then(setGeneratedStickerUrl);
-      generateTransparentCutoutWithPadding(sourceUrl, 0, false).then(setTransparentCutoutUrl);
+      generateViewportAlignedCutout(sourceUrl, iw, ih, false).then(setAlignedCutoutUrl);
+      setFlightCutoutUrl(flightCutout.url);
+      setTransparentCutoutUrl(sourceUrl);
       generateTransparentCutoutWithPadding(sourceUrl, STICKER_BORDER_SIZE, false).then(setPaddedCutoutUrl);
       setTraceCompleted(false);
-      beginCutoutTransition();
+      beginCutoutTransition(iw, ih, flightCutout.bounds);
       setAiProgress("Done");
     }
   };
@@ -812,43 +1215,106 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         (storageFlowStep === "parent_capture" && !parentLocationImg)
       );
 
+    let cancelled = false;
+    let requestTimeout: number | null = null;
+
     if (shouldRunCamera) {
       setCameraError(false);
       setCameraErrorMessage("");
+      setCameraPermissionPending(true);
 
       if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
         setCameraActive(false);
+        setCameraPermissionPending(false);
         setCameraError(true);
         setCameraErrorMessage(
           window.isSecureContext
             ? "Camera access is unavailable in this browser. You can still upload a photo."
             : "Camera requires HTTPS on mobile browsers. Open the app from an HTTPS URL, or add the HTTPS PWA to your home screen."
         );
-        return;
-      }
-
-      navigator.mediaDevices
-        .getUserMedia({ video: { facingMode: "environment", width: 640, height: 480 } })
-        .then((stream) => {
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
-            videoRef.current.play().catch((err) => console.log("Play interrupted:", err));
-            setCameraActive(true);
+      } else {
+        const attachStream = (stream: MediaStream) => {
+          if (cancelled || !videoRef.current) {
+            stream.getTracks().forEach((track) => track.stop());
+            return;
           }
-        })
-        .catch((err) => {
-          console.warn("Could not access physical camera, using cinematic fallback simulator:", err);
+
+          videoRef.current.srcObject = stream;
+          videoRef.current
+            .play()
+            .then(() => {
+              if (cancelled) {
+                stream.getTracks().forEach((track) => track.stop());
+                return;
+              }
+              if (requestTimeout !== null) window.clearTimeout(requestTimeout);
+              setCameraActive(true);
+              setCameraPermissionPending(false);
+            })
+            .catch((err) => {
+              console.warn("Camera stream could not play:", err);
+              stream.getTracks().forEach((track) => track.stop());
+              if (!cancelled) {
+                setCameraActive(false);
+                setCameraPermissionPending(false);
+                setCameraError(true);
+                setCameraErrorMessage("Could not start the camera. Check browser permissions or upload a photo.");
+              }
+            });
+        };
+
+        const requestCamera = async () => {
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+              video: {
+                facingMode: { ideal: "environment" },
+                width: { ideal: 640 },
+                height: { ideal: 480 },
+              },
+            });
+            attachStream(stream);
+          } catch (err) {
+            if (cancelled) return;
+
+            // Some mobile browsers reject camera constraints even when permission is available.
+            if ((err as DOMException)?.name === "OverconstrainedError") {
+              try {
+                attachStream(await navigator.mediaDevices.getUserMedia({ video: true }));
+                return;
+              } catch (fallbackError) {
+                err = fallbackError;
+              }
+            }
+
+            console.warn("Could not access physical camera, using cinematic fallback simulator:", err);
+            setCameraActive(false);
+            setCameraPermissionPending(false);
+            setCameraError(true);
+            setCameraErrorMessage(
+              (err as DOMException)?.name === "NotAllowedError"
+                ? "Camera permission was denied. Allow camera access in browser settings, or upload a photo."
+                : "Could not start the camera. Check browser permissions or upload a photo."
+            );
+          }
+        };
+
+        requestTimeout = window.setTimeout(() => {
+          if (cancelled) return;
           setCameraActive(false);
+          setCameraPermissionPending(false);
           setCameraError(true);
-          setCameraErrorMessage(
-            err?.name === "NotAllowedError"
-              ? "Camera permission was denied. Allow camera access in browser settings, or upload a photo."
-              : "Could not start the camera. You can still upload a photo."
-          );
-        });
+          setCameraErrorMessage("Camera permission was not granted. Check browser permissions or upload a photo.");
+        }, 5000);
+
+        void requestCamera();
+      }
+    } else {
+      setCameraPermissionPending(false);
     }
 
     return () => {
+      cancelled = true;
+      if (requestTimeout !== null) window.clearTimeout(requestTimeout);
       stopCamera();
     };
   }, [isOpen, scanStep, uploadedImageUrl, storageFlowStep, subLocationImg, parentLocationImg]);
@@ -920,11 +1386,15 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       setScanStep("viewport");
       setIsCapturing(false);
       setPriceInput("");
+      setPriceCurrencyIndex(0);
       setCustomDate("Today");
       setIsEditingPrice(false);
-      setIsEditingDate(false);
+      setShowDiscardConfirm(false);
       setUploadedImageUrl(null);
+      setAlignedCutoutUrl(null);
+      setFlightCutoutUrl(null);
       setTransparentCutoutUrl(null);
+      setPaddedCutoutUrl(null);
       setCustomName("");
       setCustomCategory("");
       setTempIdentifiedTitle("");
@@ -933,7 +1403,6 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       setAiProgress(null);
       setTraceCompleted(false);
       setDisintegrateStart(false);
-      setCutoutFlightStarted(false);
       setStickerSizeSettled(false);
       setIsTracingContour(false);
       setStorageFlowStep("none");
@@ -942,8 +1411,54 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       setSubLocationHighlight(null);
       setParentLocationImg(null);
       setParentLocationName("");
+      setSelectedExistingSubKey(null);
+      setSelectedExistingParentKey(null);
+      setIsUsingExistingSubLocation(false);
+      setIsUsingExistingParentLocation(false);
+      setExpandedExistingLocationPicker(null);
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setIsYellowBlurReady(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsYellowBlurReady(false);
+    const img = new Image();
+    img.decoding = "async";
+    img.onload = () => {
+      if (!cancelled) setIsYellowBlurReady(true);
+    };
+    img.onerror = () => {
+      if (!cancelled) setIsYellowBlurReady(true);
+    };
+    img.src = YELLOW_BLUR_IMAGE_URL;
+    if (img.complete) {
+      img.decode?.()
+        .catch(() => undefined)
+        .finally(() => {
+          if (!cancelled) setIsYellowBlurReady(true);
+        });
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    const shouldShowYellowBlur =
+      storageFlowStep === "final_result" ||
+      (storageFlowStep === "none" && (scanStep === "sticker" || scanStep === "done"));
+    if (!shouldShowYellowBlur) return;
+
+    setIsYellowBlurReady(false);
+    const timer = window.setTimeout(() => setIsYellowBlurReady(true), 80);
+    return () => window.clearTimeout(timer);
+  }, [scanStep, storageFlowStep]);
 
   // Synchronize pre-fetched AI title and category to active displaying states immediately
   useEffect(() => {
@@ -961,72 +1476,63 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   // Hook to trigger smoothly timed CSS scaling during disintegration state
   useEffect(() => {
     if (scanStep === "disintegrating") {
-      setCutoutFlightStarted(false);
       const timer = setTimeout(() => {
         setDisintegrateStart(true);
       }, 50);
       return () => clearTimeout(timer);
     } else {
       setDisintegrateStart(false);
-      setCutoutFlightStarted(false);
     }
   }, [scanStep]);
 
   useEffect(() => {
-    if (scanStep !== "disintegrating" || !(paddedCutoutUrl || transparentCutoutUrl)) return;
+    if (scanStep !== "disintegrating" || !cutoutFlightImageUrl) return;
 
-    setCutoutFlightStarted(false);
+    let firstFrame = 0;
     let secondFrame = 0;
-    const firstFrame = requestAnimationFrame(() => {
-      secondFrame = requestAnimationFrame(() => {
-        const flightEl = cutoutFlightRef.current;
-        setCutoutFlightStarted(true);
-        if (flightEl?.animate) {
-          cutoutFlightAnimationRef.current?.cancel();
-          cutoutFlightAnimationRef.current = flightEl.animate(
-            [
+    const flightDelayTimer = setTimeout(() => {
+      firstFrame = requestAnimationFrame(() => {
+        secondFrame = requestAnimationFrame(() => {
+          const flightEl = cutoutFlightRef.current;
+          if (flightEl?.animate) {
+            cutoutFlightAnimationRef.current?.cancel();
+            cutoutFlightAnimationRef.current = flightEl.animate(
+              [
+                {
+                  transform: "translate3d(0px, 0px, 0px) scale(1)",
+                  opacity: 1,
+                },
+                {
+                  transform: `translate3d(${cutoutFlightTranslateX}px, ${cutoutFlightTranslateY}px, 0px) scale(${cutoutFlightTargetScale})`,
+                  opacity: 1,
+                },
+              ],
               {
-                left: `${layout.left}px`,
-                top: `${layout.top}px`,
-                width: `${layout.width}px`,
-                height: `${layout.height}px`,
-                opacity: 1,
-              },
-              {
-                left: `${finalStickerLeft}px`,
-                top: `${finalStickerTop}px`,
-                width: `${finalStickerVisualSize}px`,
-                height: `${finalStickerVisualSize}px`,
-                opacity: 1,
-              },
-            ],
-            {
-              duration: 1180,
-              easing: "cubic-bezier(0.2, 0.9, 0.18, 1)",
-              fill: "both",
-            }
-          );
-        }
+                duration: CUTOUT_FLIGHT_DURATION,
+                easing: "cubic-bezier(0.2, 0.9, 0.18, 1)",
+                fill: "both",
+              }
+            );
+          }
+        });
       });
-    });
+    }, CUTOUT_FLIGHT_DELAY);
 
     return () => {
-      cancelAnimationFrame(firstFrame);
+      clearTimeout(flightDelayTimer);
+      if (firstFrame) cancelAnimationFrame(firstFrame);
       if (secondFrame) cancelAnimationFrame(secondFrame);
       cutoutFlightAnimationRef.current?.cancel();
       cutoutFlightAnimationRef.current = null;
     };
   }, [
     scanStep,
-    paddedCutoutUrl,
-    transparentCutoutUrl,
-    layout.left,
-    layout.top,
-    layout.width,
-    layout.height,
-    finalStickerLeft,
-    finalStickerTop,
-    finalStickerVisualSize,
+    cutoutFlightImageUrl,
+    cutoutFlightTranslateX,
+    cutoutFlightTranslateY,
+    cutoutFlightTargetScale,
+    CUTOUT_FLIGHT_DELAY,
+    CUTOUT_FLIGHT_DURATION,
   ]);
 
   // Particle sparkle animation engine during Step 3-1: "识别物体粒子闪动"
@@ -1420,7 +1926,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
     let particles: DisintegrateParticle[] | null = null;
     const startTime = performance.now();
-    const duration = 1180; // Match the cutout flight so glow and outline can start as soon as particles disperse.
+    const duration = DISINTEGRATE_DURATION;
 
     let frameId: number;
 
@@ -1429,10 +1935,12 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       const progress = Math.min(elapsed / duration, 1);
 
       ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = "#E9E6E1";
+      ctx.fillRect(0, 0, W, H);
 
-      // If snapshot is still loading (for custom files), stay dark briefly
+      // If snapshot is still loading, keep the result bed warm so no black frame flashes through.
       if (!isReady && elapsed < 300) {
-        ctx.fillStyle = "#1F1F1E";
+        ctx.fillStyle = "#E9E6E1";
         ctx.fillRect(0, 0, W, H);
         frameId = requestAnimationFrame(drawPixelate);
         return;
@@ -1460,9 +1968,16 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
             if (imgData) {
               const pixelIndex = (Math.floor(y) * W + Math.floor(x)) * 4;
               if (pixelIndex >= 0 && pixelIndex < imgData.data.length) {
-                r = imgData.data[pixelIndex];
-                g = imgData.data[pixelIndex + 1];
-                b = imgData.data[pixelIndex + 2];
+                const a = imgData.data[pixelIndex + 3];
+                if (a < 8) {
+                  r = 233;
+                  g = 230;
+                  b = 225;
+                } else {
+                  r = imgData.data[pixelIndex];
+                  g = imgData.data[pixelIndex + 1];
+                  b = imgData.data[pixelIndex + 2];
+                }
               }
             } else if (activeItem.color) {
               const hex = activeItem.color.replace("#", "");
@@ -1472,9 +1987,10 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
             }
 
             // Continuous physical parameters for breezy drifting wind
-            const vx = (Math.random() - 0.3) * 3.5; // slight drifting variance
-            const vy = -Math.random() * 2.5 - 0.8; // beautiful upward uplift
-            const size = Math.random() * 0.9 + 0.3; // super-fine particles for extremely delicate organic dissolve
+            const gust = Math.random() < 0.18 ? 1.45 : 1;
+            const vx = ((Math.random() - 0.22) * 6.4 + Math.random() * 1.8) * gust; // stronger drifting variance
+            const vy = (-Math.random() * 4.2 - 0.95) * gust; // more visible upward uplift
+            const size = Math.random() * 1.05 + 0.35; // super-fine particles for organic dissolve
 
             // Stagger delay sweep based Y coord (bottom-up sweep) with gentle delay noise
             const delay = (H - y) * 0.45 + Math.random() * 120;
@@ -1491,7 +2007,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
               g,
               b,
               alpha: 1.0,
-              decay: Math.random() * 0.016 + 0.010, // elegant, speedier natural fade
+              decay: Math.random() * 0.006 + 0.0045, // longer particle life so the drift remains visible
               delay
             });
           }
@@ -1500,8 +2016,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
       // Smoothly fade out the entire canvas's visual opacity over the second half of duration
       let canvasGlobalAlpha = 1.0;
-      if (progress > 0.48) {
-        canvasGlobalAlpha = Math.max(0.0, (1.0 - progress) / 0.52);
+      if (progress > 0.62) {
+        canvasGlobalAlpha = Math.max(0.0, (1.0 - progress) / 0.38);
       }
       if (canvas) {
         canvas.style.opacity = canvasGlobalAlpha.toFixed(3);
@@ -1526,8 +2042,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
             p.vy *= 0.98;
 
             // Atmospheric continuous draft blowing right-and-upward
-            p.vx += 0.05 + (Math.random() - 0.5) * 0.02;
-            p.vy -= 0.02 + (Math.random() - 0.5) * 0.01;
+            p.vx += 0.11 + (Math.random() - 0.5) * 0.075;
+            p.vy -= 0.042 + (Math.random() - 0.5) * 0.04;
 
             // Decay alpha
             p.alpha = Math.max(0, p.alpha - p.decay);
@@ -1690,6 +2206,11 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     setIsCapturing(true);
     setScanStep("scanning");
     setShutterFlash(true);
+    setAlignedCutoutUrl(null);
+    setFlightCutoutUrl(null);
+    setTransparentCutoutUrl(null);
+    setPaddedCutoutUrl(null);
+    setGeneratedStickerUrl(null);
 
     // Warm up the AI pipeline in a parallel background worker promise
     console.log("[CinematicScanner] Submitting image content to the background segmenter thread...");
@@ -1729,16 +2250,16 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     let detectedName = "";
     
     try {
-      // Query Gemini API via direct worker connection
+      // Query the Cloudflare Worker for location classification
       console.log(`[Storage AI] Requesting classification for ${phase} location directly to Worker...`);
       const result = await classifyLocation(imageSrc, phase, parentLocationName);
       detectedName = result.name;
       console.log(`[Storage AI] Successfully identified: ${detectedName}`);
     } catch (err) {
-      console.warn("[Storage AI] Error or rate limit calling direct Worker Vision/Gemini API:", err);
+      console.warn("[Storage AI] Error or rate limit calling Worker vision API:", err);
     }
 
-    // Smart Fallback if Gemini returned empty or failed
+    // Smart fallback if the Worker returned empty or failed
     if (!detectedName) {
       const itemKey = activeItem.id;
       if (phase === "sub") {
@@ -1775,6 +2296,40 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     }, delay);
   };
 
+  const confirmExistingSubLocation = () => {
+    const location = selectedExistingSubLocation;
+    if (!location) return;
+
+    setSubLocationName(location.name);
+    setSubLocationImg(location.imgUrl);
+    setSubLocationHighlight(null);
+    setIsUsingExistingSubLocation(true);
+    setParentLocationName(location.parentName);
+    if (location.parentImgUrl) {
+      setParentLocationImg(location.parentImgUrl);
+      setIsUsingExistingParentLocation(true);
+    }
+    setSelectedExistingSubKey(location.key);
+    const matchingParent = existingParentLocations.find((parent) => parent.name === location.parentName);
+    if (matchingParent) {
+      setSelectedExistingParentKey(matchingParent.key);
+    }
+    setExpandedExistingLocationPicker(null);
+    setStorageFlowStep("sub_spot");
+  };
+
+  const confirmExistingParentLocation = () => {
+    const location = selectedExistingParentLocation;
+    if (!location) return;
+
+    setParentLocationName(location.name);
+    setParentLocationImg(location.imgUrl);
+    setIsUsingExistingParentLocation(true);
+    setSelectedExistingParentKey(location.key);
+    setExpandedExistingLocationPicker(null);
+    setStorageFlowStep("final_result");
+  };
+
   // Transition controller
   const handleCapture = async () => {
     if (isCapturing) return;
@@ -1787,6 +2342,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         // High fidelity fallback bedroom table nightstand
         frame = "https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?q=80&w=600&auto=format&fit=crop";
       }
+      setIsUsingExistingSubLocation(false);
       setSubLocationImg(frame);
       setStorageFlowStep("sub_scanning");
       setAiProgress(isChinese ? "正在分析收纳空间..." : "Analyzing storage spot...");
@@ -1802,6 +2358,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         // High fidelity fallback cozy bedroom scene
         frame = "https://images.unsplash.com/photo-1540518614846-7eded433c457?q=80&w=600&auto=format&fit=crop";
       }
+      setIsUsingExistingParentLocation(false);
       setParentLocationImg(frame);
       setStorageFlowStep("parent_scanning");
       setAiProgress(isChinese ? "正在分析全景环境..." : "Analyzing wider scene...");
@@ -1899,7 +2456,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     return canvas.toDataURL("image/png");
   };
 
-  // Frontend upload & object classification handler calling pure client-side Vertex AI for Firebase
+  // Upload classification is routed exclusively through the Cloudflare Worker.
   const classifyUploadedImage = async (imageInput: string | File, originalFileName: string) => {
     try {
       console.log("[Classifier] Starting image compression to maximum width 800 for optimal token economy...");
@@ -1963,6 +2520,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       const reader = new FileReader();
       reader.onload = () => {
         const result = reader.result as string;
+        setIsUsingExistingSubLocation(false);
         setSubLocationImg(result);
         setStorageFlowStep("sub_scanning");
         setAiProgress(isChinese ? "正在分析收纳空间..." : "Analyzing storage spot...");
@@ -1976,6 +2534,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       const reader = new FileReader();
       reader.onload = () => {
         const result = reader.result as string;
+        setIsUsingExistingParentLocation(false);
         setParentLocationImg(result);
         setStorageFlowStep("parent_scanning");
         setAiProgress(isChinese ? "正在分析全景环境..." : "Analyzing wider scene...");
@@ -1988,6 +2547,11 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     setScanStep("scanning");
     setIsCapturing(true);
     setAiProgress("Compressing image for high-speed routing...");
+    setAlignedCutoutUrl(null);
+    setFlightCutoutUrl(null);
+    setTransparentCutoutUrl(null);
+    setPaddedCutoutUrl(null);
+    setGeneratedStickerUrl(null);
 
     // Synchronously clean state and start async classification immediately on raw File in parallel!
     setCustomName("");
@@ -2027,11 +2591,15 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         setAiProgress(isChinese ? "正在剥离图片背景..." : "Extracting subject silhouette...");
         try {
           const transparentBase64 = await processImageForSticker(b64);
+          const alignedCutout = await generateViewportAlignedCutout(transparentBase64, iw, ih, false);
+          const flightCutout = await generateFlightCutout(transparentBase64, iw, ih, false);
           const normalizedCutout = await generateTransparentCutoutWithPadding(transparentBase64, 0, false);
 
-          setTransparentCutoutUrl(normalizedCutout);
+          setAlignedCutoutUrl(alignedCutout);
+          setFlightCutoutUrl(flightCutout.url);
+          setTransparentCutoutUrl(transparentBase64);
           setTraceCompleted(false);
-          beginCutoutTransition();
+          beginCutoutTransition(iw, ih, flightCutout.bounds);
           setAiProgress("Done");
 
           // Generate physical white borders and padded cutout asynchronously
@@ -2055,64 +2623,31 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         } catch (err: any) {
           console.error("[Background Removal] Processing failed:", err);
           // Complete fallback: use original image as transparent url
-          generateTransparentCutoutWithPadding(b64, 0, false).then(setTransparentCutoutUrl);
+          const flightCutout = await generateFlightCutout(b64, iw, ih, false);
+          generateViewportAlignedCutout(b64, iw, ih, false).then(setAlignedCutoutUrl);
+          setFlightCutoutUrl(flightCutout.url);
+          setTransparentCutoutUrl(b64);
           generatePhysicalSticker(b64, STICKER_BORDER_SIZE, "#FFFFFF", false).then(setGeneratedStickerUrl);
           generateTransparentCutoutWithPadding(b64, STICKER_BORDER_SIZE, false).then(setPaddedCutoutUrl);
           setTraceCompleted(false);
-          beginCutoutTransition();
+          beginCutoutTransition(iw, ih, flightCutout.bounds);
           setAiProgress("Done");
         }
       };
-      img.onerror = () => {
+      img.onerror = async () => {
         calculateTargetScaleFromDimensions(500, 500);
-        generateTransparentCutoutWithPadding(b64, 0, false).then(setTransparentCutoutUrl);
+        const flightCutout = await generateFlightCutout(b64, 500, 500, false);
+        generateViewportAlignedCutout(b64, 500, 500, false).then(setAlignedCutoutUrl);
+        setFlightCutoutUrl(flightCutout.url);
+        setTransparentCutoutUrl(b64);
         generatePhysicalSticker(b64, STICKER_BORDER_SIZE, "#FFFFFF", false).then(setGeneratedStickerUrl);
         generateTransparentCutoutWithPadding(b64, STICKER_BORDER_SIZE, false).then(setPaddedCutoutUrl);
         setTraceCompleted(false);
-        beginCutoutTransition();
+        beginCutoutTransition(500, 500, flightCutout.bounds);
         setAiProgress("Done");
       };
       img.src = b64;
     };
-  };
-
-  // Helper to parse pasted Firebase config blocks
-  const parseAndApplyJson = (text: string) => {
-    try {
-      let jsonStr = text.trim();
-      if (jsonStr.includes("firebaseConfig")) {
-        const match = jsonStr.match(/firebaseConfig\s*=\s*(\{[\s\S]*?\})/);
-        if (match) {
-          jsonStr = match[1];
-        }
-      }
-      
-      let parsed: any = null;
-      try {
-        parsed = JSON.parse(jsonStr);
-      } catch (_) {
-        const formatted = jsonStr
-          .replace(/([a-zA-Z0-9_]+)\s*:/g, '"$1":')
-          .replace(/'/g, '"')
-          .replace(/,\s*([}\]])/g, '$1'); // remove trailing commas
-        parsed = JSON.parse(formatted);
-      }
-
-      if (parsed && parsed.apiKey) {
-        setFbApiKey(parsed.apiKey || "");
-        setFbAuthDomain(parsed.authDomain || "");
-        setFbProjectId(parsed.projectId || "");
-        setFbStorageBucket(saved => saved || parsed.storageBucket || "");
-        setFbMessagingSenderId(parsed.messagingSenderId || "");
-        setFbAppId(parsed.appId || "");
-        setFbMeasurementId(parsed.measurementId || "");
-        setRawConfigJson("");
-        return true;
-      }
-    } catch (e) {
-      console.error("Failed to parse config string:", e);
-    }
-    return false;
   };
 
   const handleObjectConfirmed = () => {
@@ -2123,7 +2658,10 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const handleSaveMemory = () => {
     if (onItemAdded) {
       const rawName = uploadedImageUrl ? (customName.trim() || "Uploaded Item") : activeItem.name;
-      const formattedPrice = priceInput.trim() ? `$${priceInput.trim()}` : "$25.00";
+      const priceCurrency = PRICE_CURRENCIES[priceCurrencyIndex];
+      const formattedPrice = priceInput.trim()
+        ? `${priceCurrency}${priceInput.trim()}`
+        : `${priceCurrency}25.00`;
       const finalCategory = customCategory.trim() || "其它";
       
       onItemAdded({
@@ -2143,18 +2681,298 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     onClose();
   };
 
+  const handleDiscardAllCaptureResults = () => {
+    setShowDiscardConfirm(false);
+    onClose();
+  };
+
+  const handlePriceInputChange = (nextValue: string) => {
+    if (/^(?=.{0,8}$)\d*(\.\d{0,2})?$/.test(nextValue)) {
+      setPriceInput(nextValue);
+    }
+  };
+
+  const priceCurrency = PRICE_CURRENCIES[priceCurrencyIndex];
+  const cyclePriceCurrency = () => {
+    setPriceCurrencyIndex((current) => (current + 1) % PRICE_CURRENCIES.length);
+  };
+
+  const finalResultDateLabel = customDate === "Today" ? "Build 3 days ago" : `Build ${customDate}`;
+
+  const StorageRoundButton = ({
+    children,
+    onClick,
+    title,
+    variant = "light",
+    className = "",
+  }: {
+    children: React.ReactNode;
+    onClick: () => void;
+    title?: string;
+    variant?: "light" | "dark" | "ghost";
+    className?: string;
+  }) => {
+    const sizeClass = variant === "dark" ? "w-[72px] h-[72px]" : "w-[62px] h-[62px]";
+    const toneClass =
+      variant === "dark"
+        ? "bg-[#232121] text-white hover:bg-[#232121]"
+        : variant === "ghost"
+          ? "bg-transparent text-neutral-500 hover:text-black"
+          : "bg-white text-[#232121]/50 hover:bg-neutral-100";
+
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        title={title}
+        className={`${sizeClass} rounded-full flex items-center justify-center border-0 hover:scale-105 active:scale-95 transition-all outline-none cursor-pointer shadow-none ${toneClass} ${className}`}
+      >
+        {children}
+      </button>
+    );
+  };
+
+  const StorageActionRow = ({ children }: { children: React.ReactNode }) => (
+    <div className="flex items-center justify-center gap-[44px] z-30 w-full">
+      {children}
+    </div>
+  );
+
+  const StorageShutterButton = ({ onClick, title }: { onClick: () => void; title?: string }) => (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      className="group relative w-[72px] h-[72px] rounded-full flex items-center justify-center bg-white transition-all duration-300 hover:scale-105 active:scale-95 shadow-none cursor-pointer"
+      style={{ padding: "4px" }}
+    >
+      <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-cyan-400 via-orange-400 to-red-400 opacity-90 scale-105 blur-[1.5px] transition-all group-hover:scale-110" />
+      <div className="relative w-full h-full rounded-full bg-[#F3F1EC] flex items-center justify-center border-2 border-white shadow-inner">
+        <div className="w-7 h-7 rounded-full bg-[#181817] border border-black/10" />
+      </div>
+    </button>
+  );
+
+  const StorageDrawerInput = ({
+    value,
+    onChange,
+    placeholder,
+  }: {
+    value: string;
+    onChange: (value: string) => void;
+    placeholder: string;
+  }) => (
+    <div className="relative flex-shrink-0" style={{ width: "316px", height: "56px" }}>
+      <input
+        type="text"
+        className="w-full h-full rounded-full bg-[#232121]/[0.05] border-0 pl-8 pr-12 text-[#232121]/50 text-[13px] font-sans placeholder-[#232121]/50 font-semibold tracking-tight text-center focus:outline-none focus:ring-2 focus:ring-[#232121]/10"
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      <div className="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none text-[#232121]/35">
+        <Pencil className="w-4 h-4" />
+      </div>
+    </div>
+  );
+
+  const renderExistingLocationPickerBubble = ({
+    kind,
+    options,
+    selectedKey,
+    onSelect,
+    onConfirm,
+    displayOnly = false,
+  }: {
+    kind: "sub" | "parent";
+    options: Array<{
+      key: string;
+      name: string;
+      imgUrl: string;
+      itemCount: number;
+      parentName?: string;
+    }>;
+    selectedKey: string | null;
+    onSelect: (key: string) => void;
+    onConfirm: () => void;
+    displayOnly?: boolean;
+  }) => {
+    if (!options.length) return null;
+
+    const selected = options.find((option) => option.key === selectedKey) || options[0];
+    const stackedOptions = displayOnly
+      ? [selected]
+      : [
+          selected,
+          ...options.filter((option) => option.key !== selected.key),
+        ].slice(0, 4);
+    const isExpanded = !displayOnly && expandedExistingLocationPicker === kind;
+
+    return (
+      <div
+        className="absolute left-1/2 top-[-28px] z-[80] h-[240px] w-[330px] pointer-events-none"
+        style={{ transform: `translateX(${Math.round(frontLocationBubbleWidth / 2 - 330)}px)` }}
+      >
+        {stackedOptions.map((option, index) => {
+          const isFront = index === 0;
+          const collapsedX = [0, 8, 16, 24][index] || 0;
+          const collapsedY = [0, -5, -10, -15][index] || 0;
+          const collapsedRotate = [0, 3, 6, 9][index] || 0;
+          const expandedX = [0, 16, 32, 48][index] || 0;
+          const expandedY = [0, -34, -68, -102][index] || 0;
+          const expandedRotate = [0, 10, 19, 28][index] || 0;
+          const handleBubbleClick = () => {
+            if (displayOnly) return;
+	            if (isFront) {
+	              setExpandedExistingLocationPicker(isExpanded ? null : kind);
+	            } else {
+	              onSelect(option.key);
+	              setExpandedExistingLocationPicker(null);
+	            }
+	          };
+
+          return (
+            <motion.div
+              key={option.key}
+              className="absolute right-0 top-0 inline-flex h-[56px] pointer-events-auto"
+              style={{
+                zIndex: 30 - index,
+                transformOrigin: "calc(100% - 42px) 50%",
+                pointerEvents: displayOnly || isExpanded || index < 1 ? "auto" : "none",
+              }}
+              initial={false}
+              animate={{
+                x: isExpanded ? expandedX : collapsedX,
+                y: isExpanded ? expandedY : collapsedY,
+                rotate: isExpanded ? expandedRotate : collapsedRotate,
+                scale: isExpanded ? 1 : 1 - index * 0.025,
+                opacity: displayOnly || isExpanded || index < 1 ? 1 : 0,
+              }}
+              transition={{
+                type: "spring",
+                stiffness: 210,
+                damping: 24,
+                mass: 0.78,
+                restDelta: 0.001,
+                delay: isExpanded ? index * 0.045 : (stackedOptions.length - index) * 0.016,
+              }}
+            >
+              <div
+                ref={(node) => {
+                  if (!isFront || !node) return;
+                  const nextWidth = node.offsetWidth;
+                  if (nextWidth > 0 && Math.abs(nextWidth - frontLocationBubbleWidth) > 1) {
+                    window.requestAnimationFrame(() => setFrontLocationBubbleWidth(nextWidth));
+                  }
+                }}
+                className="inline-flex h-[56px] max-w-[300px] items-center rounded-full border border-white/35 bg-[#E9E6E1]/50 py-0 pl-[7px] pr-[7px] shadow-[0_12px_34px_rgba(0,0,0,0.16)] backdrop-blur-xl will-change-transform"
+                onClick={handleBubbleClick}
+                style={{
+                  WebkitBackdropFilter: "blur(18px)",
+                  backdropFilter: "blur(18px)",
+                  backfaceVisibility: "hidden",
+                  transform: "translateZ(0)",
+                  willChange: "transform, opacity, backdrop-filter",
+                }}
+              >
+                <img
+                  src={option.imgUrl}
+                  alt={option.name}
+                  className="h-[43px] w-[43px] shrink-0 rounded-[8px] border-[2.5px] border-white object-cover"
+                  referrerPolicy="no-referrer"
+                />
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    handleBubbleClick();
+                  }}
+                  className={`flex min-w-0 max-w-[226px] items-center rounded-full bg-transparent pl-3 text-left ${displayOnly ? "cursor-default" : "active:scale-[0.99]"} ${displayOnly || !isFront ? "pr-4" : "pr-3"}`}
+                  aria-expanded={isFront ? isExpanded : undefined}
+                >
+                  <span className="truncate font-sans text-[19px] font-medium leading-none text-[#232121]">
+                    {option.name}
+                  </span>
+                </button>
+
+                {!displayOnly && isFront && (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onConfirm();
+                    }}
+                    className="flex h-[33px] w-[33px] shrink-0 items-center justify-center rounded-full bg-[#232121] text-white active:scale-95"
+                    aria-label={`Use existing ${kind === "sub" ? "sub location" : "parent location"}`}
+                    title={`Use existing ${kind === "sub" ? "little home" : "scene"}`}
+                  >
+                    <Check className="h-[18px] w-[18px] stroke-[4]" />
+                  </button>
+                )}
+                {!displayOnly && !isFront && (
+                  <div className="h-[33px] w-[33px] shrink-0" aria-hidden="true" />
+                )}
+              </div>
+            </motion.div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderPriceKeyboard = () => {
+    return (
+      <div className="capture-price-keyboard-panel w-full bg-[#E9E6E1] border-t border-black/5 px-4 pt-4 pb-[max(14px,env(safe-area-inset-bottom))] shadow-[0_-16px_40px_rgba(0,0,0,0.12)]">
+        <div className="mx-auto w-full max-w-[360px]">
+          <div className="mb-3 flex items-center justify-between px-1">
+            <button
+              type="button"
+              onClick={cyclePriceCurrency}
+              className="h-10 min-w-[48px] px-3 rounded-full bg-[#232121] text-white text-[17px] font-sans font-bold active:scale-95 transition-transform"
+              aria-label={`Switch currency symbol, current ${priceCurrency}`}
+              title="Switch currency"
+            >
+              {priceCurrency}
+            </button>
+            <div className="h-10 min-w-[112px] px-5 rounded-full bg-white/80 flex items-center justify-center text-[#232121] text-[18px] font-sans font-bold">
+              {priceCurrency}{priceInput || "0.00"}
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsEditingPrice(false)}
+              className="h-10 px-5 rounded-full bg-[#232121] text-white text-[14px] font-sans font-semibold active:scale-95 transition-transform"
+            >
+              Done
+            </button>
+          </div>
+          <VirtualKeyboard
+            mode="numeric"
+            value={priceInput}
+            onChange={handlePriceInputChange}
+            onKeyPress={() => {}}
+            onBackspace={() => setPriceInput((current) => current.slice(0, -1))}
+            onSpace={() => {}}
+            onSend={() => setIsEditingPrice(false)}
+            onDismiss={() => setIsEditingPrice(false)}
+            className="capture-price-simple-keyboard"
+          />
+        </div>
+      </div>
+    );
+  };
+
   if (!isOpen) return null;
 
   return createPortal(
     <div 
-      className="camera-page-container camera-wrapper absolute inset-0 bg-[#161616]/98 z-50 overflow-hidden select-none animate-fade-in pb-0"
+      className="camera-page-container camera-wrapper absolute inset-0 bg-[#161616] z-50 overflow-hidden select-none animate-fade-in pb-0"
       style={{ height: "var(--app-height, 100vh)", paddingBottom: "0px" }}
     >
-      {/* Hidden element to force immediate pre-loading and browser initialization of the Alkatra font */}
-      <span className="font-alkatra opacity-0 absolute pointer-events-none select-none w-1 h-1 overflow-hidden" aria-hidden="true">AI</span>
-      
-      {/* 1. FULL VIEWPORT CAMERA FEED AND AR CANVASES (Paddings removed to allow full upper stretch) */}
-      <div className="absolute inset-0 bg-[#1F1F1E] flex flex-col items-center justify-center text-center w-full">
+	      {/* Hidden element to force immediate pre-loading and browser initialization of the Alkatra font */}
+	      <span className="font-alkatra opacity-0 absolute pointer-events-none select-none w-1 h-1 overflow-hidden" aria-hidden="true">AI</span>
+
+	      {/* 1. FULL VIEWPORT CAMERA FEED AND AR CANVASES (Paddings removed to allow full upper stretch) */}
+      <div className="absolute inset-0 bg-[#161616] flex flex-col items-center justify-center text-center w-full">
         
         {/* Hidden upload file input element */}
         <input
@@ -2166,11 +2984,11 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         />
 
         {/* Top Header Guidelines Title overlay */}
-        {storageFlowStep === "none" && scanStep === "viewport" && (
+        {storageFlowStep === "none" && scanStep === "viewport" && !cameraViewportUnavailable && (
           <div className="capture-top-prompt absolute top-[calc(max(56px,env(safe-area-inset-top))+36px)] inset-x-6 z-20 flex flex-col items-center pointer-events-none">
             <h3 
               id="camera-guide-title"
-              className="text-white text-[16px] font-sans font-medium tracking-tight text-center max-w-[200px] leading-snug"
+              className="text-white text-[20px] font-sans font-medium tracking-tight text-center max-w-[240px] leading-snug"
             >
               Show me what you want to remember.
             </h3>
@@ -2183,7 +3001,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
           className="absolute inset-0 flex items-center justify-center transition-all duration-75"
           style={{
             bottom: `${cameraViewBottomOffset}px`,
-            backgroundColor: scanStep === "disintegrating" || scanStep === "sticker" || scanStep === "done" ? "#E9E6E1" : "#1F1F1E",
+            backgroundColor: scanStep === "disintegrating" || scanStep === "sticker" || scanStep === "done" ? "#E9E6E1" : "#161616",
             transition: "background-color 1.4s cubic-bezier(0.16, 1, 0.3, 1)",
           }}
         >
@@ -2218,30 +3036,20 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                 <div className="absolute inset-0 bg-[#161616]" />
               )}
 
-              {cameraError && cameraErrorMessage && (
-                <div className="absolute inset-x-8 top-1/2 -translate-y-1/2 z-40 flex flex-col items-center gap-4 text-center">
-                  <div className="w-14 h-14 rounded-full bg-white/10 border border-white/15 flex items-center justify-center text-white backdrop-blur-md">
-                    <Camera className="w-7 h-7" />
-                  </div>
-                  <p className="max-w-[280px] text-white/80 text-[13px] leading-relaxed font-sans">
+              {cameraPermissionUnavailable && cameraErrorMessage && (
+                <div className="absolute inset-x-8 top-1/2 -translate-y-1/2 z-40 flex items-center justify-center text-center">
+                  <p className="max-w-[300px] text-white/80 text-[20px] leading-snug font-sans">
                     {cameraErrorMessage}
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="h-10 px-5 rounded-full bg-white text-[#232121] text-[13px] font-semibold shadow-[0_8px_24px_rgba(0,0,0,0.25)] active:scale-95 transition-transform"
-                  >
-                    Upload Photo
-                  </button>
                 </div>
               )}
 
               {/* Viewport Center-Focusing Corners reticle box */}
               <div
-                className="absolute top-0 left-0 right-0 w-full flex flex-col items-center justify-center pointer-events-none z-20"
+                className={`absolute top-0 left-0 right-0 w-full flex flex-col items-center justify-center pointer-events-none z-20 ${cameraViewportUnavailable ? "hidden" : ""}`}
                 style={{ bottom: `${focusReticleInsetBottom}px` }}
               >
-                <div className="w-[164px] h-[164px] flex items-center justify-center filter drop-shadow-[0_4px_12px_rgba(0,0,0,0.35)] -mt-12">
+                <div className="w-[164px] h-[164px] flex items-center justify-center filter drop-shadow-[0_4px_12px_rgba(0,0,0,0.35)]">
                   <svg width="164" height="164" viewBox="0 0 164 164" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M0 150.5V142.375H3V150.5C3 156.299 7.70101 161 13.5 161H21.625V164H13.5C6.04416 164 0 157.956 0 150.5ZM161 150.5V142.375H164V150.5C164 157.956 157.956 164 150.5 164H142.375V161H150.5C156.299 161 161 156.299 161 150.5ZM0 13.5C0 6.04416 6.04416 0 13.5 0H21.625V3H13.5C7.70101 3 3 7.70101 3 13.5V21.625H0V13.5ZM161 13.5C161 7.70101 156.299 3 150.5 3H142.375V0H150.5C157.956 0 164 6.04416 164 13.5V21.625H161V13.5Z" fill="white"/>
                   </svg>
@@ -2298,7 +3106,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
           {/* PHASE 3-2: Disintegrating Background pixelate dissolution canvas overlay */}
           {storageFlowStep === "none" && scanStep === "disintegrating" && (
             <div 
-              className="absolute inset-0 z-10 w-full h-full overflow-hidden animate-disintegrate-bg"
+              className="absolute inset-0 z-10 w-full h-full overflow-hidden bg-[#E9E6E1]"
             >
               <canvas 
                 ref={pixelateCanvasRef} 
@@ -2308,25 +3116,25 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
               {/* Decorative Soft Yellow Gaussian Glow underlay removed from Phase 3-2 */}
 
               {/* Cutout subject shrinks smoothly to its target place while disintegration particles disperse concurrently! */}
-              {(paddedCutoutUrl || transparentCutoutUrl) && (
+              {cutoutFlightImageUrl && (
                 <div 
                   ref={cutoutFlightRef}
                   key={`cutout-flight-${uploadedImageUrl ? "upload" : "capture"}-${selectedItemIndex}-${scanStep}`}
                   className="absolute pointer-events-none flex items-center justify-center z-20"
                   style={{
-                    left: `${cutoutFlightStarted ? finalStickerLeft : layout.left}px`,
-                    top: `${cutoutFlightStarted ? finalStickerTop : layout.top}px`,
-                    width: `${cutoutFlightStarted ? finalStickerVisualSize : layout.width}px`,
-                    height: `${cutoutFlightStarted ? finalStickerVisualSize : layout.height}px`,
+                    left: `${cutoutFlightSourceRect.left}px`,
+                    top: `${cutoutFlightSourceRect.top}px`,
+                    width: `${cutoutFlightSourceRect.width}px`,
+                    height: `${cutoutFlightSourceRect.height}px`,
                     transformOrigin: "center center",
-                    transition: "left 1180ms cubic-bezier(0.2, 0.9, 0.18, 1), top 1180ms cubic-bezier(0.2, 0.9, 0.18, 1), width 1180ms cubic-bezier(0.2, 0.9, 0.18, 1), height 1180ms cubic-bezier(0.2, 0.9, 0.18, 1)",
-                    willChange: "left, top, width, height",
+                    transform: "translate3d(0px, 0px, 0px) scale(1)",
+                    willChange: "transform",
                   }}
                 >
                   <img
-                    src={paddedCutoutUrl || transparentCutoutUrl || ""}
+                    src={cutoutFlightImageUrl}
                     alt="Shrinking cutout subject"
-                    className="w-full h-full object-contain z-[12]"
+                    className="absolute inset-0 w-full h-full object-fill z-[12]"
                     referrerPolicy="no-referrer"
                   />
                 </div>
@@ -2352,21 +3160,26 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
               {/* Upper static container for the sticker so it NEVER shifts under any circumstance */}
               <div 
-                className="absolute left-1/2 top-[37%] flex items-center justify-center z-10"
+                className="absolute left-1/2 flex items-center justify-center z-10"
                 style={{
+                  top: `${targetCenterY}px`,
                   width: "300px",
                   height: "300px",
                   transform: "translate(-50%, -50%)"
                 }}
               >
                 
-                {/* Decorative Soft Yellow Gaussian Glow underlay - fully solid, blur-[50px] as requested */}
-                <div 
-                  className="absolute w-[236px] h-[236px] rounded-full bg-[#FFB300] blur-[52px] pointer-events-none z-0 animate-yellow-glow" 
+                <img
+                  src={YELLOW_BLUR_IMAGE_URL}
+                  alt=""
+                  aria-hidden="true"
+                  onLoad={() => setIsYellowBlurReady(true)}
+                  className="absolute left-1/2 top-1/2 h-auto max-w-none -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none z-0 transition-opacity duration-700 ease-out"
                   style={{
-                    left: "calc(50% - 118px)",
-                    top: "calc(50% - 118px)",
+                    width: "min(100vw, 430px)",
+                    opacity: isYellowBlurReady ? 1 : 0,
                   }}
+                  referrerPolicy="no-referrer"
                 />
 
                 {/* Sticker element wrapper kept upright to avoid a rotation jump after the cutout flight. */}
@@ -2374,15 +3187,18 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                   layoutId="sticker-and-title-layout"
                   className="relative flex items-center justify-center z-10"
                   style={{
-                    width: "280px",
-                    height: "280px",
+                    width: `${RESULT_STICKER_VISUAL_SIZE}px`,
+                    height: `${RESULT_STICKER_VISUAL_SIZE}px`,
                     rotate: "0deg",
                   }}
                   transition={{ type: "spring", stiffness: 180, damping: 22 }}
                 >
                   {!traceCompleted && (paddedCutoutUrl || transparentCutoutUrl) ? (
                     // Tracing phase displays the fixed 256x256 asset at the larger visual size.
-                    <div className="relative w-[280px] h-[280px] flex items-center justify-center">
+                    <div
+                      className="relative flex items-center justify-center"
+                      style={{ width: `${RESULT_STICKER_VISUAL_SIZE}px`, height: `${RESULT_STICKER_VISUAL_SIZE}px` }}
+                    >
                       <img 
                         src={paddedCutoutUrl || transparentCutoutUrl || ""} 
                         alt="Cutout Subject" 
@@ -2407,7 +3223,10 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                       referrerPolicy="no-referrer"
                     />
                   ) : (
-                    <div className="w-[280px] h-[280px] flex flex-col items-center justify-center bg-white/95 rounded-full border-4 border-[#8E7C66]/30 p-5 shadow-sm text-center animate-pulse">
+                    <div
+                      className="flex flex-col items-center justify-center bg-white/95 rounded-full border-4 border-[#8E7C66]/30 p-5 shadow-sm text-center animate-pulse"
+                      style={{ width: `${RESULT_STICKER_VISUAL_SIZE}px`, height: `${RESULT_STICKER_VISUAL_SIZE}px` }}
+                    >
                       <div className="w-10 h-10 rounded-full border-[3px] border-[#8D7D66]/20 border-t-[#8D7D66] animate-spin mb-3" />
                       <span id="final-sticker-loader-label" className="text-[11px] font-mono font-bold text-[#3E3C3A] leading-tight uppercase tracking-wider block">
                         {aiProgress || "AI Loading..."}
@@ -2423,8 +3242,13 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                   {(traceCompleted || scanStep === "done") && stickerTitleText && (
                     <motion.div 
                       layoutId="sticker-title-layout"
-                      className="absolute left-[-18px] right-[-18px] text-center pointer-events-none select-none z-20 animate-fade-in font-alkatra overflow-visible"
-                      style={stickerTitleStyle}
+                      className="absolute text-center pointer-events-none select-none z-20 animate-fade-in font-alkatra overflow-visible"
+                      style={{
+                        ...stickerTitleStyle,
+                        left: "50%",
+                        width: `${RESULT_STICKER_TITLE_WIDTH}px`,
+                        marginLeft: `${-RESULT_STICKER_TITLE_WIDTH / 2}px`,
+                      }}
                     >
                       {stickerTitleLines.map((line) => (
                         <span key={line} className="block whitespace-nowrap">
@@ -2512,7 +3336,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                                     height: "30px",
                                   }}
                                 >
-                                  <span className="text-[12px] font-sans font-semibold text-black/70 tracking-tight leading-none">
+                                  <span className="text-[12px] font-sans font-semibold text-neutral-500 tracking-tight leading-none">
                                     {cat}
                                   </span>
                                 </div>
@@ -2527,7 +3351,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                     <div 
                       className="absolute left-1/2 z-35"
                       style={{ 
-                        bottom: "-48px",
+                        bottom: "-34px",
                         transform: "translateX(-50%)"
                       }}
                     >
@@ -2549,7 +3373,10 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
               </div>
 
               {/* Bottom section housing the three action buttons and Tap to adjust Input field */}
-              <div className="capture-bottom-actions absolute bottom-[146px] left-0 right-0 w-full flex flex-col items-center px-6">
+              <div
+                className="capture-bottom-actions absolute left-0 right-0 w-full flex flex-col items-center px-6"
+                style={{ bottom: `${RESULT_INPUT_BOTTOM_GAP + 56 + RESULT_BUTTON_INPUT_GAP}px` }}
+              >
                 
                 <div className="flex items-center justify-center gap-[44px] z-30 w-full">
                   {/* LEFT: Cancel circular button */}
@@ -2564,10 +3391,10 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                   {/* CENTER: Main Confirm Save circular button */}
                   <button
                     onClick={handleObjectConfirmed}
-                    className="w-[72px] h-[72px] rounded-full bg-[#232121] flex items-center justify-center border border-transparent hover:bg-black hover:scale-105 active:scale-95 transition-all outline-none cursor-pointer animate-pop-in-2 shadow-none"
+                    className="w-[72px] h-[72px] rounded-full bg-[#232121] flex items-center justify-center border border-transparent hover:bg-[#232121] hover:scale-105 active:scale-95 transition-all outline-none cursor-pointer animate-pop-in-2 shadow-none"
                     title="Confirm Save"
                   >
-                    <Check className="w-8 h-8 text-white stroke-[2]" />
+                    <Check className="w-[22px] h-[22px] text-white stroke-[3]" />
                   </button>
 
                   {/* RIGHT: Reset Scan circular button */}
@@ -2575,6 +3402,11 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                     onClick={() => {
                       setScanStep("viewport");
                       setUploadedImageUrl(null);
+                      setAlignedCutoutUrl(null);
+                      setFlightCutoutUrl(null);
+                      setTransparentCutoutUrl(null);
+                      setPaddedCutoutUrl(null);
+                      setGeneratedStickerUrl(null);
                     }}
                     className="w-[62px] h-[62px] rounded-full bg-white flex items-center justify-center border-0 hover:bg-neutral-100 hover:scale-105 active:scale-95 transition-all outline-none cursor-pointer animate-pop-in-3 shadow-none"
                     title="Reset / Retake"
@@ -2586,8 +3418,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
               {/* Editable bottom pill matching the provided result UI */}
               <div 
-                className="absolute left-1/2 bottom-[62px] z-30 animate-fade-in flex-shrink-0 -translate-x-1/2" 
-                style={{ width: "316px", height: "56px" }}
+                className="absolute left-1/2 z-30 animate-fade-in flex-shrink-0 -translate-x-1/2"
+                style={{ width: "316px", height: "56px", bottom: `${RESULT_INPUT_BOTTOM_GAP}px` }}
               >
                 <input
                   type="text"
@@ -2613,10 +3445,12 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
               }}
             >
               {/* Top Prompt Text */}
-              {storageFlowStep !== "final_result" && (
+              {storageFlowStep !== "final_result" && !(
+                (storageFlowStep === "sub_capture" || storageFlowStep === "parent_capture") && cameraViewportUnavailable
+              ) && (
                 <div className="capture-top-prompt absolute top-[calc(max(56px,env(safe-area-inset-top))+36px)] inset-x-6 z-40 flex flex-col items-center pointer-events-none">
                   <h3 
-                    className="text-[18px] font-sans font-semibold tracking-tight text-center max-w-[280px] leading-snug text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)]"
+                    className="text-[20px] font-sans font-semibold tracking-tight text-center max-w-[300px] leading-snug text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)]"
                   >
                     {storageFlowStep === "sub_capture" && "Now, show me its little home."}
                     {storageFlowStep === "sub_spot" && "Great! Now, show me the exact spot."}
@@ -2655,6 +3489,15 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                   </div>
                 )}
 
+                {cameraPermissionUnavailable && cameraErrorMessage &&
+                  (storageFlowStep === "sub_capture" || storageFlowStep === "parent_capture") && (
+                    <div className="absolute inset-x-8 top-1/2 -translate-y-1/2 z-40 flex items-center justify-center text-center">
+                      <p className="max-w-[300px] text-white/80 text-[20px] leading-snug font-sans">
+                        {cameraErrorMessage}
+                      </p>
+                    </div>
+                  )}
+
                 {/* 1. Sub Location Capture (Live Viewport) */}
                 {storageFlowStep === "sub_capture" && (
                   <>
@@ -2672,10 +3515,10 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
                     {/* Viewport Center Focusing Reticle */}
                     <div
-                      className="absolute top-0 left-0 right-0 w-full flex flex-col items-center justify-center pointer-events-none z-20"
+                      className={`absolute top-0 left-0 right-0 w-full flex flex-col items-center justify-center pointer-events-none z-20 ${cameraViewportUnavailable ? "hidden" : ""}`}
                       style={{ bottom: `${focusReticleInsetBottom}px` }}
                     >
-                      <div className="w-[164px] h-[164px] flex items-center justify-center filter drop-shadow-[0_4px_12px_rgba(0,0,0,0.35)] -mt-12">
+                      <div className="w-[164px] h-[164px] flex items-center justify-center filter drop-shadow-[0_4px_12px_rgba(0,0,0,0.35)]">
                         <svg width="164" height="164" viewBox="0 0 164 164" fill="none" xmlns="http://www.w3.org/2000/svg">
                           <path d="M0 150.5V142.375H3V150.5C3 156.299 7.70101 161 13.5 161H21.625V164H13.5C6.04416 164 0 157.956 0 150.5ZM161 150.5V142.375H164V150.5C164 157.956 157.956 164 150.5 164H142.375V161H150.5C156.299 161 161 156.299 161 150.5ZM0 13.5C0 6.04416 6.04416 0 13.5 0H21.625V3H13.5C7.70101 3 3 7.70101 3 13.5V21.625H0V13.5ZM161 13.5C161 7.70101 156.299 3 150.5 3H142.375V0H150.5C157.956 0 164 6.04416 164 13.5V21.625H161V13.5Z" fill="white"/>
                         </svg>
@@ -2744,10 +3587,10 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
                     {/* Viewport Center Focusing Reticle */}
                     <div
-                      className="absolute top-0 left-0 right-0 w-full flex flex-col items-center justify-center pointer-events-none z-20"
+                      className={`absolute top-0 left-0 right-0 w-full flex flex-col items-center justify-center pointer-events-none z-20 ${cameraViewportUnavailable ? "hidden" : ""}`}
                       style={{ bottom: `${focusReticleInsetBottom}px` }}
                     >
-                      <div className="w-[164px] h-[164px] flex items-center justify-center filter drop-shadow-[0_4px_12px_rgba(0,0,0,0.35)] -mt-12">
+                      <div className="w-[164px] h-[164px] flex items-center justify-center filter drop-shadow-[0_4px_12px_rgba(0,0,0,0.35)]">
                         <svg width="164" height="164" viewBox="0 0 164 164" fill="none" xmlns="http://www.w3.org/2000/svg">
                           <path d="M0 150.5V142.375H3V150.5C3 156.299 7.70101 161 13.5 161H21.625V164H13.5C6.04416 164 0 157.956 0 150.5ZM161 150.5V142.375H164V150.5C164 157.956 157.956 164 150.5 164H142.375V161H150.5C156.299 161 161 156.299 161 150.5ZM0 13.5C0 6.04416 6.04416 0 13.5 0H21.625V3H13.5C7.70101 3 3 7.70101 3 13.5V21.625H0V13.5ZM161 13.5C161 7.70101 156.299 3 150.5 3H142.375V0H150.5C157.956 0 164 6.04416 164 13.5V21.625H161V13.5Z" fill="white"/>
                         </svg>
@@ -2778,7 +3621,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                 {/* 5. Final Result Summary Page */}
                 {storageFlowStep === "final_result" && (
                   <div 
-                    className="absolute inset-0 w-full h-full flex flex-col items-center justify-center overflow-y-auto px-6 pt-16 pb-16"
+                    className="absolute inset-0 isolate w-full h-full overflow-y-auto px-0 pt-[72px] pb-8"
                     style={{
                       maxHeight: "100%",
                       WebkitOverflowScrolling: "touch"
@@ -2794,63 +3637,87 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
                     {/* Top Right Cancel Button */}
                     <button
-                      onClick={() => {
-                        setStorageFlowStep("parent_confirm");
-                      }}
-                      className="capture-top-cancel absolute top-[calc(max(44px,env(safe-area-inset-top)))] right-6 z-50 text-[14px] font-sans font-semibold text-neutral-400 hover:text-neutral-700 active:scale-95 transition-all cursor-pointer"
+                      onClick={() => setShowDiscardConfirm(true)}
+                      className="capture-top-cancel absolute top-[56px] right-9 z-50 text-[16px] font-sans font-medium text-neutral-400 hover:text-neutral-700 active:scale-95 transition-all cursor-pointer"
                     >
                       Cancel
                     </button>
 
                     {/* Main Sticker Element with + Value Tag & Yellow Gaussian Glow */}
-                    <div className="relative mt-[28px] mb-[60px] z-10 flex flex-col items-center justify-center flex-shrink-0">
+                    <div className="relative z-10 mx-auto flex flex-col items-center justify-center flex-shrink-0" style={{ width: "340px", height: "330px" }}>
                       <div 
                         className="relative flex items-center justify-center overflow-visible"
                         style={{
-                          width: "250px",
-                          height: "250px"
+                          width: "300px",
+                          height: "300px"
                         }}
                       >
-                        {/* Decorative Soft Yellow Gaussian Glow underlay - EXACTLY matches Object Results */}
-                        <div 
-                          className="absolute w-[200px] h-[200px] rounded-full bg-[#FFB300] blur-[44px] pointer-events-none z-0 animate-yellow-glow" 
+                        <img
+                          src={YELLOW_BLUR_IMAGE_URL}
+                          alt=""
+                          aria-hidden="true"
+                          onLoad={() => setIsYellowBlurReady(true)}
+                          className="absolute left-1/2 top-1/2 h-auto max-w-none -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none z-0 transition-opacity duration-700 ease-out"
                           style={{
-                            left: "calc(50% - 100px)",
-                            top: "calc(50% - 100px)",
+                            width: "min(100vw, 430px)",
+                            opacity: isYellowBlurReady ? 1 : 0,
                           }}
+                          referrerPolicy="no-referrer"
                         />
 
                         {/* + Value Tag - Click to edit value amount */}
-                        <div 
-                          onClick={() => {
-                            const val = window.prompt("Enter item value / valuation:", priceInput || "15.00");
-                            if (val !== null) {
-                              const cleaned = val.replace("$", "").trim();
-                              setPriceInput(cleaned);
-                            }
-                          }}
-                          className="absolute top-2 right-2 bg-[#1C1917] text-white text-[10px] font-sans font-extrabold px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-[0_4px_10px_rgba(0,0,0,0.15)] z-20 cursor-pointer border border-neutral-800 hover:scale-105 active:scale-95 transition-all select-none"
+                        <button
+                          type="button"
+                          onClick={() => setIsEditingPrice(true)}
+                          className="absolute top-[42px] right-[-8px] h-[30px] text-white z-30 cursor-pointer hover:scale-105 active:scale-95 transition-all select-none flex items-stretch justify-center shadow-none p-0 bg-transparent border-0"
                         >
-                          <span className="w-1.5 h-1.5 rounded-full bg-[#FFB300]" />
-                          <span className="tracking-tight uppercase text-neutral-400 font-bold">Val:</span>
-                          <span className="tracking-tight uppercase text-white font-extrabold">
-                            {priceInput ? `$${priceInput}` : "Add Value"}
+                          <svg
+                            width="19"
+                            height="30"
+                            viewBox="0 0 19 30"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="h-[30px] w-[19px] shrink-0"
+                            aria-hidden="true"
+                          >
+                            <g clipPath="url(#clip0_283_2038_capture)">
+                              <path
+                                d="M19.0738 0H14.2594C12.7704 2.47955e-05 11.3486 0.621836 10.3385 1.71582L1.41561 11.3799C-0.47187 13.4241 -0.471871 16.5759 1.41561 18.6201L10.3385 28.2842C11.3486 29.3782 12.7704 30 14.2594 30H19.0738V0ZM8.19882 17C6.83613 17 5.73104 15.8807 5.73104 14.5C5.73104 13.1193 6.83613 12 8.19882 12C9.56152 12 10.6666 13.1193 10.6666 14.5C10.6666 15.8807 9.56152 17 8.19882 17Z"
+                                fill="#232121"
+                              />
+                            </g>
+                            <defs>
+                              <clipPath id="clip0_283_2038_capture">
+                                <rect width="19" height="30" fill="white" />
+                              </clipPath>
+                            </defs>
+                          </svg>
+                          <span className="h-[30px] min-w-[66px] max-w-[122px] rounded-r-[6px] rounded-l-none bg-[#232121] -ml-px pl-0 pr-2.5 flex items-center justify-center font-alkatra text-[15px] leading-none whitespace-nowrap overflow-hidden">
+                            {priceInput ? `${priceCurrency}${priceInput}` : "+ Value"}
                           </span>
-                        </div>
+                        </button>
 
                         {generatedStickerUrl ? (
                           <img 
                             src={generatedStickerUrl} 
                             alt="Final Sticker" 
-                            className="w-[250px] h-[250px] object-contain block select-none pointer-events-none relative z-10"
+                            className="object-contain block select-none pointer-events-none relative z-10"
+                            style={{ width: `${RESULT_STICKER_VISUAL_SIZE}px`, height: `${RESULT_STICKER_VISUAL_SIZE}px` }}
                             referrerPolicy="no-referrer"
                           />
                         ) : (
-                          <span className="text-[100px] block leading-none relative z-10">{activeItem.emoji}</span>
+                          <span className="text-[128px] block leading-none relative z-10">{activeItem.emoji}</span>
                         )}
 
                         {/* Alkatra large editable title with white text stroke - contentEditable with expanded horizontal bounds to prevent any cutting off */}
-                        <div className="absolute bottom-2 left-[-60px] right-[-60px] z-20 flex justify-center">
+                        <div
+                          className="absolute bottom-[18px] z-20 flex justify-center"
+                          style={{
+                            left: "50%",
+                            width: `${RESULT_STICKER_TITLE_WIDTH}px`,
+                            marginLeft: `${-RESULT_STICKER_TITLE_WIDTH / 2}px`,
+                          }}
+                        >
                           <div
                             contentEditable
                             suppressContentEditableWarning
@@ -2863,11 +3730,11 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                             }}
                             className="w-full text-center font-alkatra font-bold focus:outline-none bg-transparent select-text caret-[#232121] outline-none border-0 overflow-visible"
                             style={{
-                              fontSize: "40px",
+                              fontSize: `${RESULT_STICKER_TITLE_FONT_SIZE}px`,
                               color: "#000000",
-                              WebkitTextStroke: "6px #ffffff",
+                              WebkitTextStroke: `${RESULT_STICKER_TITLE_STROKE}px #ffffff`,
                               paintOrder: "stroke fill",
-                              lineHeight: "1.1",
+                              lineHeight: "1.02",
                             }}
                           >
                             {customName || activeItem.name}
@@ -2902,14 +3769,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                                 currentList[currentList.length - 1] = customCategory;
                               }
                               const otherCategories = currentList.filter(cat => cat !== customCategory).slice(0, 4);
-                              const FINAL_FAN_POSITIONS = [
-                                { x: -105, y: -60 },
-                                { x: 110, y: 15 },
-                                { x: 110, y: 80 },
-                                { x: -105, y: 90 },
-                              ];
                               return otherCategories.map((cat, idx) => {
-                                const pos = FINAL_FAN_POSITIONS[idx] || { x: 0, y: 0 };
+                                const pos = FAN_POSITIONS[idx] || { x: 0, y: 0, r: 0 };
                                 return (
                                   <motion.div
                                     key={cat}
@@ -2926,7 +3787,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                                       y: pos.y,
                                       scale: 1,
                                       opacity: 1,
-                                      rotate: 0,
+                                      rotate: pos.r,
                                     }}
                                     exit={{
                                       x: 0,
@@ -2952,7 +3813,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                                         height: "30px",
                                       }}
                                     >
-                                      <span className="text-[12px] font-sans font-semibold text-black/70 tracking-tight leading-none">
+                                      <span className="text-[12px] font-sans font-semibold text-neutral-500 tracking-tight leading-none">
                                         {cat}
                                       </span>
                                     </div>
@@ -2963,76 +3824,72 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                           }
                         </AnimatePresence>
 
-                        {/* Active anchoring tag - shadow/boxShadow completely removed as requested */}
-                        <div 
-                          className="absolute left-1/2 z-35"
-                          style={{ 
-                            bottom: "-34px",
-                            transform: "translateX(-50%)"
-                          }}
-                        >
-                          <div 
-                            className="flex items-center justify-center gap-1.5 bg-white rounded-full shadow-none border-0 animate-fade-in cursor-pointer hover:scale-105 active:scale-95 transition-all select-none px-4"
-                            style={{ 
-                              height: "30px",
-                            }}
-                            onClick={() => setIsCategorySelectorOpen(!isCategorySelectorOpen)}
-                          >
-                            <span className="text-[12px] font-sans font-semibold text-black/70 tracking-tight leading-none">
-                              {customCategory || "Select Category"}
-                            </span>
-                            <ChevronsUpDown className="w-3.5 h-3.5 text-black/40" />
-                          </div>
-                        </div>
                       </div>
                     </div>
 
+                    {/* Category tag */}
+                    <div className="relative z-20 mt-[-6px] flex justify-center">
+                      <button
+                        type="button"
+                        className="h-[34px] min-w-[92px] px-5 rounded-full bg-white flex items-center justify-center gap-1.5 shadow-none active:scale-95 transition-transform"
+                        onClick={() => setIsCategorySelectorOpen(!isCategorySelectorOpen)}
+                      >
+                        <span className="text-[15px] font-sans font-medium text-neutral-500 tracking-tight leading-none">
+                          {customCategory || "Select"}
+                        </span>
+                        <ChevronsUpDown className="w-3.5 h-3.5 text-neutral-400 flex-shrink-0" />
+                      </button>
+                    </div>
+
                     {/* Time Label */}
-                    <div className="text-[11px] font-sans text-neutral-400 font-bold tracking-tight mt-1 z-10 flex-shrink-0">
-                      {toTitleCase(customDate === "Today" ? "Stored just now" : `Stored on ${customDate}`)}
+                    <div className="text-[14px] font-sans text-neutral-400 font-medium tracking-tight mt-3 z-10 flex-shrink-0 text-center">
+                      {toTitleCase(finalResultDateLabel)}
                     </div>
 
                     {/* Location Information Card */}
-                    <div className="bg-white rounded-[24px] p-3 flex items-center justify-between shadow-[0_8px_30px_rgba(0,0,0,0.04)] w-full max-w-[310px] mt-6 border border-white/60 z-10 flex-shrink-0">
+                    <div
+                      className="relative isolate z-50 bg-white rounded-[24px] px-7 py-6 flex items-center justify-between shadow-none max-w-[386px] min-h-[148px] mt-8 border-0 flex-shrink-0 mx-auto"
+                      style={{ width: "calc(100% - 44px)" }}
+                    >
                       {/* Left side: Overlapping photos */}
-                      <div className="relative w-[58px] h-[58px] flex-shrink-0">
+                      <div className="relative w-[122px] h-[104px] flex-shrink-0">
                         {/* Parent Location Image (Base) */}
-                        <div className="w-[50px] h-[50px] rounded-[10px] overflow-hidden shadow-inner bg-neutral-100 border border-neutral-100 flex items-center justify-center">
+                        <div className="w-[96px] h-[96px] rounded-[12px] overflow-hidden shadow-inner bg-neutral-100 border border-neutral-100 flex items-center justify-center">
                           {parentLocationImg ? (
                             <img src={parentLocationImg} alt="Parent Location" className="w-full h-full object-cover" />
                           ) : (
-                            <span className="text-lg">🏠</span>
+                            <span className="text-3xl">🏠</span>
                           )}
                         </div>
 
                         {/* Sub Location Image (Overlapping at bottom-right corner) */}
-                        <div className="absolute bottom-[-1px] right-[-1px] w-[28px] h-[28px] rounded-[10px] overflow-hidden border-2 border-white shadow-md bg-neutral-100 flex items-center justify-center z-10">
+                        <div className="absolute bottom-[-4px] right-[4px] w-[58px] h-[58px] rounded-[12px] overflow-hidden border-[4px] border-white shadow-md bg-neutral-100 flex items-center justify-center z-10">
                           {subLocationImg ? (
                             <img src={subLocationImg} alt="Sub Location" className="w-full h-full object-cover" />
                           ) : (
-                            <span className="text-[10px]">📦</span>
+                            <span className="text-[18px]">📦</span>
                           )}
                         </div>
                       </div>
 
                       {/* Right side: Location details inputs */}
-                      <div className="flex-1 pl-3 text-left flex flex-col justify-center">
-                        <div className="flex items-center gap-1">
-                          <span className="text-[12px] flex-shrink-0">📍</span>
+                      <div className="flex-1 pl-3 text-left flex flex-col justify-center min-w-0">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-[24px] flex-shrink-0 leading-none">📍</span>
                           <input
                             type="text"
                             value={parentLocationName}
                             onChange={(e) => setParentLocationName(e.target.value)}
-                            className="font-sans font-extrabold text-[22px] text-[#232121] focus:outline-none bg-transparent w-full caret-[#232121] border-b border-transparent focus:border-neutral-200 py-0.5 outline-none"
+                            className="font-sans font-extrabold text-[22px] text-[#232121] focus:outline-none bg-transparent w-full min-w-0 caret-[#232121] border-b border-transparent focus:border-neutral-200 py-0.5 outline-none tracking-tight"
                             placeholder="Parent Location"
                           />
                         </div>
-                        <div className="pl-[16px] mt-0.5">
+                        <div className="pl-[38px] mt-2">
                           <input
                             type="text"
                             value={subLocationName}
                             onChange={(e) => setSubLocationName(e.target.value)}
-                            className="font-sans font-bold text-[18px] text-neutral-400 focus:outline-none bg-transparent w-full caret-[#232121] border-b border-transparent focus:border-neutral-200 py-0.5 outline-none"
+                            className="font-sans font-medium text-[18px] text-[#232121] focus:outline-none bg-transparent w-full min-w-0 caret-[#232121] border-b border-transparent focus:border-neutral-200 py-0.5 outline-none tracking-tight"
                             placeholder="Sub Location"
                           />
                         </div>
@@ -3042,14 +3899,14 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                     {/* Save / Complete Checkmark circular button */}
                     <button
                       onClick={handleSaveMemory}
-                      className="w-[56px] h-[56px] rounded-full bg-[#181817] flex items-center justify-center hover:bg-black hover:scale-105 active:scale-95 transition-all shadow-[0_8px_24px_rgba(0,0,0,0.15)] cursor-pointer mt-8 flex-shrink-0 z-10"
+                      className="w-[72px] h-[72px] rounded-full bg-[#232121] flex items-center justify-center hover:bg-[#232121] hover:scale-105 active:scale-95 transition-all shadow-none cursor-pointer mt-10 flex-shrink-0 z-10 mx-auto"
                       title="Confirm Save"
                     >
-                      <Check className="w-6 h-6 text-white stroke-[2.5]" />
+                      <Check className="w-[22px] h-[22px] text-white stroke-[3]" />
                     </button>
 
                     {/* Helper text caption */}
-                    <p className="text-[12px] font-sans text-[#232121]/50 font-normal mt-5 pb-2 tracking-tight select-none pointer-events-none text-center z-10">
+                    <p className="text-[14px] font-sans text-[#232121]/45 font-normal mt-7 pb-2 tracking-tight select-none pointer-events-none text-center z-10">
                       Tap text to adjust
                     </p>
                   </div>
@@ -3058,60 +3915,64 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                 {/* Floating cutout sticker + title anchored beside the storage action sheet */}
                 {storageFlowStep !== "none" && storageFlowStep !== "final_result" && (
                   <div
-                    className="absolute left-6 z-50 select-none pointer-events-none overflow-visible"
+                    className="absolute left-3 z-50 select-none pointer-events-none overflow-visible"
                     style={{
-                      bottom: `${172 - cameraViewBottomOffset}px`,
+                      bottom: `${CAPTURE_VIEW_DRAWER_OVERLAP + 4}px`,
+                      width: "80px",
+                      height: "80px",
                     }}
                   >
-                    <motion.div 
-                      layoutId="sticker-and-title-layout"
-                      className="relative flex items-center justify-center"
+                    <div
+                      className="absolute flex items-center justify-center"
                       style={{
-                        width: "80px",
-                        height: "80px",
+                        left: `${(80 - RESULT_STICKER_VISUAL_SIZE) / 2}px`,
+                        top: `${(80 - RESULT_STICKER_VISUAL_SIZE) / 2}px`,
+                        width: `${RESULT_STICKER_VISUAL_SIZE}px`,
+                        height: `${RESULT_STICKER_VISUAL_SIZE}px`,
                         rotate: "0deg",
+                        scale: 80 / RESULT_STICKER_VISUAL_SIZE,
+                        transformOrigin: "center center",
                       }}
-                      transition={{ type: "spring", stiffness: 180, damping: 22 }}
                     >
                       {generatedStickerUrl ? (
-                        <motion.img 
-                          layoutId="sticker-image-layout"
+                        <img
                           src={generatedStickerUrl} 
                           alt="Sticker thumbnail" 
-                          className="w-full h-full object-contain block select-none pointer-events-none"
+                          className="object-contain block select-none pointer-events-none"
                           style={{
-                            filter: "none"
+                            width: `${RESULT_STICKER_VISUAL_SIZE}px`,
+                            height: `${RESULT_STICKER_VISUAL_SIZE}px`,
+                            filter: "none",
                           }}
                           referrerPolicy="no-referrer"
                         />
                       ) : (
-                        <motion.span 
-                          layoutId="sticker-image-layout"
-                          className="text-[45px] block leading-none select-none pointer-events-none"
+                        <span
+                          className="text-[128px] block leading-none select-none pointer-events-none"
                         >
                           {activeItem.emoji}
-                        </motion.span>
+                        </span>
                       )}
                       
                       {/* Alkatra overlay title exactly like the results page but styled proportionally */}
                       {(customName || activeItem.name) && (
-                        <motion.div 
-                          layoutId="sticker-title-layout"
-                          className="absolute left-0 right-0 text-center pointer-events-none select-none z-20 font-alkatra"
+                        <div
+                          className="absolute text-center pointer-events-none select-none z-20 font-alkatra overflow-visible"
                           style={{
-                            fontSize: "12.5px",
-                            fontWeight: "700",
-                            color: "#000000",
-                            WebkitTextStroke: "1.8px #ffffff",
-                            paintOrder: "stroke fill",
-                            lineHeight: "1.1",
-                            bottom: "2px",
+                            ...stickerTitleStyle,
+                            left: "50%",
+                            width: `${RESULT_STICKER_TITLE_WIDTH}px`,
+                            marginLeft: `${-RESULT_STICKER_TITLE_WIDTH / 2}px`,
                           }}
                         >
-                          {customName || activeItem.name}
-                        </motion.div>
+                          {stickerTitleLines.map((line) => (
+                            <span key={line} className="block whitespace-nowrap">
+                              {line}
+                            </span>
+                          ))}
+                        </div>
                       )}
-                    </motion.div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -3129,131 +3990,134 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                   }}
                 >
                   {/* Visual drag handle decoration */}
-                  <div className="absolute top-[12px] w-12 h-1 bg-neutral-300 rounded-full opacity-70" />
+                  <div className="absolute top-[8px] w-12 h-1 bg-neutral-300 rounded-full opacity-70" />
+
+                  {storageFlowStep === "sub_capture" && renderExistingLocationPickerBubble({
+                    kind: "sub",
+                    options: existingSubLocations,
+                    selectedKey: selectedExistingSubKey,
+                    onSelect: setSelectedExistingSubKey,
+                    onConfirm: confirmExistingSubLocation,
+                  })}
+
+                  {storageFlowStep === "sub_spot" && isUsingExistingSubLocation && selectedExistingSubLocation && renderExistingLocationPickerBubble({
+                    kind: "sub",
+                    options: [selectedExistingSubLocation],
+                    selectedKey: selectedExistingSubLocation.key,
+                    onSelect: () => undefined,
+                    onConfirm: () => undefined,
+                    displayOnly: true,
+                  })}
+
+                  {storageFlowStep === "parent_capture" && renderExistingLocationPickerBubble({
+                    kind: "parent",
+                    options: existingParentLocations,
+                    selectedKey: selectedExistingParentKey,
+                    onSelect: setSelectedExistingParentKey,
+                    onConfirm: confirmExistingParentLocation,
+                  })}
+
+                  {storageFlowStep === "parent_confirm" && isUsingExistingParentLocation && selectedExistingParentLocation && renderExistingLocationPickerBubble({
+                    kind: "parent",
+                    options: [selectedExistingParentLocation],
+                    selectedKey: selectedExistingParentLocation.key,
+                    onSelect: () => undefined,
+                    onConfirm: () => undefined,
+                    displayOnly: true,
+                  })}
+
+                  {storageFlowStep === "sub_spot" && isUsingExistingSubLocation && parentLocationName && (
+                    <div
+                      className="absolute right-5 z-40 max-w-[220px] truncate font-sans text-[22px] font-semibold leading-none text-white/88 drop-shadow-[0_2px_8px_rgba(0,0,0,0.45)] pointer-events-none"
+                      style={{ bottom: "calc(100% + 12px)" }}
+                    >
+                      📍{parentLocationName}
+                    </div>
+                  )}
                   
                   {/* Content based on storage flow step */}
-                  <div className="w-full h-full flex flex-col items-center justify-center pt-0 pb-4">
+                  <div className="w-full h-full flex flex-col items-center justify-center pt-0 pb-0">
                     {/* Step 1: Sub Location Capture */}
                     {storageFlowStep === "sub_capture" && (
-                      <div className="flex items-center justify-center gap-12 w-full">
-                        {/* Photo upload trigger */}
-                        <button
-                          onClick={() => fileInputRef.current?.click()}
-                          className="w-12 h-12 rounded-full hover:bg-black/5 active:scale-95 flex items-center justify-center text-[#3A3938] transition-all cursor-pointer"
-                          title="Upload file instead"
-                        >
+                      <StorageActionRow>
+                        <StorageRoundButton onClick={() => fileInputRef.current?.click()} title="Upload file instead" variant="ghost">
                           <ImageIcon className="w-6 h-6" />
-                        </button>
-
-                        {/* Aesthetic Shutter Button */}
-                        <button
-                          onClick={handleCapture}
-                          className="group relative w-16 h-16 rounded-full flex items-center justify-center bg-white transition-all duration-300 hover:scale-105 active:scale-95 shadow-[0_8px_24px_rgba(0,0,0,0.15)] cursor-pointer"
-                          style={{ padding: "4px" }}
-                        >
-                          <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-cyan-400 via-orange-400 to-red-400 opacity-90 scale-105 blur-[1px]" />
-                          <div className="relative w-full h-full rounded-full bg-[#F3F1EC] flex items-center justify-center border-2 border-white shadow-inner">
-                            <div className="w-6 h-6 rounded-full bg-[#181817] border border-black/10" />
-                          </div>
-                        </button>
-
-                        {/* Cancel/Close storage location flow */}
-                        <button
-                          onClick={() => setStorageFlowStep("none")}
-                          className="w-12 h-12 flex items-center justify-center text-[13px] font-sans text-neutral-500 hover:text-black font-normal transition-all active:scale-95 cursor-pointer"
-                        >
-                          Back
-                        </button>
-                      </div>
+                        </StorageRoundButton>
+                        <StorageShutterButton onClick={handleCapture} title="Capture Little Home" />
+                        <StorageRoundButton onClick={() => setStorageFlowStep("none")} title="Back" variant="ghost">
+                          <span className="text-[13px] font-sans font-medium">Back</span>
+                        </StorageRoundButton>
+                      </StorageActionRow>
                     )}
 
                     {/* Step 2: Sub Location Spot Annotation */}
                     {storageFlowStep === "sub_spot" && (
                       <div className="w-full flex flex-col items-center gap-4">
-                        {/* Buttons Area */}
-                        <div className="flex items-center justify-center gap-[44px] w-full">
-                          {/* Cancel button */}
-                          <button
+                        <StorageActionRow>
+                          <StorageRoundButton
                             onClick={() => {
                               setStorageFlowStep("none");
                               setSubLocationImg(null);
+                              setIsUsingExistingSubLocation(false);
                             }}
-                            className="w-12 h-12 rounded-full bg-white flex items-center justify-center hover:bg-neutral-100 hover:scale-105 active:scale-95 transition-all cursor-pointer"
                             title="Cancel Storage Flow"
                           >
-                            <X className="w-5 h-5 text-[#232121]/50 stroke-[1.8]" />
-                          </button>
-
-                          {/* Confirm / Continue Button */}
-                          <button
+                            <X className="w-6 h-6 stroke-[1.8]" />
+                          </StorageRoundButton>
+                          <StorageRoundButton
                             onClick={() => {
-                              // To proceed to the second camera capture, we MUST have a spot clicked, or we default to center
                               if (!subLocationHighlight) {
                                 setSubLocationHighlight({ x: 50, y: 50 });
                               }
-                              setStorageFlowStep("parent_capture");
+                              setStorageFlowStep(isUsingExistingSubLocation ? "final_result" : "parent_capture");
                             }}
-                            className="w-14 h-14 rounded-full bg-[#232121] flex items-center justify-center hover:bg-black hover:scale-105 active:scale-95 transition-all cursor-pointer"
-                            title="Continue to Parent Scene"
+                            title={isUsingExistingSubLocation ? "Continue to Final Result" : "Continue to Parent Scene"}
+                            variant="dark"
                           >
-                            <Check className="w-6 h-6 text-white stroke-[2]" />
-                          </button>
-
-                          {/* Retry Capture button */}
-                          <button
+                            <Check className="w-[22px] h-[22px] stroke-[3]" />
+                          </StorageRoundButton>
+                          <StorageRoundButton
                             onClick={() => {
                               setStorageFlowStep("sub_capture");
                               setSubLocationImg(null);
+                              setIsUsingExistingSubLocation(false);
                             }}
-                            className="w-12 h-12 rounded-full bg-white flex items-center justify-center hover:bg-neutral-100 hover:scale-105 active:scale-95 transition-all cursor-pointer"
                             title="Retry Little Home Capture"
                           >
-                            <RotateCcw className="w-4 h-4 text-[#232121]/50 stroke-[2]" />
-                          </button>
-                        </div>
+                            <RotateCcw className="w-5 h-5 stroke-[2]" />
+                          </StorageRoundButton>
+                        </StorageActionRow>
 
-                        {/* Custom sub-location title input box */}
-                        <div className="relative" style={{ width: "316px", height: "42px" }}>
-                          <input
-                            type="text"
-                            className="w-full h-full rounded-full bg-[#232121]/[0.05] border-0 px-12 text-[#232121]/50 text-[13px] font-sans placeholder-[#232121]/50 font-semibold tracking-tight text-center focus:outline-none focus:ring-2 focus:ring-[#232121]/10"
+                        {!isUsingExistingSubLocation && (
+                          <StorageDrawerInput
                             placeholder="Name of this little home? (e.g. Bedside table)"
                             value={subLocationName}
-                            onChange={(e) => setSubLocationName(e.target.value)}
+                            onChange={setSubLocationName}
                           />
-                          <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-[#232121]/40">
-                            <Pencil className="w-3.5 h-3.5" />
-                          </div>
-                        </div>
+                        )}
                       </div>
                     )}
 
                     {/* Step 3: Parent Location Capture */}
                     {storageFlowStep === "parent_capture" && (
-                      <div className="flex items-center justify-center gap-12 w-full relative">
-                        {/* Gallery Upload shortcut on the left (matches sub_capture layout) */}
-                        <button
-                          onClick={() => fileInputRef.current?.click()}
-                          className="w-12 h-12 rounded-full hover:bg-black/5 active:scale-95 flex items-center justify-center text-[#3A3938] transition-all cursor-pointer"
-                          title="Upload file instead"
-                        >
+                      <StorageActionRow>
+                        <StorageRoundButton onClick={() => fileInputRef.current?.click()} title="Upload file instead" variant="ghost">
                           <ImageIcon className="w-6 h-6" />
-                        </button>
+                        </StorageRoundButton>
 
-                        {/* Aesthetic Shutter Button Wrapper with Overlapping Polaroid on top-left */}
-                        <div className="relative w-16 h-16 flex items-center justify-center">
+                        <div className="relative w-[72px] h-[72px] flex items-center justify-center">
                           {/* Sub-location photo layered at top-left of shutter button with smooth fly-in zoom & translate animation */}
                           {subLocationImg && (
-                            <div 
-                              className="absolute -top-8 -left-3 z-50 w-12 h-12 bg-white p-0.5 rounded-sm border border-white shadow-lg cursor-pointer animate-polaroid-fly"
+                            <div
+                              className="absolute -top-8 -left-3 z-50 w-12 h-12 rotate-[-11deg] bg-white p-0.5 rounded-sm border border-white shadow-lg cursor-pointer"
                               onClick={() => {
                                 setStorageFlowStep("sub_spot");
                               }}
                               title="View/Edit Sub-location"
                             >
-                              <img 
-                                src={subLocationImg} 
-                                alt="Sub location thumbnail" 
+                              <img
+                                src={subLocationImg}
+                                alt="Sub location thumbnail"
                                 className="w-full h-full object-cover rounded-sm"
                               />
                               {/* Small pin/dot indicator decoration on the thumbnail */}
@@ -3261,81 +4125,55 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                             </div>
                           )}
 
-                          {/* Aesthetic Shutter Button */}
-                          <button
-                            onClick={handleCapture}
-                            className="group relative w-16 h-16 rounded-full flex items-center justify-center bg-white transition-all duration-300 hover:scale-105 active:scale-95 shadow-[0_8px_24px_rgba(0,0,0,0.15)] cursor-pointer"
-                            style={{ padding: "4px" }}
-                          >
-                            <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-cyan-400 via-orange-400 to-red-400 opacity-90 scale-105 blur-[1px]" />
-                            <div className="relative w-full h-full rounded-full bg-[#F3F1EC] flex items-center justify-center border-2 border-white shadow-inner">
-                              <div className="w-6 h-6 rounded-full bg-[#181817] border border-black/10" />
-                            </div>
-                          </button>
+                          <StorageShutterButton onClick={handleCapture} title="Capture Parent Scene" />
                         </div>
 
-                        {/* Back button on the right */}
-                        <button
-                          onClick={() => setStorageFlowStep("sub_spot")}
-                          className="w-12 h-12 flex items-center justify-center text-[13px] font-sans text-neutral-500 hover:text-black font-normal transition-all active:scale-95 cursor-pointer"
-                        >
-                          Back
-                        </button>
-                      </div>
+                        <StorageRoundButton onClick={() => setStorageFlowStep("sub_spot")} title="Back" variant="ghost">
+                          <span className="text-[13px] font-sans font-medium">Back</span>
+                        </StorageRoundButton>
+                      </StorageActionRow>
                     )}
 
                     {/* Step 4: Parent Location Confirmation and text entry */}
                     {storageFlowStep === "parent_confirm" && (
                       <div className="w-full flex flex-col items-center gap-4">
-                        {/* Buttons Area */}
-                        <div className="flex items-center justify-center gap-[44px] w-full">
-                          {/* Cancel button */}
-                          <button
+                        <StorageActionRow>
+                          <StorageRoundButton
                             onClick={() => {
                               setStorageFlowStep("none");
                               setParentLocationImg(null);
+                              setIsUsingExistingParentLocation(false);
                             }}
-                            className="w-12 h-12 rounded-full bg-white flex items-center justify-center hover:bg-neutral-100 hover:scale-105 active:scale-95 transition-all cursor-pointer"
                             title="Cancel Storage Flow"
                           >
-                            <X className="w-5 h-5 text-[#232121]/50 stroke-[1.8]" />
-                          </button>
-
-                          {/* Final Save Confirm Button */}
-                          <button
+                            <X className="w-6 h-6 stroke-[1.8]" />
+                          </StorageRoundButton>
+                          <StorageRoundButton
                             onClick={() => setStorageFlowStep("final_result")}
-                            className="w-14 h-14 rounded-full bg-[#232121] flex items-center justify-center hover:bg-black hover:scale-105 active:scale-95 transition-all cursor-pointer"
                             title="Save Memory & Storage Spot"
+                            variant="dark"
                           >
-                            <Check className="w-6 h-6 text-white stroke-[2]" />
-                          </button>
-
-                          {/* Retry Capture button */}
-                          <button
+                            <Check className="w-[22px] h-[22px] stroke-[3]" />
+                          </StorageRoundButton>
+                          <StorageRoundButton
                             onClick={() => {
                               setStorageFlowStep("parent_capture");
                               setParentLocationImg(null);
+                              setIsUsingExistingParentLocation(false);
                             }}
-                            className="w-12 h-12 rounded-full bg-white flex items-center justify-center hover:bg-neutral-100 hover:scale-105 active:scale-95 transition-all cursor-pointer"
                             title="Retry Scene Capture"
                           >
-                            <RotateCcw className="w-4 h-4 text-[#232121]/50 stroke-[2]" />
-                          </button>
-                        </div>
+                            <RotateCcw className="w-5 h-5 stroke-[2]" />
+                          </StorageRoundButton>
+                        </StorageActionRow>
 
-                        {/* Custom parent-location title input box */}
-                        <div className="relative" style={{ width: "316px", height: "42px" }}>
-                          <input
-                            type="text"
-                            className="w-full h-full rounded-full bg-[#232121]/[0.05] border-0 px-12 text-[#232121]/50 text-[13px] font-sans placeholder-[#232121]/50 font-semibold tracking-tight text-center focus:outline-none focus:ring-2 focus:ring-[#232121]/10"
+                        {!isUsingExistingParentLocation && (
+                          <StorageDrawerInput
                             placeholder="Where is this little home? (e.g. Master Bedroom)"
                             value={parentLocationName}
-                            onChange={(e) => setParentLocationName(e.target.value)}
+                            onChange={setParentLocationName}
                           />
-                          <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-[#232121]/40">
-                            <Pencil className="w-3.5 h-3.5" />
-                          </div>
-                        </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -3352,6 +4190,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
           id="camera-bottom-sheet"
           className="capture-drawer fixed md:absolute bottom-0 left-0 right-0 w-full bg-[#E9E6E1] rounded-t-[60px] px-6 flex flex-col items-center justify-center z-30 transition-all duration-300 shadow-[0_-12px_40px_rgba(0,0,0,0.15)] animate-slide-up select-none touch-none"
           style={{
+            height: "213px",
             transform: `translateY(${drawerY}px)`,
             transition: isDraggingDrawer ? 'none' : 'transform 250ms cubic-bezier(0.16, 1, 0.3, 1)',
           }}
@@ -3390,7 +4229,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         >
           {/* Broad Drag Handle zone and the narrow capsule drag indicator */}
           <div className="drag-handle-zone absolute top-0 inset-x-0 h-[36px] flex items-center justify-center cursor-row-resize z-50">
-            <div className="drag-handle-bar w-12 h-1 bg-neutral-300 rounded-full opacity-70" style={{ transform: "translateY(-6px)" }} />
+            <div className="drag-handle-bar w-12 h-1 bg-neutral-300 rounded-full opacity-70" style={{ transform: "translateY(-10px)" }} />
           </div>
 
           {/* Spacer to push content below the indicator zone */}
@@ -3453,196 +4292,62 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         </div>
       )}
 
-      {showFirebaseSettings && (
-        <div className="absolute inset-0 bg-[#161616]/96 backdrop-blur-xl z-50 flex flex-col justify-start overflow-y-auto px-6 py-12 text-white animate-fade-in no-scrollbar select-text">
-          <div className="w-full max-w-md mx-auto">
-            <div className="flex items-center justify-between mb-8">
-              <div>
-                <h2 className="text-xl font-sans font-semibold tracking-tight text-white">Firebase 识物配置</h2>
-                <p className="text-xs font-sans text-neutral-400 mt-1">Configure client-side Vertex AI for Firebase</p>
-              </div>
-              <button
-                onClick={() => setShowFirebaseSettings(false)}
-                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/70 hover:text-white transition-all cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+      <AnimatePresence>
+        {storageFlowStep === "final_result" && isEditingPrice && (
+          <motion.div
+            key="capture-price-keyboard"
+            className="absolute inset-x-0 bottom-0 z-[95] pointer-events-auto"
+            initial={{ y: "100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "100%" }}
+            transition={{ type: "tween", duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+            style={{ willChange: "transform" }}
+          >
+            {renderPriceKeyboard()}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-            {/* Quick Paste JSON */}
-            <div className="mb-6 bg-white/5 border border-white/10 rounded-2xl p-4">
-              <h4 className="text-xs font-sans font-medium text-neutral-300 mb-2 uppercase tracking-wider">⚡ 快速配置：粘贴配置代码</h4>
-              <p className="text-[11px] text-neutral-400 mb-3">
-                直接从 Firebase 控制台复制 <code>firebaseConfig</code> 对象，粘贴在下方，我们将自动帮您解析。
+      <AnimatePresence>
+        {showDiscardConfirm && (
+          <motion.div
+            key="discard-capture-confirm"
+            className="absolute inset-0 z-[100] flex items-center justify-center bg-black/35 px-8 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              className="w-full max-w-[320px] rounded-[28px] bg-[#F4F1EB] p-6 text-center shadow-[0_24px_60px_rgba(0,0,0,0.25)]"
+              initial={{ scale: 0.94, y: 12 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.94, y: 12 }}
+              transition={{ type: "spring", stiffness: 260, damping: 24 }}
+            >
+              <h3 className="text-[20px] font-sans font-bold text-[#232121] tracking-tight">Discard this capture?</h3>
+              <p className="mt-3 text-[13px] font-sans leading-relaxed text-[#232121]/55">
+                This will cancel the object and location results from this capture flow.
               </p>
-              <textarea
-                className="w-full h-24 bg-black/40 border border-white/10 rounded-lg p-2.5 font-mono text-xs text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-white/30"
-                placeholder={`const firebaseConfig = {\n  apiKey: "AIzaSy...",\n  authDomain: "...",\n  projectId: "..."\n};`}
-                value={rawConfigJson}
-                onChange={(e) => {
-                  setRawConfigJson(e.target.value);
-                  parseAndApplyJson(e.target.value);
-                }}
-              />
-              <div className="flex justify-between items-center mt-2">
-                <span className="text-[10px] text-neutral-500">粘贴后将自动实时解析所有字段</span>
+              <div className="mt-6 flex gap-3">
                 <button
-                  onClick={() => {
-                    const success = parseAndApplyJson(rawConfigJson);
-                    if (success) {
-                      alert("解析成功！已自动填入下方字段。");
-                    } else {
-                      alert("解析失败，请检查粘贴的内容格式是否正确。");
-                    }
-                  }}
-                  className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded text-[11px] font-sans font-medium text-neutral-200 transition-all cursor-pointer"
+                  type="button"
+                  onClick={() => setShowDiscardConfirm(false)}
+                  className="h-12 flex-1 rounded-full bg-white text-[#232121]/70 text-[14px] font-sans font-semibold active:scale-95 transition-transform"
                 >
-                  手动解析
+                  Keep Editing
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDiscardAllCaptureResults}
+                  className="h-12 flex-1 rounded-full bg-[#232121] text-white text-[14px] font-sans font-semibold active:scale-95 transition-transform"
+                >
+                  Discard
                 </button>
               </div>
-            </div>
-
-            {/* Manual Form fields */}
-            <div className="space-y-4 mb-8">
-              <h4 className="text-xs font-sans font-medium text-neutral-400 uppercase tracking-wider">📝 详细配置参数</h4>
-              
-              <div>
-                <label className="block text-[11px] font-sans text-neutral-400 mb-1">API Key *</label>
-                <input
-                  type="text"
-                  className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-3 text-sm font-mono text-neutral-100 focus:outline-none focus:border-white/30"
-                  value={fbApiKey}
-                  onChange={(e) => setFbApiKey(e.target.value)}
-                  placeholder="AIzaSy..."
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[11px] font-sans text-neutral-400 mb-1">Project ID *</label>
-                  <input
-                    type="text"
-                    className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-3 text-sm font-mono text-neutral-100 focus:outline-none focus:border-white/30"
-                    value={fbProjectId}
-                    onChange={(e) => setFbProjectId(e.target.value)}
-                    placeholder="my-firebase-project"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-sans text-neutral-400 mb-1">App ID *</label>
-                  <input
-                    type="text"
-                    className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-3 text-sm font-mono text-neutral-100 focus:outline-none focus:border-white/30"
-                    value={fbAppId}
-                    onChange={(e) => setFbAppId(e.target.value)}
-                    placeholder="1:12345:web:abcd"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-sans text-neutral-400 mb-1">Auth Domain</label>
-                <input
-                  type="text"
-                  className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-3 text-sm font-mono text-neutral-100 focus:outline-none focus:border-white/30"
-                  value={fbAuthDomain}
-                  onChange={(e) => setFbAuthDomain(e.target.value)}
-                  placeholder="project-id.firebaseapp.com"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[11px] font-sans text-neutral-400 mb-1">Storage Bucket</label>
-                  <input
-                    type="text"
-                    className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-3 text-sm font-mono text-neutral-100 focus:outline-none focus:border-white/30"
-                    value={fbStorageBucket}
-                    onChange={(e) => setFbStorageBucket(e.target.value)}
-                    placeholder="project-id.appspot.com"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-sans text-neutral-400 mb-1">Messaging Sender ID</label>
-                  <input
-                    type="text"
-                    className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-3 text-sm font-mono text-neutral-100 focus:outline-none focus:border-white/30"
-                    value={fbMessagingSenderId}
-                    onChange={(e) => setFbMessagingSenderId(e.target.value)}
-                    placeholder="1234567890"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-sans text-neutral-400 mb-1">Measurement ID (Optional)</label>
-                <input
-                  type="text"
-                  className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-3 text-sm font-mono text-neutral-100 focus:outline-none focus:border-white/30"
-                  value={fbMeasurementId}
-                  onChange={(e) => setFbMeasurementId(e.target.value)}
-                  placeholder="G-XXXXXX"
-                />
-              </div>
-            </div>
-
-            {/* Action buttons */}
-            <div className="flex gap-4">
-              <button
-                onClick={() => {
-                  clearFirebaseConfig();
-                  setFbApiKey("");
-                  setFbAuthDomain("");
-                  setFbProjectId("");
-                  setFbStorageBucket("");
-                  setFbMessagingSenderId("");
-                  setFbAppId("");
-                  setFbMeasurementId("");
-                  alert("配置已清除。");
-                }}
-                className="flex-1 h-12 rounded-xl bg-red-950/40 hover:bg-red-900/30 border border-red-500/10 text-red-400 font-sans font-medium transition-all cursor-pointer"
-              >
-                清除配置
-              </button>
-              <button
-                onClick={() => {
-                  if (!fbApiKey || !fbProjectId || !fbAppId) {
-                    alert("请填写必填字段 (API Key, Project ID, App ID)");
-                    return;
-                  }
-                  const newConfig: FirebaseConfig = {
-                    apiKey: fbApiKey,
-                    authDomain: fbAuthDomain,
-                    projectId: fbProjectId,
-                    storageBucket: fbStorageBucket,
-                    messagingSenderId: fbMessagingSenderId,
-                    appId: fbAppId,
-                    measurementId: fbMeasurementId
-                  };
-                  saveFirebaseConfig(newConfig);
-                  setShowFirebaseSettings(false);
-                  alert("Firebase 配置已成功保存！");
-                }}
-                className="flex-1 h-12 rounded-xl bg-white text-black hover:bg-neutral-100 font-sans font-semibold transition-all cursor-pointer"
-              >
-                保存并生效
-              </button>
-            </div>
-
-            {/* Config guidelines */}
-            <div className="mt-8 text-[11px] text-neutral-400 leading-relaxed space-y-2">
-              <p className="font-sans font-semibold text-neutral-300">💡 如何获取此配置？</p>
-              <ol className="list-decimal pl-4 space-y-1 font-sans">
-                <li>访问 <a href="https://console.firebase.google.com/" target="_blank" rel="noopener noreferrer" className="text-cyan-400 underline hover:text-cyan-300">Firebase 控制台</a></li>
-                <li>创建一个项目，或选择您现有的项目。</li>
-                <li>在项目设置 (⚙️) ➜ “常规 (General)” ➜ “您的应用 (Your Apps)” 中，点击创建 <b>Web 应用</b>。</li>
-                <li>注册应用后，在页面下方的 SDK 设置和配置部分中，复制 <code>firebaseConfig</code> 对象。</li>
-                <li>粘贴在上方即可！</li>
-              </ol>
-            </div>
-          </div>
-        </div>
-      )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Volumetric styling rule sheet */}
       <style>
@@ -3650,12 +4355,12 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
           @keyframes sticker-settle {
             0% {
               transform: scale(1.08) rotate(0deg);
-              filter: drop-shadow(15px 22px 10px rgba(0, 0, 0, 0.08));
+              filter: none;
               opacity: 0.9;
             }
             100% {
               transform: scale(1) rotate(0deg);
-              filter: drop-shadow(6.5px 8px 0px rgba(0, 0, 0, 0.12));
+              filter: none;
               opacity: 1;
             }
           }
@@ -3663,19 +4368,19 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
             0% { 
               transform: scale(2.5) rotate(0deg); 
               opacity: 1;
-              filter: drop-shadow(0px 0px 0px rgba(0,0,0,0));
+              filter: none;
             }
             15% {
               /* Freeze cutout at original visual screen location and layout scale */
               transform: scale(2.5) rotate(0deg);
               opacity: 1;
-              filter: drop-shadow(0px 4px 12px rgba(0, 0, 0, 0.05));
+              filter: none;
             }
             100% {
               /* Smoothly shrink and glide down to the center as an upright sticker element */
               transform: scale(1) rotate(0deg);
               opacity: 1;
-              filter: drop-shadow(6.5px 8px 0px rgba(0, 0, 0, 0.12));
+              filter: none;
             }
           }
           @keyframes slide-up {
@@ -3766,6 +4471,10 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
           .animate-yellow-glow-delayed {
             animation: yellow-glow-fade-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
             animation-delay: 500ms;
+            will-change: opacity;
+          }
+          .animate-yellow-blur-soft-in {
+            animation: yellow-glow-fade-in 1s cubic-bezier(0.16, 1, 0.3, 1) both;
             will-change: opacity;
           }
           .no-scrollbar::-webkit-scrollbar {

@@ -1,7 +1,6 @@
 /**
  * Unified Background Removal Service for Noma
- * Supporting local development (e.g., Python rembg HTTP API)
- * and commercial cloud APIs (Photoroom, Picwish, Remove.bg) with a unified adapter interface.
+ * Supporting local development and the Cloudflare Worker-backed production matting flow.
  */
 
 export type CutoutMode = "api" | "local";
@@ -18,14 +17,12 @@ export interface RemoveBgConfig {
     paramName: string;
   };
   
-  // Commercial production cloud API configuration
+  // Production cloud API configuration
   api: {
     // The cloud provider type
     provider: "removebg" | "photoroom" | "picwish" | "shiliu" | "custom";
     // The target URL endpoint
     endpoint: string;
-    // The commercial subscription API Key
-    apiKey: string;
     // Additional custom HTTP request headers reserved for future scale
     headers: Record<string, string>;
   };
@@ -33,7 +30,7 @@ export interface RemoveBgConfig {
 
 /**
  * Global Configuration for Background Removal
- * Users can easily customize endpoints and keys here for both local and API environments.
+ * Production calls are routed through the Cloudflare Worker; no browser-side key is required.
  */
 const DEFAULT_CONFIG: RemoveBgConfig = {
   mode: "api", 
@@ -46,10 +43,7 @@ const DEFAULT_CONFIG: RemoveBgConfig = {
   api: {
     provider: "picwish", // Default to the new serverless backend (labeled picwish for compatibility)
     endpoint: "https://image-fndeprfgmx.cn-hangzhou.fcapp.run", // Pre-configured new endpoint
-    apiKey: "", // No authentication required
-    headers: {
-      "X-Api-Key": "", 
-    }
+    headers: {}
   }
 };
 
@@ -71,7 +65,6 @@ export function loadRemoveBgConfig(): RemoveBgConfig {
       // Overwrite shiliu or old api.shiliuai.com endpoints to the new authentication-free Aliyun FC endpoint
       if (loadedConfig.api.provider === "shiliu" || loadedConfig.api.endpoint?.includes("api.shiliuai.com")) {
         loadedConfig.api.endpoint = "https://image-fndeprfgmx.cn-hangzhou.fcapp.run";
-        loadedConfig.api.apiKey = "";
       }
       return loadedConfig;
     }

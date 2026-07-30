@@ -16,6 +16,14 @@
   --font-alkatra: "Alkatra", cursive, sans-serif;
 }
 
+:root {
+  --noma-statusbar-height: env(safe-area-inset-top, 0px);
+}
+
+.pwa-standalone {
+  --noma-statusbar-height: max(env(safe-area-inset-top, 0px), 44px);
+}
+
 /* 核心：默认使用 100dvh 保证普通浏览器下内容不被导航栏/地址栏截断，PWA模式下则覆盖为 100vh */
 html, body, #root, .pwa-shell, .iframe-wrap, .home-container, #app-container {
   margin: 0 !important;
@@ -128,11 +136,6 @@ html, body {
     transform: translateY(0) !important;
   }
 
-  body:not(.pwa-standalone) .memory-header-nav {
-    padding-top: 0px !important;
-    height: 56px !important;
-  }
-
   body:not(.pwa-standalone) .capture-top-prompt {
     top: 12px !important;
   }
@@ -148,6 +151,23 @@ html, body {
 
 /* 桌面端抽屉适配 */
 @media (min-width: 768px) {
+  :root {
+    --noma-statusbar-height: 44px;
+  }
+
+  #noma-iphone-frame {
+    position: fixed !important;
+    left: 50% !important;
+    top: 50% !important;
+    right: auto !important;
+    bottom: auto !important;
+    width: 412px !important;
+    height: 844px !important;
+    max-width: 412px !important;
+    margin-left: -206px !important;
+    margin-top: -422px !important;
+  }
+
   .capture-drawer {
     position: absolute !important;
     bottom: 0 !important;
@@ -208,45 +228,247 @@ html, body {
 @keyframes cursor-blink { from, to { border-color: transparent } 50% { border-color: #3b82f6 } }
 @keyframes cursor-blink-black { from, to { opacity: 0; } 50% { opacity: 1; } }
 
-/* Browser mode runs inside Safari/Chrome chrome, so the virtual keyboard should not reserve
-   its own home-indicator safe area. */
+body:not(.pwa-standalone) .chat-flow-container {
+  bottom: 24px !important;
+}
+
+.pwa-standalone .chat-flow-container {
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+.chat-flow-container.chat-virtual-keyboard-active {
+  bottom: 254px !important;
+}
+
+body:not(.pwa-standalone) .chat-flow-container.chat-virtual-keyboard-active,
+.pwa-preview .chat-flow-container.chat-virtual-keyboard-active {
+  bottom: 217px !important;
+}
+
+.pwa-standalone:not(.pwa-preview) .chat-flow-container.chat-virtual-keyboard-active {
+  bottom: 254px !important;
+}
+
 body:not(.pwa-standalone) .home-keyboard-container {
   height: 205px !important;
 }
 
-body:not(.pwa-standalone) .home-keyboard-container > div {
-  padding-bottom: 8px !important;
-}
-
-body:not(.pwa-standalone) .virtual-keyboard-mock-indicator {
+body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indicator,
+.pwa-preview .home-keyboard-container .virtual-keyboard-mock-indicator,
+.pwa-standalone .home-keyboard-container .virtual-keyboard-mock-indicator {
   display: none !important;
 }
 
-body:not(.pwa-standalone) .chat-flow-container {
-  bottom: 217px !important;
-}
-
-/* PWA Standalone Mode keyboard & chat container styling for snug bottom fit */
 .pwa-standalone .home-keyboard-container {
-  height: calc(205px + env(safe-area-inset-bottom, 16px)) !important;
+  height: 242px !important;
 }
 
-.pwa-standalone .home-keyboard-container > div {
-  padding-bottom: calc(8px + env(safe-area-inset-bottom, 16px)) !important;
+.pwa-preview .home-keyboard-container {
+  height: 205px !important;
 }
 
-.pwa-standalone .virtual-keyboard-mock-indicator {
-  display: none !important;
+.noma-simple-keyboard {
+  overflow: visible;
 }
 
-.pwa-standalone .chat-flow-container {
-  bottom: calc(205px + env(safe-area-inset-bottom, 16px) + 12px) !important;
+.noma-simple-keyboard .hg-theme-default {
+  background: transparent;
+  border-radius: 0;
+  font-family: inherit;
+  overflow: visible;
+  padding: 0;
+  position: relative;
+}
+
+.noma-simple-keyboard .hg-theme-default .hg-row {
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.noma-simple-keyboard .hg-theme-default .hg-row:not(:last-child) {
+  margin-bottom: 6px;
+}
+
+.noma-simple-keyboard .hg-theme-default .hg-row .hg-button:not(:last-child) {
+  margin-right: 0;
+}
+
+.noma-simple-keyboard .hg-theme-default .hg-row:nth-child(2) {
+  padding: 0 3.5%;
+}
+
+.noma-simple-keyboard .hg-theme-default .hg-button {
+  height: 40px;
+  min-width: 0;
+  background: #fff;
+  border: 0;
+  border-radius: 5px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  color: #262626;
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1;
+  padding: 0 4px;
+  transition: transform 75ms ease, background-color 120ms ease;
+}
+
+.noma-simple-keyboard .hg-theme-default .hg-button:active,
+.noma-simple-keyboard .hg-theme-default .hg-button.hg-activeButton {
+  background: #e2ddd5;
+  transform: scale(0.95);
+}
+
+.noma-simple-keyboard .hg-theme-default .hg-button.noma-simple-keyboard-action {
+  max-width: none;
+  background: #d3cfc9;
+  color: #262626;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.noma-simple-keyboard .hg-theme-default .hg-button.noma-simple-keyboard-space {
+  flex: 1 1 auto;
+  color: #525252;
+  font-size: 15px;
+}
+
+.noma-simple-keyboard .hg-theme-default .hg-button.noma-simple-keyboard-send {
+  flex: 0 0 18%;
+  background: #2d2a26;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.noma-simple-keyboard .hg-theme-default .hg-button[data-skbtn="{shift}"],
+.noma-simple-keyboard .hg-theme-default .hg-button[data-skbtn="{bksp}"] {
+  flex: 0 0 11.5%;
+}
+
+.noma-simple-keyboard .hg-theme-default .hg-button[data-skbtn="{numbers}"],
+.noma-simple-keyboard .hg-theme-default .hg-button[data-skbtn="{lang}"],
+.noma-simple-keyboard .hg-theme-default .hg-button[data-skbtn="{hide}"] {
+  flex: 0 0 12%;
+}
+
+.capture-price-simple-keyboard {
+  background: transparent !important;
+  border-top: 0 !important;
+  padding: 0 !important;
+}
+
+.capture-price-keyboard-panel {
+  contain: layout paint;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+.noma-simple-keyboard-numeric .hg-theme-default .hg-row {
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.noma-simple-keyboard-numeric .hg-theme-default .hg-row:nth-child(2) {
+  padding: 0;
+}
+
+.noma-simple-keyboard-numeric .hg-theme-default .hg-row .hg-button,
+.noma-simple-keyboard-numeric .hg-theme-default .hg-button[data-skbtn="{bksp}"] {
+  flex: 1 1 0;
+  height: 48px;
+  border-radius: 8px;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.noma-simple-keyboard .hg-candidate-box {
+  left: 6px;
+  right: 6px;
+  top: 0;
+  z-index: 5;
+  width: auto;
+  height: 36px;
+  margin-top: 0;
+  transform: translateY(calc(-100% - 6px));
+  background: rgba(233, 230, 225, 0.96);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+}
+
+.noma-simple-keyboard .hg-candidate-box-list-item {
+  width: auto;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 8px;
+  color: #262626;
+  font-size: 16px;
+}
+
+.noma-simple-keyboard .hg-candidate-box-prev,
+.noma-simple-keyboard .hg-candidate-box-next {
+  padding: 0 9px;
+  color: #8a847b;
+  font-size: 12px;
+}
+
+.noma-simple-keyboard .hg-candidate-box-btn-active {
+  color: #2d2a26;
+}
+
+.noma-keyboard-candidate-bar {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: calc(100% + 6px);
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 36px;
+  padding: 0 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 12px;
+  background: rgba(233, 230, 225, 0.96);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  touch-action: pan-x;
+}
+
+.noma-keyboard-candidate-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.noma-keyboard-candidate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #262626;
+  font-size: 16px;
+  line-height: 1;
+  white-space: nowrap;
+  transition: background-color 120ms ease, transform 75ms ease;
+}
+
+.noma-keyboard-candidate:active {
+  background: rgba(0, 0, 0, 0.06);
+  transform: scale(0.96);
 }
 
 /* Fixed and dynamic Chat Back Button */
 .chat-back-button {
   position: fixed !important;
-  top: max(env(safe-area-inset-top), 24px) !important;
+  top: var(--noma-statusbar-height) !important;
   z-index: 9999 !important;
   left: 20px !important;
 }
@@ -254,13 +476,14 @@ body:not(.pwa-standalone) .chat-flow-container {
 @media (min-width: 768px) {
   .chat-back-button {
     left: calc(50% - 186px) !important;
+    top: calc(50% - 422px + 44px) !important;
   }
 }
 
 /* Detached Home Header with perfect adaptive layout alignment */
 .home-header-fixed {
   position: fixed !important;
-  top: max(env(safe-area-inset-top), 24px) !important;
+  top: var(--noma-statusbar-height) !important;
   z-index: 9999 !important;
   left: 20px !important;
   right: 20px !important;
@@ -271,6 +494,7 @@ body:not(.pwa-standalone) .chat-flow-container {
   .home-header-fixed {
     left: calc(50% - 186px) !important;
     right: calc(50% - 186px) !important;
+    top: calc(50% - 422px + 44px) !important;
   }
 }
 
@@ -306,6 +530,12 @@ body:not(.pwa-standalone) .chat-flow-container {
 }
 
 @media (min-width: 768px) {
+  .keyboard-bg-sync-parent {
+    overflow: hidden !important;
+    border-radius: 36px !important;
+    contain: paint !important;
+  }
+
   #app-bg {
     left: 50% !important;
     right: auto !important;
@@ -320,10 +550,6 @@ body:not(.pwa-standalone) .chat-flow-container {
   }
 }
 
-.home-keyboard-container {
-  will-change: transform, opacity !important;
-}
-
 .noma-frame-overflow-visible {
   overflow: visible !important;
 }
@@ -334,12 +560,26 @@ body:not(.pwa-standalone) .chat-flow-container {
   position: fixed !important;
   inset: 0 !important;
   z-index: 9999 !important;
-  width: 100% !important;
+  left: 0 !important;
+  right: 0 !important;
+  width: auto !important;
+  max-width: none !important;
   height: var(--app-height, 100vh) !important; /* 优化高度计算，用 JS 动态 innerHeight 变量替换 100dvh，防止与 pwa-standalone 冲突 */
   display: flex !important;
   flex-direction: column !important;
   justify-content: flex-end !important; /* 让内容在底部对齐 */
   padding-bottom: 0 !important;
   margin-bottom: 0 !important;
-  background: black !important; /* 确保背景色填补 */
+  box-sizing: border-box !important;
+  overflow-x: hidden !important;
+  background: #161616 !important; /* 确保背景色填补 */
+}
+
+.camera-page-container > .absolute.inset-0,
+.camera-page-container #camera-view,
+.camera-page-container #camera-bottom-sheet {
+  left: 0 !important;
+  right: 0 !important;
+  width: auto !important;
+  max-width: none !important;
 }

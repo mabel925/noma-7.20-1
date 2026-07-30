@@ -18,6 +18,26 @@ interface ChatMessage {
 
 import { MemoryList, MemoryItem } from "./components/MemoryList";
 
+const INLINE_ASSET_PERSIST_LIMIT = 240_000;
+
+const trimLargeInlineAssetForStorage = (value?: string) => {
+  if (!value || !value.startsWith("data:") || value.length <= INLINE_ASSET_PERSIST_LIMIT) {
+    return value;
+  }
+  return undefined;
+};
+
+const createPersistableMemories = (memories: MemoryItem[], trimInlineAssets = false): MemoryItem[] =>
+  memories.slice(0, 80).map((memory) => {
+    if (!trimInlineAssets) return memory;
+    return {
+      ...memory,
+      stickerUrl: trimLargeInlineAssetForStorage(memory.stickerUrl),
+      parentLocationImg: memory.parentLocationImg,
+      subLocationImg: memory.subLocationImg,
+    };
+  });
+
 const DEFAULT_MEMORIES: MemoryItem[] = [
   {
     id: "seed-laptop",
@@ -95,6 +115,7 @@ const DEFAULT_MEMORIES: MemoryItem[] = [
     parentLocationName: "Main Bedroom",
     subLocationName: "Safe Box",
     parentLocationImg: "https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=500&auto=format&fit=crop&q=80",
+    subLocationImg: "https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=500&auto=format&fit=crop&q=80",
   },
   {
     id: "seed-item-4",
@@ -107,6 +128,7 @@ const DEFAULT_MEMORIES: MemoryItem[] = [
     parentLocationName: "Main Bedroom",
     subLocationName: "Cabinet",
     parentLocationImg: "https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=500&auto=format&fit=crop&q=80",
+    subLocationImg: "https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=500&auto=format&fit=crop&q=80",
   },
   {
     id: "seed-item-5",
@@ -119,6 +141,7 @@ const DEFAULT_MEMORIES: MemoryItem[] = [
     parentLocationName: "Main Bedroom",
     subLocationName: "Storage Box",
     parentLocationImg: "https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=500&auto=format&fit=crop&q=80",
+    subLocationImg: "https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=500&auto=format&fit=crop&q=80",
   },
   {
     id: "seed-item-6",
@@ -130,6 +153,7 @@ const DEFAULT_MEMORIES: MemoryItem[] = [
     parentLocationName: "Main Bedroom",
     subLocationName: "Side Table",
     parentLocationImg: "https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=500&auto=format&fit=crop&q=80",
+    subLocationImg: "https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=500&auto=format&fit=crop&q=80",
   },
   {
     id: "seed-item-7",
@@ -141,6 +165,7 @@ const DEFAULT_MEMORIES: MemoryItem[] = [
     parentLocationName: "Main Bedroom",
     subLocationName: "Closet",
     parentLocationImg: "https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=500&auto=format&fit=crop&q=80",
+    subLocationImg: "https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=500&auto=format&fit=crop&q=80",
   },
   {
     id: "seed-item-8",
@@ -152,6 +177,7 @@ const DEFAULT_MEMORIES: MemoryItem[] = [
     parentLocationName: "Main Bedroom",
     subLocationName: "Drawer",
     parentLocationImg: "https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=500&auto=format&fit=crop&q=80",
+    subLocationImg: "https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=500&auto=format&fit=crop&q=80",
   },
   {
     id: "seed-item-9",
@@ -163,6 +189,7 @@ const DEFAULT_MEMORIES: MemoryItem[] = [
     parentLocationName: "Main Bedroom",
     subLocationName: "Under bed",
     parentLocationImg: "https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=500&auto=format&fit=crop&q=80",
+    subLocationImg: "https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=500&auto=format&fit=crop&q=80",
   }
 ];
 
@@ -171,15 +198,16 @@ export default function App() {
   const [inputValue, setInputValue] = useState<string>("");
   const [isScanning, setIsScanning] = useState<boolean>(false);
   const [isCaptureOpen, setIsCaptureOpen] = useState<boolean>(false);
+  const [isMemoryOpen, setIsMemoryOpen] = useState<boolean>(false);
   const [isStandaloneMode, setIsStandaloneMode] = useState<boolean>(false);
 
   const controls = useAnimation();
-
+  const isCustomKeyboardVisible = isChatActive && !isMemoryOpen && !isCaptureOpen;
   const keyboardOffset = isStandaloneMode ? 242 : 205;
 
   useEffect(() => {
-    controls.start(isChatActive ? "visible" : "hidden");
-  }, [isChatActive, controls, keyboardOffset]);
+    controls.start(isCustomKeyboardVisible ? "visible" : "hidden");
+  }, [isCustomKeyboardVisible, controls, keyboardOffset]);
 
   const bgVariants = {
     visible: {
@@ -209,7 +237,6 @@ export default function App() {
 
   // Call the global aggressive keyboard reset logic
   useKeyboardReset(isChatActive, isCaptureOpen);
-  const [isMemoryOpen, setIsMemoryOpen] = useState<boolean>(false);
   const [customMemories, setCustomMemories] = useState<MemoryItem[]>(() => {
     try {
       const saved = localStorage.getItem("noma_custom_memories");
@@ -227,7 +254,16 @@ export default function App() {
 
   // Sync customMemories to localStorage whenever it changes
   useEffect(() => {
-    localStorage.setItem("noma_custom_memories", JSON.stringify(customMemories));
+    try {
+      localStorage.setItem("noma_custom_memories", JSON.stringify(createPersistableMemories(customMemories)));
+    } catch (err) {
+      console.warn("[App] Failed to persist full memories; retrying with compact image payloads.", err);
+      try {
+        localStorage.setItem("noma_custom_memories", JSON.stringify(createPersistableMemories(customMemories, true)));
+      } catch (compactErr) {
+        console.error("[App] Failed to persist compact memories. Keeping current session state only.", compactErr);
+      }
+    }
   }, [customMemories]);
   const [toast, setToast] = useState<string | null>(null);
   const [currentInfoObj, setCurrentInfoObj] = useState<string | null>(null);
@@ -275,12 +311,22 @@ export default function App() {
         document.documentElement.classList.remove("pwa-standalone");
         document.body.classList.remove("pwa-standalone");
       }
+
+      if (forceStandalonePreview && !isActualStandalone) {
+        document.documentElement.classList.add("pwa-preview");
+        document.body.classList.add("pwa-preview");
+      } else {
+        document.documentElement.classList.remove("pwa-preview");
+        document.body.classList.remove("pwa-preview");
+      }
     };
     checkStandalone();
     window.addEventListener("popstate", checkStandalone);
 
     return () => {
       window.removeEventListener("popstate", checkStandalone);
+      document.documentElement.classList.remove("pwa-preview");
+      document.body.classList.remove("pwa-preview");
     };
   }, []);
 
@@ -482,7 +528,14 @@ export default function App() {
     }, 700);
   };
 
-  // Keyboard action event routing
+  const handleSend = () => {
+    if (!inputValue.trim()) return;
+    const currentInput = inputValue;
+    setMessages((prev) => [...prev, { sender: "user", text: currentInput }]);
+    setInputValue("");
+    handleNomaSearch(currentInput);
+  };
+
   const handleKeyPress = (char: string) => {
     setInputValue((prev) => prev + char);
   };
@@ -493,14 +546,6 @@ export default function App() {
 
   const handleSpace = () => {
     setInputValue((prev) => prev + " ");
-  };
-
-  const handleSend = () => {
-    if (!inputValue.trim()) return;
-    const currentInput = inputValue;
-    setMessages((prev) => [...prev, { sender: "user", text: currentInput }]);
-    setInputValue("");
-    handleNomaSearch(currentInput);
   };
 
   // Quick preset keyword taps
@@ -560,25 +605,24 @@ export default function App() {
       className="home-container w-full h-[100vh] flex items-center justify-center p-0 md:py-6 md:px-4 no-scrollbar relative overflow-hidden select-none"
     >
       {/* 共享动画和布局父容器，不指定 z-index 避免形成层叠上下文，使内部子元素保持原生的层叠深度 */}
-      <div className="keyboard-bg-sync-parent absolute inset-0 pointer-events-none md:fixed md:left-1/2 md:top-1/2 md:w-[412px] md:h-[844px] md:-ml-[206px] md:-mt-[422px]">
+      <div className="keyboard-bg-sync-parent absolute inset-0 pointer-events-none md:fixed md:left-1/2 md:top-1/2 md:w-[412px] md:h-[844px] md:-ml-[206px] md:-mt-[422px] md:overflow-hidden md:rounded-[36px]">
         <motion.div
           id="app-bg"
-          initial={isChatActive ? "visible" : "hidden"}
+          initial={isCustomKeyboardVisible ? "visible" : "hidden"}
           animate={controls}
           variants={bgVariants}
           transition={syncTransition}
           style={{ originY: 1 }}
         >
           <VirtualStage
-            isChatActive={isChatActive}
+            isChatActive={isChatActive && !isMemoryOpen && !isCaptureOpen}
             bgRoomUrl="https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/bg-newroom.jpg"
             bgChatUrl="https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/bg-newroom.jpg"
           />
         </motion.div>
 
-        {/* 6. SIMULATED IOS GLASS KEYBOARD (Wrapped inside same parent for perfect physical alignment) */}
         <motion.div
-          initial={isChatActive ? "visible" : "hidden"}
+          initial={isCustomKeyboardVisible ? "visible" : "hidden"}
           animate={controls}
           variants={keyboardVariants}
           transition={syncTransition}
@@ -586,10 +630,13 @@ export default function App() {
           style={{ willChange: "transform" }}
         >
           <VirtualKeyboard
+            value={inputValue}
+            onChange={setInputValue}
             onKeyPress={handleKeyPress}
             onBackspace={handleBackspace}
             onSpace={handleSpace}
             onSend={handleSend}
+            onDismiss={() => setIsChatActive(false)}
             className="h-full"
           />
         </motion.div>
@@ -616,12 +663,14 @@ export default function App() {
         />
 
         {/* Noma Header Logo & Memory Polyhedron */}
-        <Header
-          isChatActive={isChatActive || isCaptureOpen}
-          onMemoryCoreClick={() => {
-            setIsMemoryOpen(true);
-          }}
-        />
+        {!isMemoryOpen && (
+          <Header
+            isChatActive={isChatActive || isCaptureOpen}
+            onMemoryCoreClick={() => {
+              setIsMemoryOpen(true);
+            }}
+          />
+        )}
 
         {/* Memory List Overlay */}
         <AnimatePresence>
@@ -630,13 +679,14 @@ export default function App() {
               isOpen={isMemoryOpen}
               onClose={() => setIsMemoryOpen(false)}
               memories={customMemories}
+              onMemoriesChange={setCustomMemories}
             />
           )}
         </AnimatePresence>
 
         {/* Toast Notification */}
         <AnimatePresence>
-          {toast && (
+          {toast && !isMemoryOpen && (
             <motion.div
               initial={{ opacity: 0, y: 20, scale: 0.9 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -770,30 +820,36 @@ export default function App() {
 
         {/* 5. CHAT CONVERSATION DIALOG FLOW PANEL */}
         {/* Fades active when isChatActive is true */}
-        <ChatFlow
-          inputValue={inputValue}
-          messages={messages}
-          onInputChange={(val) => setInputValue(val)}
-          onClearInput={() => setInputValue("")}
-          onTriggerCamera={() => setIsCaptureOpen(true)}
-          isChatActive={isChatActive}
-          isCaptureOpen={isCaptureOpen}
-          onPresetSearch={handlePresetSearch}
-        />
+        {!isMemoryOpen && (
+          <ChatFlow
+            inputValue={inputValue}
+            messages={messages}
+            onInputChange={(val) => setInputValue(val)}
+            onClearInput={() => setInputValue("")}
+            onTriggerCamera={() => setIsCaptureOpen(true)}
+            onMemoryCoreClick={() => setIsMemoryOpen(true)}
+            isChatActive={isChatActive}
+            isCaptureOpen={isCaptureOpen}
+            onPresetSearch={handlePresetSearch}
+          />
+        )}
 
 
 
         {/* 7. HIGH-FIDELITY ADD ITEM CAPTURE VIEW & STICKER PIXELATE SCANNER */}
-        <CaptureScanner
-          isOpen={isCaptureOpen}
-          onClose={() => setIsCaptureOpen(false)}
-          onItemAdded={handleItemAdded}
-        />
+        {!isMemoryOpen && (
+          <CaptureScanner
+            isOpen={isCaptureOpen}
+            onClose={() => setIsCaptureOpen(false)}
+            existingMemories={customMemories}
+            onItemAdded={handleItemAdded}
+          />
+        )}
 
 
 
         {/* Quick Back / Toggle-back Home controller inside Chat view (Small floating pill at top edge) */}
-        {isChatActive && createPortal(
+        {isChatActive && !isMemoryOpen && createPortal(
           <button
             onClick={() => setIsChatActive(false)}
             className="chat-back-button bg-black/40 hover:bg-black/60 text-white/90 text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1 backdrop-blur-md border border-white/10 cursor-pointer"
@@ -803,7 +859,7 @@ export default function App() {
           document.body
         )}
 
-        {createPortal(
+        {!isMemoryOpen && createPortal(
           <ActionButtons
             onChatToggle={() => setIsChatActive((prev) => !prev)}
             onCaptureClick={() => setIsCaptureOpen(true)}

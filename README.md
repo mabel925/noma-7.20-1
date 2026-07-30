@@ -14,7 +14,8 @@ View your app in AI Studio: https://ai.studio/apps/b90c1ef1-6bd1-41a6-aaea-1875c
 
 
 1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+   `pnpm install`
+2. Run the app:
+   `pnpm run dev`
+
+AI requests are routed through the Cloudflare Worker backend. No browser-side Gemini API key is required.
