@@ -290,6 +290,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
   // Video feed references
   const videoRef = useRef<HTMLVideoElement>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
   const [cameraActive, setCameraActive] = useState<boolean>(false);
   const [cameraError, setCameraError] = useState<boolean>(false);
   const [cameraErrorMessage, setCameraErrorMessage] = useState<string>("");
@@ -1233,34 +1234,45 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
             : "Camera requires HTTPS on mobile browsers. Open the app from an HTTPS URL, or add the HTTPS PWA to your home screen."
         );
       } else {
-        const attachStream = (stream: MediaStream) => {
-          if (cancelled || !videoRef.current) {
+        const attachStream = async (stream: MediaStream) => {
+          const video = videoRef.current;
+          if (cancelled || !video) {
             stream.getTracks().forEach((track) => track.stop());
             return;
           }
 
-          videoRef.current.srcObject = stream;
-          videoRef.current
-            .play()
-            .then(() => {
-              if (cancelled) {
-                stream.getTracks().forEach((track) => track.stop());
-                return;
-              }
-              if (requestTimeout !== null) window.clearTimeout(requestTimeout);
-              setCameraActive(true);
-              setCameraPermissionPending(false);
-            })
-            .catch((err) => {
-              console.warn("Camera stream could not play:", err);
+          cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+          cameraStreamRef.current = stream;
+          video.srcObject = stream;
+          video.muted = true;
+          video.setAttribute("playsinline", "true");
+          video.setAttribute("webkit-playsinline", "true");
+
+          try {
+            if (video.readyState < HTMLMediaElement.HAVE_METADATA) {
+              await new Promise<void>((resolve) => {
+                video.addEventListener("loadedmetadata", () => resolve(), { once: true });
+              });
+            }
+            await video.play();
+            if (cancelled) {
               stream.getTracks().forEach((track) => track.stop());
-              if (!cancelled) {
-                setCameraActive(false);
-                setCameraPermissionPending(false);
-                setCameraError(true);
-                setCameraErrorMessage("Could not start the camera. Check browser permissions or upload a photo.");
-              }
-            });
+              return;
+            }
+            if (requestTimeout !== null) window.clearTimeout(requestTimeout);
+            setCameraActive(true);
+            setCameraPermissionPending(false);
+          } catch (err) {
+            console.warn("Camera stream could not play:", err);
+            stream.getTracks().forEach((track) => track.stop());
+            cameraStreamRef.current = null;
+            if (!cancelled) {
+              setCameraActive(false);
+              setCameraPermissionPending(false);
+              setCameraError(true);
+              setCameraErrorMessage("Could not start the camera. Check browser permissions or upload a photo.");
+            }
+          }
         };
 
         const requestCamera = async () => {
@@ -1272,14 +1284,14 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                 height: { ideal: 480 },
               },
             });
-            attachStream(stream);
+            await attachStream(stream);
           } catch (err) {
             if (cancelled) return;
 
             // Some mobile browsers reject camera constraints even when permission is available.
             if ((err as DOMException)?.name === "OverconstrainedError") {
               try {
-                attachStream(await navigator.mediaDevices.getUserMedia({ video: true }));
+                await attachStream(await navigator.mediaDevices.getUserMedia({ video: true }));
                 return;
               } catch (fallbackError) {
                 err = fallbackError;
@@ -1320,11 +1332,12 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   }, [isOpen, scanStep, uploadedImageUrl, storageFlowStep, subLocationImg, parentLocationImg]);
 
   const stopCamera = () => {
-    if (videoRef.current && videoRef.current.srcObject) {
-      const stream = videoRef.current.srcObject as MediaStream;
+    const stream = cameraStreamRef.current || (videoRef.current?.srcObject as MediaStream | null);
+    if (stream) {
       stream.getTracks().forEach((track) => track.stop());
-      videoRef.current.srcObject = null;
     }
+    cameraStreamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
     setCameraActive(false);
   };
 
@@ -2805,31 +2818,31 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       : [
           selected,
           ...options.filter((option) => option.key !== selected.key),
-        ].slice(0, 4);
+        ];
     const isExpanded = !displayOnly && expandedExistingLocationPicker === kind;
 
     return (
       <div
-        className="absolute left-1/2 top-[-28px] z-[80] h-[240px] w-[330px] pointer-events-none"
+        className="absolute left-1/2 top-[-8px] z-[80] h-[240px] w-[330px] pointer-events-none"
         style={{ transform: `translateX(${Math.round(frontLocationBubbleWidth / 2 - 330)}px)` }}
       >
         {stackedOptions.map((option, index) => {
           const isFront = index === 0;
-          const collapsedX = [0, 8, 16, 24][index] || 0;
-          const collapsedY = [0, -5, -10, -15][index] || 0;
-          const collapsedRotate = [0, 3, 6, 9][index] || 0;
-          const expandedX = [0, 16, 32, 48][index] || 0;
-          const expandedY = [0, -34, -68, -102][index] || 0;
-          const expandedRotate = [0, 10, 19, 28][index] || 0;
+          const collapsedX = isFront ? 0 : 0;
+          const collapsedY = isFront ? 0 : 0;
+          const collapsedRotate = isFront ? 0 : 0;
+          const expandedX = [0, 16, 32, 48][index] || index * 16;
+          const expandedY = [0, -34, -68, -102][index] || index * -34;
+          const expandedRotate = [0, 10, 19, 28][index] || index * 9;
           const handleBubbleClick = () => {
             if (displayOnly) return;
-	            if (isFront) {
-	              setExpandedExistingLocationPicker(isExpanded ? null : kind);
-	            } else {
-	              onSelect(option.key);
-	              setExpandedExistingLocationPicker(null);
-	            }
-	          };
+            if (isFront) {
+              setExpandedExistingLocationPicker(isExpanded ? null : kind);
+            } else {
+              onSelect(option.key);
+              setExpandedExistingLocationPicker(null);
+            }
+          };
 
           return (
             <motion.div
@@ -2838,15 +2851,16 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
               style={{
                 zIndex: 30 - index,
                 transformOrigin: "calc(100% - 42px) 50%",
-                pointerEvents: displayOnly || isExpanded || index < 1 ? "auto" : "none",
+                pointerEvents: displayOnly || isExpanded || isFront ? "auto" : "none",
               }}
               initial={false}
               animate={{
                 x: isExpanded ? expandedX : collapsedX,
                 y: isExpanded ? expandedY : collapsedY,
                 rotate: isExpanded ? expandedRotate : collapsedRotate,
-                scale: isExpanded ? 1 : 1 - index * 0.025,
-                opacity: displayOnly || isExpanded || index < 1 ? 1 : 0,
+                scale: isExpanded ? 1 : isFront ? 1 : 0.01,
+                // Keep every filtered card painted from the first frame; expansion only moves it.
+                opacity: 1,
               }}
               transition={{
                 type: "spring",
@@ -3023,17 +3037,17 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                   alt="uploaded preview"
                   className="absolute w-full h-full object-cover"
                 />
-              ) : cameraActive ? (
-                <video
-                  ref={videoRef}
-                  className="absolute w-full h-full object-cover"
-                  autoPlay
-                  playsInline
-                  muted
-                />
               ) : (
-                // Beautiful high-craft minimalist deep background with no distracting overlay symbols
-                <div className="absolute inset-0 bg-[#161616]" />
+                <>
+                  <video
+                    ref={videoRef}
+                    className={`absolute w-full h-full object-cover transition-opacity duration-150 ${cameraActive ? "opacity-100" : "opacity-0"}`}
+                    autoPlay
+                    playsInline
+                    muted
+                  />
+                  {!cameraActive && <div className="absolute inset-0 bg-[#161616]" />}
+                </>
               )}
 
               {cameraPermissionUnavailable && cameraErrorMessage && (
@@ -3501,17 +3515,14 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                 {/* 1. Sub Location Capture (Live Viewport) */}
                 {storageFlowStep === "sub_capture" && (
                   <>
-                    {cameraActive ? (
-                      <video
-                        ref={videoRef}
-                        className="absolute w-full h-full object-cover"
-                        autoPlay
-                        playsInline
-                        muted
-                      />
-                    ) : (
-                      <div className="absolute inset-0 bg-[#161616]" />
-                    )}
+                    <video
+                      ref={videoRef}
+                      className={`absolute w-full h-full object-cover transition-opacity duration-150 ${cameraActive ? "opacity-100" : "opacity-0"}`}
+                      autoPlay
+                      playsInline
+                      muted
+                    />
+                    {!cameraActive && <div className="absolute inset-0 bg-[#161616]" />}
 
                     {/* Viewport Center Focusing Reticle */}
                     <div
@@ -3573,17 +3584,14 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                 {/* 3. Parent Location Capture */}
                 {storageFlowStep === "parent_capture" && (
                   <>
-                    {cameraActive ? (
-                      <video
-                        ref={videoRef}
-                        className="absolute w-full h-full object-cover"
-                        autoPlay
-                        playsInline
-                        muted
-                      />
-                    ) : (
-                      <div className="absolute inset-0 bg-[#161616]" />
-                    )}
+                    <video
+                      ref={videoRef}
+                      className={`absolute w-full h-full object-cover transition-opacity duration-150 ${cameraActive ? "opacity-100" : "opacity-0"}`}
+                      autoPlay
+                      playsInline
+                      muted
+                    />
+                    {!cameraActive && <div className="absolute inset-0 bg-[#161616]" />}
 
                     {/* Viewport Center Focusing Reticle */}
                     <div

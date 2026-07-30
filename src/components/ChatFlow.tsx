@@ -212,23 +212,24 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
         {/* 1. Quick Suggestion Pills wrapped in fixed-height container to prevent layout shifts */}
         <div className="h-[40px] relative w-full flex items-center shrink-0">
           <AnimatePresence>
-            {isChatActive && !inputValue && (
+            {isChatActive && (
               <motion.div
                 initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
+                animate={{ opacity: inputValue ? 0 : 1 }}
                 exit={{ opacity: 0 }}
                 transition={{
                   type: "tween",
                   duration: 0.3,
                   ease: "easeOut",
                 }}
-                className="absolute inset-0 flex gap-2 overflow-x-auto overflow-y-hidden no-scrollbar py-1 w-full justify-start items-center pl-[20px] pr-6"
+                className="chat-recommendation-layer absolute inset-0 flex gap-2 overflow-x-auto overflow-y-hidden no-scrollbar py-1 w-full justify-start items-center pl-[20px] pr-6"
+                style={{ pointerEvents: inputValue ? "none" : "auto" }}
               >
                 {["keys 🔑", "coffee ☕", "candle 🕯️", "book 📖"].map((tag) => (
                   <button
                     key={tag}
                     onClick={() => onPresetSearch(tag.split(" ")[0])}
-                    className="bg-white/10 hover:bg-white/20 active:bg-white/30 backdrop-blur-md border border-white/20 text-white font-sans text-[13px] px-3.5 py-1.5 rounded-full shadow-sm transition-all focus:outline-none cursor-pointer whitespace-nowrap"
+                    className="chat-recommendation-chip bg-white/10 hover:bg-white/20 active:bg-white/30 border border-white/20 text-white font-sans text-[13px] px-3.5 py-1.5 rounded-full shadow-sm transition-all focus:outline-none cursor-pointer whitespace-nowrap"
                   >
                     {tag}
                   </button>

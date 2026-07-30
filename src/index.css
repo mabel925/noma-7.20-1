@@ -554,6 +554,17 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
   overflow: visible !important;
 }
 
+/* Keep the recommendation pills composited without isolating their backdrop. */
+.chat-recommendation-layer {
+  will-change: opacity;
+}
+
+.chat-recommendation-chip {
+  background-color: rgba(255, 255, 255, 0.14);
+  -webkit-backdrop-filter: blur(8px) saturate(115%);
+  backdrop-filter: blur(8px) saturate(115%);
+}
+
 /* Physical bottom-sticking overlay defense for shooting/capture page */
 .camera-page-container,
 .camera-wrapper {
