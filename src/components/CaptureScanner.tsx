@@ -230,7 +230,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
   const resultInputBottomGap = isStandaloneDisplay
     ? RESULT_INPUT_BOTTOM_GAP
-    : Math.max(0, RESULT_INPUT_BOTTOM_GAP - browserChromeInset - 40);
+    : Math.max(0, RESULT_INPUT_BOTTOM_GAP - browserChromeInset - 70);
 
   // Apply our custom layout guard to guarantee layout/scroll scrubbing and dynamic app height calculation
   useLayoutGuard(isOpen);
@@ -1495,17 +1495,6 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       cancelled = true;
     };
   }, [isOpen]);
-
-  useEffect(() => {
-    const shouldShowYellowBlur =
-      storageFlowStep === "final_result" ||
-      (storageFlowStep === "none" && (scanStep === "sticker" || scanStep === "done"));
-    if (!shouldShowYellowBlur) return;
-
-    setIsYellowBlurReady(false);
-    const timer = window.setTimeout(() => setIsYellowBlurReady(true), 80);
-    return () => window.clearTimeout(timer);
-  }, [scanStep, storageFlowStep]);
 
   // Synchronize pre-fetched AI title and category to active displaying states immediately
   useEffect(() => {
@@ -3674,6 +3663,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                     className="absolute inset-0 isolate w-full h-full overflow-y-auto px-0 pt-[72px] pb-8"
                     style={{
                       maxHeight: "100%",
+                      transform: isStandaloneDisplay ? undefined : "translateY(-40px)",
                       WebkitOverflowScrolling: "touch"
                     }}
                   >
@@ -3707,7 +3697,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                           alt=""
                           aria-hidden="true"
                           onLoad={() => setIsYellowBlurReady(true)}
-                          className="absolute left-1/2 top-1/2 h-auto max-w-none -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none z-0 transition-opacity duration-700 ease-out"
+                          className="absolute left-1/2 top-1/2 h-auto max-w-none -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none z-0"
                           style={{
                             width: "min(100vw, 430px)",
                             opacity: isYellowBlurReady ? 1 : 0,
