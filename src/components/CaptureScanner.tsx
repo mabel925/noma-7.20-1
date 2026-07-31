@@ -198,6 +198,12 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const CUTOUT_FLIGHT_DELAY = DISINTEGRATE_DURATION * 0.5;
   const CUTOUT_FLIGHT_DURATION = DISINTEGRATE_DURATION - CUTOUT_FLIGHT_DELAY;
   const [browserChromeInset, setBrowserChromeInset] = useState<number>(0);
+  const [isStandaloneDisplay, setIsStandaloneDisplay] = useState<boolean>(() =>
+    typeof window !== "undefined" && (
+      (window.navigator as any).standalone === true ||
+      window.matchMedia("(display-mode: standalone)").matches
+    )
+  );
 
   useEffect(() => {
     if (!isOpen) return;
@@ -208,6 +214,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         window.matchMedia("(display-mode: standalone)").matches;
       const visualViewportHeight = window.visualViewport?.height ?? window.innerHeight;
       const inset = isStandalone ? 0 : Math.max(0, window.innerHeight - visualViewportHeight);
+      setIsStandaloneDisplay(isStandalone);
       setBrowserChromeInset(inset);
     };
 
@@ -221,7 +228,9 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     };
   }, [isOpen]);
 
-  const resultInputBottomGap = Math.max(0, RESULT_INPUT_BOTTOM_GAP - browserChromeInset);
+  const resultInputBottomGap = isStandaloneDisplay
+    ? RESULT_INPUT_BOTTOM_GAP
+    : Math.max(0, RESULT_INPUT_BOTTOM_GAP - browserChromeInset - 40);
 
   // Apply our custom layout guard to guarantee layout/scroll scrubbing and dynamic app height calculation
   useLayoutGuard(isOpen);
@@ -3075,7 +3084,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                     autoPlay
                     playsInline
                     muted
-                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                    style={{ position: "absolute", inset: 0, width: "100%", height: "100%", minWidth: "100%", minHeight: "100%", maxWidth: "none", maxHeight: "none", objectFit: "cover", objectPosition: "center", display: "block" }}
                   />
                   {!cameraActive && <div className="absolute inset-0 bg-[#161616]" />}
                 </>
@@ -3552,7 +3561,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                       autoPlay
                       playsInline
                       muted
-                      style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center", display: "block" }}
+                      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", minWidth: "100%", minHeight: "100%", maxWidth: "none", maxHeight: "none", objectFit: "cover", objectPosition: "center", display: "block" }}
                     />
                     {!cameraActive && <div className="absolute inset-0 bg-[#161616]" />}
 
@@ -3622,7 +3631,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                       autoPlay
                       playsInline
                       muted
-                      style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center", display: "block" }}
+                      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", minWidth: "100%", minHeight: "100%", maxWidth: "none", maxHeight: "none", objectFit: "cover", objectPosition: "center", display: "block" }}
                     />
                     {!cameraActive && <div className="absolute inset-0 bg-[#161616]" />}
 
