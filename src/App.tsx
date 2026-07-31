@@ -692,17 +692,15 @@ export default function App() {
           />
         )}
 
-        {/* Memory List Overlay */}
-        <AnimatePresence>
-          {isMemoryOpen && (
-            <MemoryList
-              isOpen={isMemoryOpen}
-              onClose={() => setIsMemoryOpen(false)}
-              memories={customMemories}
-              onMemoriesChange={setCustomMemories}
-            />
-          )}
-        </AnimatePresence>
+        {/* Memory List Overlay: mount/unmount directly so Back returns home immediately. */}
+        {isMemoryOpen && (
+          <MemoryList
+            isOpen={isMemoryOpen}
+            onClose={() => setIsMemoryOpen(false)}
+            memories={customMemories}
+            onMemoriesChange={setCustomMemories}
+          />
+        )}
 
         {/* Toast Notification */}
         <AnimatePresence>

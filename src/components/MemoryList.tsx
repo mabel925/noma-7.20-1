@@ -65,6 +65,34 @@ type SubLocationSummary = {
   items: MemoryItem[];
 };
 
+const DETAIL_MODAL_CONTENT_HEIGHT = 734;
+
+const useDetailModalScale = () => {
+  const [scale, setScale] = React.useState(1);
+
+  React.useEffect(() => {
+    const updateScale = () => {
+      const frame = document.getElementById("noma-iphone-frame");
+      const viewportHeight = frame?.clientHeight || window.innerHeight;
+      const nextScale = Math.min(1, Math.max(0.42, (viewportHeight - 24) / DETAIL_MODAL_CONTENT_HEIGHT));
+      setScale(nextScale);
+    };
+
+    updateScale();
+    window.addEventListener("resize", updateScale);
+    const frame = document.getElementById("noma-iphone-frame");
+    const observer = frame && "ResizeObserver" in window ? new ResizeObserver(updateScale) : null;
+    if (observer && frame) observer.observe(frame);
+
+    return () => {
+      window.removeEventListener("resize", updateScale);
+      observer?.disconnect();
+    };
+  }, []);
+
+  return scale;
+};
+
 const matchesText = (value: string | undefined, query: string): boolean =>
   Boolean(value && value.toLowerCase().includes(query));
 
@@ -498,6 +526,7 @@ const SpaceDetailModal: React.FC<{
   const [isEditingItems, setIsEditingItems] = React.useState(false);
   const [selectedItemIds, setSelectedItemIds] = React.useState<string[]>([]);
   const [deleteRequest, setDeleteRequest] = React.useState<"space" | "items" | null>(null);
+  const modalScale = useDetailModalScale();
   const helperText = isFlipped ? "Flip card to see the location" : "Flip card to see all items";
 
   const handleDelete = (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -526,7 +555,7 @@ const SpaceDetailModal: React.FC<{
 
   return (
     <motion.div
-      className="absolute inset-0 z-[180] flex flex-col items-center justify-center px-[30px] pt-[70px] pb-[64px] overflow-hidden"
+      className="absolute inset-0 z-[180] overflow-y-auto overscroll-contain"
       initial={false}
       exit={{ opacity: 0 }}
     >
@@ -545,31 +574,39 @@ const SpaceDetailModal: React.FC<{
         transition={{ duration: 0.1, ease: "linear" }}
       />
 
-      <div className="relative z-10 w-[307px]" style={{ perspective: "1200px" }}>
-        <div className="absolute right-0 top-[-54px] z-30 flex items-center gap-[8px]">
-          {isFlipped && (
-            <MemoryActionButton
-              label={isEditingItems ? "Finish selecting items" : "Edit items"}
-              onClick={handleEdit}
-            >
-              <EditActionIcon />
-            </MemoryActionButton>
-          )}
-          <MemoryActionButton
-            label={isEditingItems && selectedItemIds.length > 0 ? "Delete selected items" : "Delete sub-location"}
-            onClick={handleDelete}
-          >
-            <DeleteActionIcon />
-          </MemoryActionButton>
-        </div>
+      <div
+        className="absolute left-1/2 z-10"
+        style={{
+          top: "calc(50% + (env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) / 2)",
+          transform: "translate(-50%, -50%)",
+        }}
+      >
+        <div style={{ transform: `scale(${modalScale})`, transformOrigin: "center center" }}>
+          <div className="relative z-10 w-[307px] h-[586px]" style={{ perspective: "1200px" }}>
+            <div className="absolute right-0 top-[-64px] z-30 flex items-center gap-[8px]">
+              {isFlipped && (
+                <MemoryActionButton
+                  label={isEditingItems ? "Finish selecting items" : "Edit items"}
+                  onClick={handleEdit}
+                >
+                  <EditActionIcon />
+                </MemoryActionButton>
+              )}
+              <MemoryActionButton
+                label={isEditingItems && selectedItemIds.length > 0 ? "Delete selected items" : "Delete sub-location"}
+                onClick={handleDelete}
+              >
+                <DeleteActionIcon />
+              </MemoryActionButton>
+            </div>
 
-        <motion.div
-          className="relative w-full h-[586px] cursor-pointer"
-          animate={{ rotateY: isFlipped ? 180 : 0 }}
-          transition={{ type: "spring", stiffness: 210, damping: 26 }}
-          style={{ transformStyle: "preserve-3d" }}
-          onClick={() => setIsFlipped((current) => !current)}
-        >
+            <motion.div
+              className="relative w-full h-[586px] cursor-pointer"
+              animate={{ rotateY: isFlipped ? 180 : 0 }}
+              transition={{ type: "spring", stiffness: 210, damping: 26 }}
+              style={{ transformStyle: "preserve-3d" }}
+              onClick={() => setIsFlipped((current) => !current)}
+            >
           <div
             className="absolute inset-0 rounded-[24px] bg-[#E9E6E1] overflow-hidden px-[14px] pt-[14px] pb-[26px]"
             style={{ backfaceVisibility: "hidden" }}
@@ -645,21 +682,23 @@ const SpaceDetailModal: React.FC<{
               textMaxWidth={190}
             />
           </div>
-        </motion.div>
-      </div>
+            </motion.div>
+          </div>
 
-      <div className="relative z-10 mt-[34px] w-[307px] flex items-center justify-center">
-        <div className="text-center text-white text-[20px] leading-[1.25] font-sans font-bold tracking-tight max-w-[250px]">
-          {helperText}
+          <div className="absolute left-0 top-[614px] z-10 h-[56px] w-[307px] flex items-center justify-center">
+            <div className="text-center text-white text-[20px] leading-[1.25] font-sans font-bold tracking-tight max-w-[250px]">
+              {helperText}
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close detail"
+              className="absolute right-0 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-white/65 active:scale-95 transition-transform"
+            >
+              <X className="w-[18px] h-[18px] stroke-[2.4]" />
+            </button>
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close detail"
-          className="absolute right-0 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-white/65 active:scale-95 transition-transform"
-        >
-          <X className="w-[18px] h-[18px] stroke-[2.4]" />
-        </button>
       </div>
 
       <MemoryConfirmModal
@@ -687,6 +726,7 @@ const MemoryDetailModal: React.FC<{
   const [parentLocationName, setParentLocationName] = React.useState(item.parentLocationName || "Main Bedroom");
   const [subLocationName, setSubLocationName] = React.useState(item.subLocationName || "Nightstand");
   const [editingField, setEditingField] = React.useState<"title" | "parent" | "sub" | null>(null);
+  const modalScale = useDetailModalScale();
   const editRestoreValueRef = React.useRef("");
   const pinchStartDistanceRef = React.useRef<number | null>(null);
   const locationImage =
@@ -839,7 +879,7 @@ const MemoryDetailModal: React.FC<{
 
   return (
     <motion.div
-      className="absolute inset-0 z-[180] flex flex-col items-center justify-center px-[30px] pt-[70px] pb-[64px] overflow-hidden"
+      className="absolute inset-0 z-[180] overflow-y-auto overscroll-contain"
       initial={false}
       exit={{ opacity: 0 }}
       onClickCapture={handleModalClickCapture}
@@ -860,9 +900,17 @@ const MemoryDetailModal: React.FC<{
       />
 
       <div
-        className="relative z-10 w-[307px]"
-        style={{ perspective: "1200px" }}
+        className="absolute left-1/2 z-10"
+        style={{
+          top: "calc(50% + (env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) / 2)",
+          transform: "translate(-50%, -50%)",
+        }}
       >
+        <div style={{ transform: `scale(${modalScale})`, transformOrigin: "center center" }}>
+            <div
+            className="relative z-10 w-[307px] h-[586px]"
+            style={{ perspective: "1200px" }}
+          >
         <motion.div
           className="relative w-full h-[586px] cursor-pointer"
           animate={{ rotateY: isFlipped ? 180 : 0 }}
@@ -975,33 +1023,25 @@ const MemoryDetailModal: React.FC<{
               </div>
             </div>
 
-            <div className="flex-1 relative px-[22px] pt-[18px]">
-              <div className="absolute right-[18px] bottom-[2px] shrink-0">
-                <ItemSticker
-                  item={item}
-                  size={86}
-                  title={itemTitle}
-                  onTitleClick={handleEditStart("title")}
-                />
-              </div>
-            </div>
             <LocationTextGroup className="absolute left-[42px] bottom-[36px]" textMaxWidth={146} />
           </div>
-        </motion.div>
-      </div>
+          </motion.div>
+          </div>
 
-      <div className="relative z-10 mt-[34px] w-[307px] flex items-center justify-center">
-        <div className="text-center text-white text-[20px] leading-[1.25] font-sans font-bold tracking-tight max-w-[230px]">
-          {helperText}
+          <div className="absolute left-0 top-[614px] z-10 h-[56px] w-[307px] flex items-center justify-center">
+            <div className="text-center text-white text-[20px] leading-[1.25] font-sans font-bold tracking-tight max-w-[230px]">
+              {helperText}
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close detail"
+              className="absolute right-0 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-white/65 active:scale-95 transition-transform"
+            >
+              <X className="w-[18px] h-[18px] stroke-[2.4]" />
+            </button>
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close detail"
-          className="absolute right-0 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-white/65 active:scale-95 transition-transform"
-        >
-          <X className="w-[18px] h-[18px] stroke-[2.4]" />
-        </button>
       </div>
 
       <AnimatePresence>
