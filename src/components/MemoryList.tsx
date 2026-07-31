@@ -151,32 +151,22 @@ const MemorySearchItem: React.FC<{ item: MemoryItem; compact?: boolean; onClick?
 };
 
 const SubLocationItemPreview: React.FC<{ item: MemoryItem }> = ({ item }) => (
-  <div className="relative w-[58px] h-[56px] shrink-0 overflow-visible select-none">
-    <div className="absolute left-1/2 top-[2px] w-[42px] h-[42px] -translate-x-1/2 rotate-[-1.5deg] flex items-center justify-center overflow-visible">
+  <div className="flex w-[72px] min-w-[72px] shrink-0 flex-col items-center gap-[4px] overflow-hidden select-none">
+    <div className="flex h-[64px] w-[64px] shrink-0 items-center justify-center overflow-hidden rotate-[-1.5deg]">
       {item.stickerUrl ? (
         <img
           src={item.stickerUrl}
           alt={item.name}
-          className="w-full h-full object-contain block select-none"
+          className="block h-full w-full select-none object-contain"
           referrerPolicy="no-referrer"
         />
       ) : (
-        <div className="w-full h-full flex items-center justify-center overflow-visible text-[28px] select-none">
+        <div className="flex h-full w-full items-center justify-center overflow-hidden text-[34px] select-none">
           {item.emoji || "📦"}
         </div>
       )}
     </div>
-    <div
-      className="absolute left-[-16px] right-[-16px] bottom-0 text-center font-alkatra z-20 pointer-events-none select-none"
-      style={{
-        fontSize: "13px",
-        fontWeight: "700",
-        color: "#000000",
-        WebkitTextStroke: "2px #ffffff",
-        paintOrder: "stroke fill",
-        lineHeight: "1",
-      }}
-    >
+    <div className="line-clamp-2 min-h-[28px] w-full overflow-hidden break-words text-center font-alkatra text-[13px] font-bold leading-[1.05] text-[#232121]">
       {item.name}
     </div>
   </div>
@@ -475,10 +465,10 @@ const SubLocationListCard: React.FC<{
     <button
       type="button"
       onClick={onClick}
-      className="w-full min-h-[170px] rounded-[28px] bg-white px-[34px] py-[34px] text-left select-none active:scale-[0.98] transition-transform"
+      className="w-full min-h-[170px] rounded-[28px] bg-white px-[14px] py-[18px] text-left select-none active:scale-[0.98] transition-transform"
     >
-      <div className="flex items-center gap-[24px]">
-        <div className="w-[78px] h-[78px] rounded-[10px] overflow-hidden bg-neutral-100 shrink-0">
+      <div className="flex items-center gap-[14px]">
+        <div className="h-[64px] w-[64px] rounded-[8px] overflow-hidden bg-neutral-100 shrink-0">
           {space.imgUrl ? (
             <img
               src={space.imgUrl}
@@ -491,22 +481,22 @@ const SubLocationListCard: React.FC<{
           )}
         </div>
         <div className="min-w-0">
-          <div className="text-[24px] font-sans font-bold text-[#232121] tracking-tight leading-tight truncate">
+          <div className="text-[18px] font-sans font-bold text-[#232121] tracking-tight leading-tight truncate">
             {space.name}
           </div>
-          <div className="mt-[8px] text-[18px] font-sans font-normal text-[#232121] leading-none">
+          <div className="mt-[8px] text-[13px] font-sans font-normal text-[#232121] leading-none">
             {space.itemCount} items
           </div>
         </div>
       </div>
 
       {(previewItems.length > 0 || remainingItems > 0) && (
-        <div className="mt-[26px] flex h-[56px] items-center gap-[18px]">
+        <div className="mt-[12px] flex min-h-[96px] items-start gap-[8px] overflow-hidden">
           {previewItems.map((item) => (
             <SubLocationItemPreview key={item.id} item={item} />
           ))}
           {remainingItems > 0 && (
-            <div className="ml-auto h-[44px] min-w-[56px] px-[14px] rounded-[16px] bg-[#F3F1EC] flex items-center justify-center text-[18px] font-sans font-bold text-[#232121]/55">
+            <div className="ml-auto h-[44px] min-w-[56px] shrink-0 self-start rounded-[16px] bg-[#F3F1EC] px-[14px] flex items-center justify-center text-[18px] font-sans font-bold text-[#232121]/55">
               +{remainingItems}
             </div>
           )}
@@ -1478,7 +1468,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
               </div>
             </div>
 
-            <div className="flex flex-col gap-[16px]">
+            <div className="flex flex-col gap-[8px]">
               {selectedParentSubLocations.length > 0 ? (
                 selectedParentSubLocations.map((space) => (
                   <SubLocationListCard
