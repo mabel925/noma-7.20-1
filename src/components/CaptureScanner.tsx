@@ -197,6 +197,31 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const DISINTEGRATE_DURATION = 1850;
   const CUTOUT_FLIGHT_DELAY = DISINTEGRATE_DURATION * 0.5;
   const CUTOUT_FLIGHT_DURATION = DISINTEGRATE_DURATION - CUTOUT_FLIGHT_DELAY;
+  const [browserChromeInset, setBrowserChromeInset] = useState<number>(0);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const updateBrowserChromeInset = () => {
+      const isStandalone =
+        (window.navigator as any).standalone === true ||
+        window.matchMedia("(display-mode: standalone)").matches;
+      const visualViewportHeight = window.visualViewport?.height ?? window.innerHeight;
+      const inset = isStandalone ? 0 : Math.max(0, window.innerHeight - visualViewportHeight);
+      setBrowserChromeInset(inset);
+    };
+
+    updateBrowserChromeInset();
+    window.addEventListener("resize", updateBrowserChromeInset);
+    window.visualViewport?.addEventListener("resize", updateBrowserChromeInset);
+
+    return () => {
+      window.removeEventListener("resize", updateBrowserChromeInset);
+      window.visualViewport?.removeEventListener("resize", updateBrowserChromeInset);
+    };
+  }, [isOpen]);
+
+  const resultInputBottomGap = Math.max(0, RESULT_INPUT_BOTTOM_GAP - browserChromeInset);
 
   // Apply our custom layout guard to guarantee layout/scroll scrubbing and dynamic app height calculation
   useLayoutGuard(isOpen);
@@ -2388,6 +2413,11 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       sourceBaseUrl = captureVideoFrame() || "";
       width = videoRef.current.videoWidth || 640;
       height = videoRef.current.videoHeight || 480;
+      if (sourceBaseUrl) {
+        setUploadedImageUrl(sourceBaseUrl);
+        setUploadedNaturalWidth(width);
+        setUploadedNaturalHeight(height);
+      }
     }
     
     // Fall back to preset SVG vectors if camera is disabled
@@ -3389,7 +3419,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
               {/* Bottom section housing the three action buttons and Tap to adjust Input field */}
               <div
                 className="capture-bottom-actions absolute left-0 right-0 w-full flex flex-col items-center px-6"
-                style={{ bottom: `${RESULT_INPUT_BOTTOM_GAP + 56 + RESULT_BUTTON_INPUT_GAP}px` }}
+                style={{ bottom: `${resultInputBottomGap + 56 + RESULT_BUTTON_INPUT_GAP}px` }}
               >
                 
                 <div className="flex items-center justify-center gap-[44px] z-30 w-full">
@@ -3433,7 +3463,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
               {/* Editable bottom pill matching the provided result UI */}
               <div 
                 className="absolute left-1/2 z-30 animate-fade-in flex-shrink-0 -translate-x-1/2"
-                style={{ width: "316px", height: "56px", bottom: `${RESULT_INPUT_BOTTOM_GAP}px` }}
+                style={{ width: "316px", height: "56px", bottom: `${resultInputBottomGap}px` }}
               >
                 <input
                   type="text"
@@ -4292,8 +4322,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
             <div className="w-full h-full flex flex-col items-center justify-center pt-0 pb-4">
               {/* Spinning cute colorful flower loader */}
               <div className="w-9 h-9 border-4 border-[#3A3938]/10 border-t-[#3A3938] rounded-full animate-spin mb-3" />
-              <p className="text-[#3A3938] text-[10px] font-mono font-medium tracking-widest uppercase animate-pulse">
-                {scanStep === "scanning" ? "SPATIAL COORDINATES LOCKING..." : "CRYSTAL BACKGROUND MATRIX DISSOLVING..."}
+              <p className="text-[#3A3938] text-[14px] font-sans font-normal tracking-tight animate-pulse">
+                Recognizing...
               </p>
             </div>
           )}

@@ -16,6 +16,10 @@
   --font-alkatra: "Alkatra", cursive, sans-serif;
 }
 
+.font-alkatra {
+  font-family: "Alkatra", cursive, sans-serif !important;
+}
+
 :root {
   --noma-statusbar-height: env(safe-area-inset-top, 0px);
 }
