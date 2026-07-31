@@ -16,7 +16,7 @@
       "purpose": "any"
     }
   ],
-  "start_url": "/?api=1",
+  "start_url": "/",
   "background_color": "#E9E6E1",
   "theme_color": "#E9E6E1",
   "display": "standalone",

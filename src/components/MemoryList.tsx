@@ -1267,7 +1267,11 @@ export const MemoryList: React.FC<MemoryListProps> = ({
     <motion.div
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 15 }}
+      exit={{
+        opacity: 0,
+        y: 0,
+        transition: { duration: 0.12, ease: "linear" },
+      }}
       transition={{
         type: "tween",
         duration: 0.45,

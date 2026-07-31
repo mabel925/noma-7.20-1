@@ -286,14 +286,15 @@ export async function remove_background(
     }
 
     // 统一 API 拦截
+    let isApiEnabled = false;
     try {
-      const isEnabled = localStorage.getItem("IS_API_ENABLED") !== "false";
-      if (!isEnabled) {
-        console.log("[API Intercept] remove_background API is disabled. Running local Chroma Key fallback.");
-        return await localChromaKeyFallback(imageSrc, onProgress);
-      }
+      isApiEnabled = localStorage.getItem("IS_API_ENABLED") === "true";
     } catch (e) {
       console.warn("[RemoveBgService] Failed to read IS_API_ENABLED from localStorage:", e);
+    }
+    if (!isApiEnabled) {
+      console.log("[API Intercept] remove_background API is disabled. Running local Chroma Key fallback.");
+      return await localChromaKeyFallback(imageSrc, onProgress);
     }
 
     if (onProgress) onProgress("Converting image to base64...");

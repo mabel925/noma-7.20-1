@@ -84,9 +84,9 @@ export async function prepareImage(imageInput: File | Blob | string, maxWidth = 
 export function isApiEnabled(): boolean {
   try {
     const saved = localStorage.getItem("IS_API_ENABLED");
-    return saved !== "false"; // 默认为启用 (true)
+    return saved === "true";
   } catch (e) {
-    return true;
+    return false;
   }
 }
 

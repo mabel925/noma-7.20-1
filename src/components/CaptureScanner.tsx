@@ -3042,7 +3042,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         {/* Full-bleed active container spanning whole upper viewport and extending 44px deep behind bottom sheet */}
         <div 
           id="camera-view"
-          className="absolute inset-0 flex items-center justify-center transition-all duration-75"
+          className="absolute inset-0 flex items-center justify-center"
           style={{
             bottom: `${cameraViewBottomOffset}px`,
             backgroundColor: scanStep === "disintegrating" || scanStep === "sticker" || scanStep === "done" ? "#E9E6E1" : "#161616",
@@ -3071,10 +3071,11 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                 <>
                   <video
                     ref={videoRef}
-                    className={`absolute w-full h-full object-cover transition-opacity duration-150 ${cameraActive ? "opacity-100" : "opacity-0"}`}
+                    className={`absolute inset-0 block w-full h-full object-cover object-center ${cameraActive ? "opacity-100" : "opacity-0"}`}
                     autoPlay
                     playsInline
                     muted
+                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
                   />
                   {!cameraActive && <div className="absolute inset-0 bg-[#161616]" />}
                 </>
@@ -3547,10 +3548,11 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                   <>
                     <video
                       ref={videoRef}
-                      className={`absolute w-full h-full object-cover transition-opacity duration-150 ${cameraActive ? "opacity-100" : "opacity-0"}`}
+                      className={`absolute inset-0 block w-full h-full object-cover object-center ${cameraActive ? "opacity-100" : "opacity-0"}`}
                       autoPlay
                       playsInline
                       muted
+                      style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center", display: "block" }}
                     />
                     {!cameraActive && <div className="absolute inset-0 bg-[#161616]" />}
 
@@ -3616,10 +3618,11 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                   <>
                     <video
                       ref={videoRef}
-                      className={`absolute w-full h-full object-cover transition-opacity duration-150 ${cameraActive ? "opacity-100" : "opacity-0"}`}
+                      className={`absolute inset-0 block w-full h-full object-cover object-center ${cameraActive ? "opacity-100" : "opacity-0"}`}
                       autoPlay
                       playsInline
                       muted
+                      style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center", display: "block" }}
                     />
                     {!cameraActive && <div className="absolute inset-0 bg-[#161616]" />}
 

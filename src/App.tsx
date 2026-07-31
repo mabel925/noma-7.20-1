@@ -268,15 +268,12 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [currentInfoObj, setCurrentInfoObj] = useState<string | null>(null);
 
-  // Allow production/PWA recovery when an old origin-local toggle disabled the real API.
+  // Keep API usage opt-in so repeated camera tests do not spend remote tokens by default.
   useEffect(() => {
-    const apiOverride = new URLSearchParams(window.location.search).get("api");
-    if (apiOverride === "1") {
-      localStorage.setItem("IS_API_ENABLED", "true");
-      setToast("API 已开启");
-    } else if (apiOverride === "0") {
+    const API_TOGGLE_VERSION = "five-click-v1";
+    if (localStorage.getItem("IS_API_TOGGLE_VERSION") !== API_TOGGLE_VERSION) {
       localStorage.setItem("IS_API_ENABLED", "false");
-      setToast("API 已关闭");
+      localStorage.setItem("IS_API_TOGGLE_VERSION", API_TOGGLE_VERSION);
     }
   }, []);
 
@@ -369,7 +366,7 @@ export default function App() {
       const nextCount = clickCount + 1;
       if (nextCount >= 5) {
         // Toggle IS_API_ENABLED
-        const currentEnabled = localStorage.getItem("IS_API_ENABLED") !== "false";
+        const currentEnabled = localStorage.getItem("IS_API_ENABLED") === "true";
         const nextEnabled = !currentEnabled;
         localStorage.setItem("IS_API_ENABLED", String(nextEnabled));
         setClickCount(0);
