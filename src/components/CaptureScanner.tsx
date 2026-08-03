@@ -7,6 +7,13 @@ import { motion, AnimatePresence } from "motion/react";
 import { useKeyboardReset } from "../hooks/useKeyboardReset";
 import { useLayoutGuard } from "../hooks/useLayoutGuard";
 import { VirtualKeyboard } from "./VirtualKeyboard";
+import lightspotImage from "../assets/images/lightspot.png";
+import {
+  getStickerTitleStyle,
+  STICKER_BASE_SIZE,
+  STICKER_TITLE_FONT_SIZE,
+  STICKER_TITLE_STROKE,
+} from "./StickerTitle";
 
 const PRICE_CURRENCIES = ["$", "€", "£", "¥", "₩"] as const;
 
@@ -155,7 +162,7 @@ const formatStickerTitleLines = (title: string): string[] => {
   ].filter(Boolean);
 };
 
-const YELLOW_BLUR_IMAGE_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/yellowblur.png";
+const COLOR_BLUR_IMAGE_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/colorblur.png";
 const FALLBACK_LOCATION_IMAGE_URL = "https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=500&auto=format&fit=crop&q=80";
 
 export const CaptureScanner: React.FC<CaptureScannerProps> = ({
@@ -257,7 +264,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const [tempIdentifiedTitle, setTempIdentifiedTitle] = useState<string>("");
   const [tempIdentifiedCategory, setTempIdentifiedCategory] = useState<string>("");
   const [isCategorySelectorOpen, setIsCategorySelectorOpen] = useState<boolean>(false);
-  const [isYellowBlurReady, setIsYellowBlurReady] = useState<boolean>(false);
+  const [isColorBlurReady, setIsColorBlurReady] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Pre-defined list of categories for the interactive fan-out switcher
@@ -510,12 +517,13 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const layout = getActiveLayout();
   const initialCenterY = layout.top + layout.height / 2;
   const targetCenterY = fullStageHeight * 0.37;
-  const RESULT_STICKER_VISUAL_SIZE = 250;
-  const RESULT_STICKER_TITLE_WIDTH = 340;
-  const RESULT_STICKER_TITLE_FONT_SIZE = 44;
-  const RESULT_STICKER_TITLE_STROKE = 6;
+  const RESULT_STICKER_VISUAL_SIZE = STICKER_BASE_SIZE;
+  const RESULT_STICKER_TITLE_WIDTH = RESULT_STICKER_VISUAL_SIZE;
+  const RESULT_STICKER_TITLE_FONT_SIZE = STICKER_TITLE_FONT_SIZE;
+  const RESULT_STICKER_TITLE_STROKE = STICKER_TITLE_STROKE;
   const finalStickerVisualSize = RESULT_STICKER_VISUAL_SIZE;
-  const finalStickerLeft = (containerWidth - finalStickerVisualSize) / 2;
+  const RESULT_STICKER_CENTER_OFFSET_X = -8;
+  const finalStickerLeft = (containerWidth - finalStickerVisualSize) / 2 + RESULT_STICKER_CENTER_OFFSET_X;
   const finalStickerTop = targetCenterY - finalStickerVisualSize / 2;
   const cutoutFlightSourceRect = cutoutFlightStartRect ?? {
     left: layout.left,
@@ -538,27 +546,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const STICKER_BORDER_SIZE = 8;
   const stickerTitleText = customName || activeItem.name;
   const stickerTitleLines = formatStickerTitleLines(stickerTitleText);
-  const isStickerTitleTwoLine = stickerTitleLines.length > 1;
-  const longestStickerTitleLine = Math.max(...stickerTitleLines.map((line) => line.length), 0);
-  const stickerTitleFontSize = isStickerTitleTwoLine
-    ? longestStickerTitleLine > 17
-      ? 32
-      : longestStickerTitleLine > 14
-        ? 35
-        : 38
-    : longestStickerTitleLine > 15
-      ? 40
-      : RESULT_STICKER_TITLE_FONT_SIZE;
-  const stickerTitleStyle: React.CSSProperties = {
-    fontSize: `${stickerTitleFontSize}px`,
-    fontWeight: "700",
-    color: "#000000",
-    WebkitTextStroke: isStickerTitleTwoLine ? "5px #ffffff" : `${stickerTitleFontSize >= 44 ? RESULT_STICKER_TITLE_STROKE : 5}px #ffffff`,
-    paintOrder: "stroke fill",
-    lineHeight: isStickerTitleTwoLine ? "1.04" : "1.06",
-    bottom: isStickerTitleTwoLine ? "10px" : "18px",
-    maxHeight: "92px",
-  };
+  const stickerTitleStyle = getStickerTitleStyle(RESULT_STICKER_VISUAL_SIZE);
 
   const getCoverLayoutFromDimensions = (sourceWidth?: number, sourceHeight?: number) => {
     if (!sourceWidth || !sourceHeight) return layout;
@@ -1468,26 +1456,26 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
   useEffect(() => {
     if (!isOpen) {
-      setIsYellowBlurReady(false);
+      setIsColorBlurReady(false);
       return;
     }
 
     let cancelled = false;
-    setIsYellowBlurReady(false);
+    setIsColorBlurReady(false);
     const img = new Image();
     img.decoding = "async";
     img.onload = () => {
-      if (!cancelled) setIsYellowBlurReady(true);
+      if (!cancelled) setIsColorBlurReady(true);
     };
     img.onerror = () => {
-      if (!cancelled) setIsYellowBlurReady(true);
+      if (!cancelled) setIsColorBlurReady(true);
     };
-    img.src = YELLOW_BLUR_IMAGE_URL;
+    img.src = COLOR_BLUR_IMAGE_URL;
     if (img.complete) {
       img.decode?.()
         .catch(() => undefined)
         .finally(() => {
-          if (!cancelled) setIsYellowBlurReady(true);
+          if (!cancelled) setIsColorBlurReady(true);
         });
     }
 
@@ -3204,26 +3192,26 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
               {/* Upper static container for the sticker so it NEVER shifts under any circumstance */}
               <div 
                 className="absolute left-1/2 flex items-center justify-center z-10"
-                style={{
-                  top: `${targetCenterY}px`,
-                  width: "300px",
-                  height: "300px",
-                  transform: "translate(-50%, -50%)"
-                }}
-              >
-                
-                <img
-                  src={YELLOW_BLUR_IMAGE_URL}
-                  alt=""
-                  aria-hidden="true"
-                  onLoad={() => setIsYellowBlurReady(true)}
-                  className="absolute left-1/2 top-1/2 h-auto max-w-none -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none z-0 transition-opacity duration-700 ease-out"
                   style={{
-                    width: "min(100vw, 430px)",
-                    opacity: isYellowBlurReady ? 1 : 0,
+                    top: `${targetCenterY}px`,
+                    width: "300px",
+                    height: "300px",
+                    transform: `translate(calc(-50% + ${RESULT_STICKER_CENTER_OFFSET_X}px), -50%)`
                   }}
-                  referrerPolicy="no-referrer"
-                />
+              >
+
+                <div
+                  className={`absolute left-1/2 top-1/2 z-0 h-[512px] w-[512px] max-w-none -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none ${isColorBlurReady ? "noma-color-blur-enter" : "opacity-0"}`}
+                >
+                  <img
+                    src={COLOR_BLUR_IMAGE_URL}
+                    alt=""
+                    aria-hidden="true"
+                    onLoad={() => setIsColorBlurReady(true)}
+                    className="block h-full w-full object-contain"
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
 
                 {/* Sticker element wrapper kept upright to avoid a rotation jump after the cutout flight. */}
                 <motion.div 
@@ -3294,7 +3282,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                       }}
                     >
                       {stickerTitleLines.map((line) => (
-                        <span key={line} className="block whitespace-nowrap">
+                        <span key={line} className="block whitespace-normal break-words">
                           {line}
                         </span>
                       ))}
@@ -3603,9 +3591,12 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                         }}
                       >
                         {/* Instant, gorgeous CSS spotlight ripple & glow */}
-                        <div className="absolute w-12 h-12 rounded-full bg-[#FFB300]/40 animate-ping" />
-                        <div className="absolute w-8 h-8 rounded-full bg-[#FFB300]/50 blur-[4px] animate-pulse" />
-                        <div className="w-4 h-4 rounded-full bg-white border-2 border-[#FFB300] shadow-[0_0_12px_#FFB300] relative z-10" />
+                        <img
+                          src={lightspotImage}
+                          alt=""
+                          aria-hidden="true"
+                          className="block h-[84px] w-[84px] object-contain animate-pulse"
+                        />
                       </div>
                     )}
                   </div>
@@ -3684,7 +3675,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                     </button>
 
                     {/* Main Sticker Element with + Value Tag & Yellow Gaussian Glow */}
-                    <div className="relative z-10 mx-auto flex flex-col items-center justify-center flex-shrink-0" style={{ width: "340px", height: "330px" }}>
+                    <div className="relative z-10 mx-auto flex flex-col items-center justify-center flex-shrink-0" style={{ width: "340px", height: "330px", transform: `translateX(${RESULT_STICKER_CENTER_OFFSET_X}px)` }}>
                       <div 
                         className="relative flex items-center justify-center overflow-visible"
                         style={{
@@ -3692,18 +3683,18 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                           height: "300px"
                         }}
                       >
-                        <img
-                          src={YELLOW_BLUR_IMAGE_URL}
-                          alt=""
-                          aria-hidden="true"
-                          onLoad={() => setIsYellowBlurReady(true)}
-                          className="absolute left-1/2 top-1/2 h-auto max-w-none -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none z-0"
-                          style={{
-                            width: "min(100vw, 430px)",
-                            opacity: isYellowBlurReady ? 1 : 0,
-                          }}
-                          referrerPolicy="no-referrer"
-                        />
+                        <div
+                          className={`absolute left-1/2 top-1/2 z-0 h-[512px] w-[512px] max-w-none -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none ${isColorBlurReady ? "noma-color-blur-enter" : "opacity-0"}`}
+                        >
+                          <img
+                            src={COLOR_BLUR_IMAGE_URL}
+                            alt=""
+                            aria-hidden="true"
+                            onLoad={() => setIsColorBlurReady(true)}
+                            className="block h-full w-full object-contain"
+                            referrerPolicy="no-referrer"
+                          />
+                        </div>
 
                         {/* + Value Tag - Click to edit value amount */}
                         <button
@@ -3751,10 +3742,10 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
                         {/* Alkatra large editable title with white text stroke - contentEditable with expanded horizontal bounds to prevent any cutting off */}
                         <div
-                          className="absolute bottom-[18px] z-20 flex justify-center"
+                          className="absolute z-20 flex justify-center"
                           style={{
+                            ...stickerTitleStyle,
                             left: "50%",
-                            width: `${RESULT_STICKER_TITLE_WIDTH}px`,
                             marginLeft: `${-RESULT_STICKER_TITLE_WIDTH / 2}px`,
                           }}
                         >
@@ -3768,13 +3759,14 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                                 e.currentTarget.blur();
                               }
                             }}
-                            className="w-full text-center font-alkatra font-bold focus:outline-none bg-transparent select-text caret-[#232121] outline-none border-0 overflow-visible"
+                            className="w-full text-center font-alkatra font-bold whitespace-normal break-words focus:outline-none bg-transparent select-text caret-[#232121] outline-none border-0 overflow-visible"
                             style={{
                               fontSize: `${RESULT_STICKER_TITLE_FONT_SIZE}px`,
                               color: "#000000",
                               WebkitTextStroke: `${RESULT_STICKER_TITLE_STROKE}px #ffffff`,
                               paintOrder: "stroke fill",
-                              lineHeight: "1.02",
+                              lineHeight: `${RESULT_STICKER_TITLE_FONT_SIZE}px`,
+                              overflowWrap: "anywhere",
                             }}
                           >
                             {customName || activeItem.name}
@@ -3903,7 +3895,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                         </div>
 
                         {/* Sub Location Image (Overlapping at bottom-right corner) */}
-                        <div className="absolute bottom-[-4px] right-[4px] w-[58px] h-[58px] rounded-[12px] overflow-hidden border-[4px] border-white shadow-md bg-neutral-100 flex items-center justify-center z-10">
+                        <div className="absolute bottom-[-4px] right-[4px] w-[58px] h-[58px] rounded-[12px] overflow-hidden border-[4px] border-white shadow-none bg-neutral-100 flex items-center justify-center z-10">
                           {subLocationImg ? (
                             <img src={subLocationImg} alt="Sub Location" className="w-full h-full object-cover" />
                           ) : (
@@ -4006,7 +3998,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                           }}
                         >
                           {stickerTitleLines.map((line) => (
-                            <span key={line} className="block whitespace-nowrap">
+                            <span key={line} className="block whitespace-normal break-words">
                               {line}
                             </span>
                           ))}

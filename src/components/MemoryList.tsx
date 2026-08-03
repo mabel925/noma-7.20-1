@@ -2,13 +2,12 @@ import React, { useState } from "react";
 import { ChevronsUpDown, Search, X } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { VirtualKeyboard } from "./VirtualKeyboard";
+import lightspotImage from "../assets/images/lightspot.png";
+import { getStickerTitleStyle } from "./StickerTitle";
 
-const YELLOW_BLUR_IMAGE_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/yellowblur.png";
+const COLOR_BLUR_IMAGE_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/colorblur.png";
+const MATRIX_DOT_IMAGE_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/%E7%9F%A9%E9%98%B5%E5%9C%86%E7%82%B9.png";
 const DETAIL_CATEGORIES = ["Electronics", "Apparel", "Docs", "Housewares", "Others"];
-const RESULT_STICKER_BASE_SIZE = 250;
-const RESULT_STICKER_BASE_TITLE_SIZE = 44;
-const RESULT_STICKER_BASE_TITLE_STROKE = 6;
-
 export interface MemoryItem {
   id: string;
   name: string;
@@ -67,6 +66,16 @@ type SubLocationSummary = {
 
 const DETAIL_MODAL_CONTENT_HEIGHT = 734;
 
+const MatrixDotBackground: React.FC<{ rounded?: boolean }> = ({ rounded = false }) => (
+  <img
+    src={MATRIX_DOT_IMAGE_URL}
+    alt=""
+    aria-hidden="true"
+    className={`absolute inset-0 z-0 h-full w-full object-cover pointer-events-none select-none ${rounded ? "rounded-[24px]" : ""}`}
+    referrerPolicy="no-referrer"
+  />
+);
+
 const useDetailModalScale = () => {
   const [scale, setScale] = React.useState(1);
 
@@ -96,21 +105,24 @@ const useDetailModalScale = () => {
 const matchesText = (value: string | undefined, query: string): boolean =>
   Boolean(value && value.toLowerCase().includes(query));
 
-const MemorySearchItem: React.FC<{ item: MemoryItem; compact?: boolean; onClick?: () => void }> = ({
+const MemorySearchItem: React.FC<{ item: MemoryItem; compact?: boolean; size?: number; onClick?: () => void }> = ({
   item,
   compact = false,
+  size,
   onClick,
 }) => {
-  const boxSize = compact ? 76 : 124;
-  const emojiSize = compact ? 46 : 64;
-  const labelSize = compact ? 18 : 24;
+  const boxSize = size ?? (compact ? 76 : 124);
+  const tileWidth = size ?? (compact ? 76 : 150);
+  const tileHeight = size ?? (compact ? 86 : 150);
+  const emojiSize = size ? Math.round(size * 0.52) : compact ? 46 : 64;
 
   return (
     <div
       onClick={onClick}
+      style={{ width: tileWidth, height: tileHeight }}
       className={`relative flex flex-col items-center justify-center overflow-visible select-none ${
-        compact ? "h-[86px] w-[76px]" : "h-[150px] w-[150px]"
-      } ${onClick ? "cursor-pointer active:scale-95 transition-transform" : ""}`}
+        onClick ? "cursor-pointer active:scale-95 transition-transform" : ""
+      }`}
     >
       <div
         className="relative rotate-[-1.5deg] flex items-center justify-center overflow-visible"
@@ -133,15 +145,8 @@ const MemorySearchItem: React.FC<{ item: MemoryItem; compact?: boolean; onClick?
         )}
 
         <div
-          className="absolute bottom-[-9px] left-[-30px] right-[-30px] text-center font-alkatra z-20 pointer-events-none select-none"
-          style={{
-            fontSize: `${labelSize}px`,
-            fontWeight: "700",
-            color: "#000000",
-            WebkitTextStroke: compact ? "2.8px #ffffff" : "3.5px #ffffff",
-            paintOrder: "stroke fill",
-            lineHeight: "1.05",
-          }}
+          className="absolute left-1/2 z-20 -translate-x-1/2 text-center font-alkatra pointer-events-none select-none"
+          style={getStickerTitleStyle(boxSize)}
         >
           {item.name}
         </div>
@@ -151,8 +156,8 @@ const MemorySearchItem: React.FC<{ item: MemoryItem; compact?: boolean; onClick?
 };
 
 const SubLocationItemPreview: React.FC<{ item: MemoryItem }> = ({ item }) => (
-  <div className="flex w-[72px] min-w-[72px] shrink-0 flex-col items-center gap-[4px] overflow-hidden select-none">
-    <div className="flex h-[64px] w-[64px] shrink-0 items-center justify-center overflow-hidden rotate-[-1.5deg]">
+  <div className="relative flex h-[56px] w-[72px] min-w-[72px] shrink-0 flex-col items-center overflow-visible select-none">
+    <div className="flex h-[48px] w-[48px] shrink-0 items-center justify-center overflow-hidden rotate-[-1.5deg]">
       {item.stickerUrl ? (
         <img
           src={item.stickerUrl}
@@ -161,12 +166,15 @@ const SubLocationItemPreview: React.FC<{ item: MemoryItem }> = ({ item }) => (
           referrerPolicy="no-referrer"
         />
       ) : (
-        <div className="flex h-full w-full items-center justify-center overflow-hidden text-[34px] select-none">
+        <div className="flex h-full w-full items-center justify-center overflow-hidden text-[28px] select-none">
           {item.emoji || "📦"}
         </div>
       )}
     </div>
-    <div className="line-clamp-2 min-h-[28px] w-full overflow-hidden break-words text-center font-alkatra text-[13px] font-bold leading-[1.05] text-[#232121]">
+    <div
+      className="absolute left-1/2 z-10 -translate-x-1/2 text-center font-alkatra pointer-events-none select-none"
+      style={getStickerTitleStyle(48)}
+    >
       {item.name}
     </div>
   </div>
@@ -207,6 +215,7 @@ const ItemSticker: React.FC<{
   title?: string;
   titleSize?: number;
   stroke?: number;
+  alignLeft?: boolean;
   onTitleClick?: (event: React.MouseEvent) => void;
 }> = ({
   item,
@@ -214,16 +223,16 @@ const ItemSticker: React.FC<{
   title,
   titleSize,
   stroke,
+  alignLeft = false,
   onTitleClick,
 }) => {
-  const scale = size / RESULT_STICKER_BASE_SIZE;
-  const effectiveTitleSize = titleSize ?? RESULT_STICKER_BASE_TITLE_SIZE * scale;
-  const effectiveStroke = stroke ?? RESULT_STICKER_BASE_TITLE_STROKE * scale;
-  const titleInset = 70 * scale;
   const displayTitle = title ?? item.name;
 
   return (
-    <div className="relative rotate-[-1.5deg] flex items-center justify-center overflow-visible" style={{ width: size, height: size }}>
+    <div
+      className={`relative rotate-[-1.5deg] flex items-center justify-center overflow-visible ${alignLeft ? "origin-left" : ""}`}
+      style={{ width: size, height: size }}
+    >
       {item.stickerUrl ? (
         <img
           src={item.stickerUrl}
@@ -241,18 +250,13 @@ const ItemSticker: React.FC<{
       )}
 
       <div
-        className={`absolute bottom-[4px] text-center font-alkatra z-20 select-none ${
+        className={`absolute left-1/2 z-20 -translate-x-1/2 text-center font-alkatra select-none ${
           onTitleClick ? "pointer-events-auto cursor-text active:scale-[0.98] transition-transform" : "pointer-events-none"
         }`}
         style={{
-          left: `${-titleInset}px`,
-          right: `${-titleInset}px`,
-          fontSize: `${effectiveTitleSize}px`,
-          fontWeight: "700",
-          color: "#000000",
-          WebkitTextStroke: `${effectiveStroke}px #ffffff`,
-          paintOrder: "stroke fill",
-          lineHeight: "1.02",
+          ...getStickerTitleStyle(size),
+          ...(titleSize ? { fontSize: `${titleSize}px`, lineHeight: `${titleSize}px` } : {}),
+          ...(stroke ? { WebkitTextStroke: `${stroke}px #ffffff` } : {}),
         }}
         onClick={onTitleClick}
       >
@@ -265,7 +269,7 @@ const ItemSticker: React.FC<{
 const ParentSpaceResultCard: React.FC<{ space: SpaceSummary; onClick?: () => void }> = ({ space, onClick }) => (
   <div
     onClick={onClick}
-    className="w-full h-[170px] rounded-[24px] bg-white overflow-hidden px-[28px] py-[21px] select-none cursor-pointer active:scale-[0.98] transition-transform"
+    className="w-full h-[160px] rounded-[24px] bg-white overflow-hidden px-[14px] py-[18px] select-none cursor-pointer active:scale-[0.98] transition-transform"
   >
     <div className="flex items-center gap-[12px]">
       <div className="w-[56px] h-[56px] rounded-[8px] bg-neutral-100 overflow-hidden shrink-0">
@@ -276,23 +280,23 @@ const ParentSpaceResultCard: React.FC<{ space: SpaceSummary; onClick?: () => voi
           referrerPolicy="no-referrer"
         />
       </div>
-      <div className="min-w-0 pt-[1px]">
-        <div className="text-[#232121] text-[18px] leading-none font-sans font-bold tracking-tight truncate">
-          <span className="text-[16px] mr-[5px] align-[1px]">📍</span>
-          {space.name}
+      <div className="min-w-0 pt-[1px] pl-[21px]">
+        <div className="relative text-[#232121] text-[18px] leading-none font-sans font-bold tracking-tight">
+          <span className="absolute left-[-21px] top-0 text-[16px] leading-none">📍</span>
+          <span className="block truncate">{space.name}</span>
         </div>
-        <div className="mt-[13px] text-[#232121] text-[14px] leading-none font-sans font-medium">
+        <div className="mt-[8px] text-[#232121]/50 text-[14px] leading-none font-sans font-medium">
           {space.itemCount} items inside
         </div>
       </div>
     </div>
 
     {space.subLocations.length > 0 && (
-      <div className="mt-[24px] flex gap-[12px] overflow-x-hidden">
+      <div className="-mr-[14px] mt-[24px] flex gap-[10px] overflow-x-auto pr-0 no-scrollbar">
         {space.subLocations.map((sub) => (
           <div
             key={`${space.name}-${sub.name}`}
-            className="h-[38px] px-[25px] rounded-full bg-[#F3F1EC] flex items-center justify-center text-[14px] font-sans font-medium text-neutral-500 whitespace-nowrap shrink-0"
+            className="h-[38px] px-[25px] rounded-full bg-[#232121]/5 flex items-center justify-center text-[14px] font-sans font-medium text-neutral-500 whitespace-nowrap shrink-0"
           >
             {sub.name} ({sub.itemCount} items)
           </div>
@@ -309,7 +313,7 @@ const ChildSpaceResultCard: React.FC<{ space: SubLocationSummary; onClick?: () =
   return (
     <div
       onClick={onClick}
-      className="w-full h-[170px] rounded-[24px] bg-white overflow-hidden px-[28px] py-[21px] select-none cursor-pointer active:scale-[0.98] transition-transform"
+      className="w-full h-[160px] rounded-[24px] bg-white overflow-hidden px-[14px] py-[18px] select-none cursor-pointer active:scale-[0.98] transition-transform"
     >
       <div className="flex items-start gap-[12px]">
         <div className="w-[56px] h-[56px] rounded-[8px] bg-neutral-100 overflow-hidden shrink-0">
@@ -325,10 +329,10 @@ const ChildSpaceResultCard: React.FC<{ space: SubLocationSummary; onClick?: () =
           )}
         </div>
         <div className="min-w-0 pt-[8px]">
-          <div className="text-[#232121] text-[18px] leading-none font-sans font-bold tracking-tight truncate">
+          <div className="text-[#232121] text-[18px] leading-none font-sans font-semibold tracking-tight truncate">
             {space.name} ({space.itemCount} items)
           </div>
-          <div className="mt-[13px] text-[#232121] text-[14px] leading-none font-sans font-medium truncate">
+          <div className="mt-[13px] text-[#232121]/50 text-[14px] leading-none font-sans font-medium truncate">
             <span className="text-[14px] mr-[3px] align-[1px]">📍</span>
             {space.parentName}
           </div>
@@ -465,10 +469,10 @@ const SubLocationListCard: React.FC<{
     <button
       type="button"
       onClick={onClick}
-      className="w-full min-h-[170px] rounded-[28px] bg-white px-[14px] py-[18px] text-left select-none active:scale-[0.98] transition-transform"
+      className="w-full h-[160px] rounded-[28px] bg-white px-[14px] py-[18px] text-left select-none active:scale-[0.98] transition-transform"
     >
       <div className="flex items-center gap-[14px]">
-        <div className="h-[64px] w-[64px] rounded-[8px] overflow-hidden bg-neutral-100 shrink-0">
+        <div className="h-[56px] w-[56px] rounded-[9px] overflow-hidden bg-neutral-100 shrink-0">
           {space.imgUrl ? (
             <img
               src={space.imgUrl}
@@ -481,22 +485,22 @@ const SubLocationListCard: React.FC<{
           )}
         </div>
         <div className="min-w-0">
-          <div className="text-[18px] font-sans font-bold text-[#232121] tracking-tight leading-tight truncate">
+          <div className="text-[18px] font-sans font-semibold text-[#232121] tracking-tight leading-tight truncate">
             {space.name}
           </div>
-          <div className="mt-[8px] text-[13px] font-sans font-normal text-[#232121] leading-none">
+          <div className="mt-[8px] text-[13px] font-sans font-normal text-[#232121]/50 leading-none">
             {space.itemCount} items
           </div>
         </div>
       </div>
 
       {(previewItems.length > 0 || remainingItems > 0) && (
-        <div className="mt-[12px] flex min-h-[96px] items-start gap-[8px] overflow-hidden">
+        <div className="mt-[12px] flex h-[56px] min-h-[56px] items-center gap-[8px] overflow-visible">
           {previewItems.map((item) => (
             <SubLocationItemPreview key={item.id} item={item} />
           ))}
           {remainingItems > 0 && (
-            <div className="ml-auto h-[44px] min-w-[56px] shrink-0 self-start rounded-[16px] bg-[#F3F1EC] px-[14px] flex items-center justify-center text-[18px] font-sans font-bold text-[#232121]/55">
+            <div className="ml-auto h-[50px] w-[50px] shrink-0 rounded-[16px] bg-[#F3F1EC] flex items-center justify-center text-[18px] font-sans font-bold text-[#232121]/55">
               +{remainingItems}
             </div>
           )}
@@ -543,6 +547,14 @@ const SpaceDetailModal: React.FC<{
     setSelectedItemIds([]);
   };
 
+  const toggleItemSelection = (itemId: string) => {
+    setSelectedItemIds((current) =>
+      current.includes(itemId)
+        ? current.filter((id) => id !== itemId)
+        : [...current, itemId]
+    );
+  };
+
   return (
     <motion.div
       className="absolute inset-0 z-[180] overflow-y-auto overscroll-contain"
@@ -573,7 +585,7 @@ const SpaceDetailModal: React.FC<{
       >
         <div style={{ transform: `scale(${modalScale})`, transformOrigin: "center center" }}>
           <div className="relative z-10 w-[307px] h-[586px]" style={{ perspective: "1200px" }}>
-            <div className="absolute right-0 top-[-64px] z-30 flex items-center gap-[8px]">
+            <div className="absolute right-0 top-[-52px] z-30 flex items-center gap-[8px]">
               {isFlipped && (
                 <MemoryActionButton
                   label={isEditingItems ? "Finish selecting items" : "Edit items"}
@@ -595,13 +607,25 @@ const SpaceDetailModal: React.FC<{
               animate={{ rotateY: isFlipped ? 180 : 0 }}
               transition={{ type: "spring", stiffness: 210, damping: 26 }}
               style={{ transformStyle: "preserve-3d" }}
-              onClick={() => setIsFlipped((current) => !current)}
+              onClickCapture={(event) => {
+                if (!isEditingItems || !(event.target instanceof Element)) return;
+                const itemButton = event.target.closest("[data-memory-item-id]") as HTMLElement | null;
+                if (!itemButton) return;
+                event.stopPropagation();
+                const itemId = itemButton.dataset.memoryItemId;
+                if (itemId) toggleItemSelection(itemId);
+              }}
+              onClick={() => {
+                if (isEditingItems) return;
+                setIsFlipped((current) => !current);
+              }}
             >
           <div
             className="absolute inset-0 rounded-[24px] bg-[#E9E6E1] overflow-hidden px-[14px] pt-[14px] pb-[26px]"
             style={{ backfaceVisibility: "hidden" }}
           >
-            <div className="relative w-full h-[444px] rounded-[20px] overflow-hidden bg-neutral-200">
+            <MatrixDotBackground />
+            <div className="relative z-10 w-full h-[444px] rounded-[20px] overflow-hidden bg-neutral-200">
               {space.imgUrl ? (
                 <img
                   src={space.imgUrl}
@@ -613,15 +637,19 @@ const SpaceDetailModal: React.FC<{
                 <div className="w-full h-full bg-[#DDDAD5]" aria-label="Sub-location photo unavailable" />
               )}
               <div className="absolute left-[70%] top-[62%] -translate-x-1/2 -translate-y-1/2 pointer-events-none">
-                <div className="absolute left-1/2 top-1/2 w-12 h-12 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#FFB300]/40 animate-ping" />
-                <div className="absolute left-1/2 top-1/2 w-8 h-8 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#FFB300]/50 blur-[4px] animate-pulse" />
+                <img
+                  src={lightspotImage}
+                  alt=""
+                  aria-hidden="true"
+                  className="block h-[84px] w-[84px] object-contain animate-pulse"
+                />
               </div>
             </div>
 
             <StaticLocationTextGroup
               parentName={space.parentName}
               subName={space.name}
-              className="absolute left-[42px] bottom-[36px]"
+              className="absolute left-[42px] bottom-[36px] z-10"
               textMaxWidth={170}
             />
 
@@ -637,30 +665,26 @@ const SpaceDetailModal: React.FC<{
               transform: "rotateY(180deg)",
             }}
           >
-            <div className="grid grid-cols-2 justify-items-center gap-x-[28px] gap-y-[34px]">
+            <MatrixDotBackground />
+            <div className="relative z-10 grid grid-cols-2 justify-items-center gap-x-[28px] gap-y-[34px]">
               {space.items.map((item) => {
-                const isSelected = selectedItemIds.includes(item.id);
                 return (
-                <div
+                <button
+                  type="button"
                   key={item.id}
-                  className={`relative rounded-[12px] ${isEditingItems ? "cursor-pointer" : ""}`}
+                  data-memory-item-id={item.id}
+                  className={`relative z-20 block border-0 bg-transparent p-0 rounded-[12px] ${isEditingItems ? "cursor-pointer pointer-events-auto" : "cursor-default"}`}
+                  onPointerDown={(event) => {
+                    if (isEditingItems) event.stopPropagation();
+                  }}
                   onClick={(event) => {
-                    if (!isEditingItems) return;
                     event.stopPropagation();
-                    setSelectedItemIds((current) =>
-                      current.includes(item.id)
-                        ? current.filter((id) => id !== item.id)
-                        : [...current, item.id]
-                    );
+                    if (!isEditingItems) return;
+                    toggleItemSelection(item.id);
                   }}
                 >
-                  <ItemSticker item={item} size={88} />
-                  {isEditingItems && (
-                    <div className={`absolute right-[-4px] top-[-4px] w-[20px] h-[20px] rounded-full flex items-center justify-center text-[12px] font-bold ${isSelected ? "bg-[#232121] text-white" : "bg-white text-[#232121]"}`}>
-                      {isSelected ? "✓" : ""}
-                    </div>
-                  )}
-                </div>
+                  <ItemSticker item={item} size={88} stroke={3.5} />
+                </button>
                 );
               })}
             </div>
@@ -668,11 +692,39 @@ const SpaceDetailModal: React.FC<{
             <StaticLocationTextGroup
               parentName={space.parentName}
               subName={space.name}
-              className="absolute left-[42px] bottom-[36px]"
+              className="absolute left-[42px] bottom-[36px] z-10"
               textMaxWidth={190}
             />
-          </div>
+            </div>
             </motion.div>
+
+            {isFlipped && isEditingItems && (
+              <div className="absolute inset-0 z-50 pointer-events-auto px-[36px] pt-[82px] pb-[36px]">
+                <div className="grid grid-cols-2 justify-items-center gap-x-[28px] gap-y-[34px]">
+                  {space.items.map((item) => {
+                    const isSelected = selectedItemIds.includes(item.id);
+                    return (
+                      <button
+                        type="button"
+                        key={`selection-${item.id}`}
+                        aria-label={`Select ${item.name}`}
+                        className="relative h-[88px] w-[88px] border-0 bg-transparent p-0"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          toggleItemSelection(item.id);
+                        }}
+                      >
+                        <div
+                          className={`pointer-events-none absolute right-[-4px] top-[-4px] z-10 flex h-[20px] w-[20px] items-center justify-center rounded-full text-[12px] font-bold ${isSelected ? "bg-[#232121] text-white" : "bg-white text-[#232121]"}`}
+                        >
+                          {isSelected ? "✓" : ""}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="absolute left-0 top-[614px] z-10 h-[56px] w-[307px] flex items-center justify-center">
@@ -707,7 +759,8 @@ const SpaceDetailModal: React.FC<{
 const MemoryDetailModal: React.FC<{
   item: MemoryItem;
   onClose: () => void;
-}> = ({ item, onClose }) => {
+  onDelete: () => void;
+}> = ({ item, onClose, onDelete }) => {
   const [isFlipped, setIsFlipped] = React.useState(false);
   const [locationView, setLocationView] = React.useState<"sub" | "parent">("sub");
   const [selectedCategory, setSelectedCategory] = React.useState(item.category || "Others");
@@ -716,6 +769,7 @@ const MemoryDetailModal: React.FC<{
   const [parentLocationName, setParentLocationName] = React.useState(item.parentLocationName || "Main Bedroom");
   const [subLocationName, setSubLocationName] = React.useState(item.subLocationName || "Nightstand");
   const [editingField, setEditingField] = React.useState<"title" | "parent" | "sub" | null>(null);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = React.useState(false);
   const modalScale = useDetailModalScale();
   const editRestoreValueRef = React.useRef("");
   const pinchStartDistanceRef = React.useRef<number | null>(null);
@@ -901,6 +955,18 @@ const MemoryDetailModal: React.FC<{
             className="relative z-10 w-[307px] h-[586px]"
             style={{ perspective: "1200px" }}
           >
+            <div className="absolute right-0 top-[-52px] z-30 flex items-center gap-[8px]">
+              <MemoryActionButton
+                label="Delete item"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setIsDeleteConfirmOpen(true);
+                }}
+              >
+                <DeleteActionIcon />
+              </MemoryActionButton>
+            </div>
+
         <motion.div
           className="relative w-full h-[586px] cursor-pointer"
           animate={{ rotateY: isFlipped ? 180 : 0 }}
@@ -912,16 +978,21 @@ const MemoryDetailModal: React.FC<{
             className="absolute inset-0 rounded-[24px] bg-[#E9E6E1] overflow-visible px-[22px] pt-[82px] pb-[34px] flex flex-col items-center"
             style={{ backfaceVisibility: "hidden" }}
           >
+            <MatrixDotBackground rounded />
+            <div className="absolute inset-0 z-[1] overflow-hidden rounded-[24px] pointer-events-none">
+              <div className="absolute left-1/2 top-[220px] aspect-square w-full max-w-none -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none">
+                <img
+                  src={COLOR_BLUR_IMAGE_URL}
+                  alt=""
+                  aria-hidden="true"
+                  className="block h-full w-full object-contain"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+            </div>
             <PriceTag price={item.price} className="absolute left-[44px] top-[124px] z-20 rotate-[-14deg]" />
 
-            <div className="relative w-[263px] h-[270px] flex items-center justify-center">
-              <img
-                src={YELLOW_BLUR_IMAGE_URL}
-                alt=""
-                aria-hidden="true"
-                className="absolute left-1/2 top-1/2 w-[330px] max-w-none -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none z-0"
-                referrerPolicy="no-referrer"
-              />
+            <div className="relative z-10 w-[263px] h-[270px] flex items-center justify-center">
               <div className="relative z-10">
                 <ItemSticker
                   item={item}
@@ -932,7 +1003,7 @@ const MemoryDetailModal: React.FC<{
               </div>
             </div>
 
-            <div className="relative mt-[6px] h-[70px] flex flex-col items-center gap-[10px]">
+            <div className="relative z-10 mt-[6px] h-[70px] flex flex-col items-center gap-[10px]">
               <AnimatePresence>
                 {isCategorySelectorOpen &&
                   categoryOptions.slice(0, 4).map((category, index) => {
@@ -976,7 +1047,7 @@ const MemoryDetailModal: React.FC<{
               </div>
             </div>
 
-            <LocationTextGroup className="absolute left-[42px] bottom-[36px]" />
+            <LocationTextGroup className="absolute left-[42px] bottom-[36px] z-10" />
           </div>
 
           <div
@@ -986,8 +1057,9 @@ const MemoryDetailModal: React.FC<{
               transform: "rotateY(180deg)",
             }}
           >
+            <MatrixDotBackground rounded />
             <div
-              className="relative w-full h-[444px] rounded-[20px] overflow-hidden bg-neutral-200 shrink-0"
+              className="relative z-10 w-full h-[444px] rounded-[20px] overflow-hidden bg-neutral-200 shrink-0"
               onTouchStart={handleTouchStart}
               onTouchMove={handleTouchMove}
               onClick={(event) => event.stopPropagation()}
@@ -999,8 +1071,12 @@ const MemoryDetailModal: React.FC<{
                 referrerPolicy="no-referrer"
               />
               <div className="absolute left-[70%] top-[62%] -translate-x-1/2 -translate-y-1/2 pointer-events-none">
-                <div className="absolute left-1/2 top-1/2 w-12 h-12 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#FFB300]/40 animate-ping" />
-                <div className="absolute left-1/2 top-1/2 w-8 h-8 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#FFB300]/50 blur-[4px] animate-pulse" />
+                <img
+                  src={lightspotImage}
+                  alt=""
+                  aria-hidden="true"
+                  className="block h-[84px] w-[84px] object-contain animate-pulse"
+                />
               </div>
               <div className="absolute left-3 top-3 h-8 px-3 rounded-full bg-black/45 text-white text-[12px] font-sans font-semibold flex items-center backdrop-blur-md">
                 {locationView === "sub"
@@ -1013,7 +1089,7 @@ const MemoryDetailModal: React.FC<{
               </div>
             </div>
 
-            <LocationTextGroup className="absolute left-[42px] bottom-[36px]" textMaxWidth={146} />
+            <LocationTextGroup className="absolute left-[42px] bottom-[36px] z-10" textMaxWidth={146} />
           </div>
           </motion.div>
           </div>
@@ -1060,6 +1136,17 @@ const MemoryDetailModal: React.FC<{
           </motion.div>
         )}
       </AnimatePresence>
+
+      <MemoryConfirmModal
+        open={isDeleteConfirmOpen}
+        title={`Delete ${itemTitle || item.name}?`}
+        message="This will permanently remove this item from memory."
+        onCancel={() => setIsDeleteConfirmOpen(false)}
+        onConfirm={() => {
+          setIsDeleteConfirmOpen(false);
+          onDelete();
+        }}
+      />
     </motion.div>
   );
 };
@@ -1196,10 +1283,26 @@ export const MemoryList: React.FC<MemoryListProps> = ({
     setIsSearchOpen(false);
   };
 
+  const openMemorySearch = () => {
+    setSelectedParentSpace(null);
+    setSelectedSpaceDetail(null);
+    setIsEditingParentName(false);
+    setSearchQuery("");
+    setIsSearchOpen(true);
+    setIsMemoryKeyboardOpen(true);
+  };
+
   const openDetail = (item?: MemoryItem) => {
     if (!item) return;
     setIsMemoryKeyboardOpen(false);
     setSelectedDetailItem(item);
+  };
+
+  const deleteSelectedDetailItem = () => {
+    if (!selectedDetailItem) return;
+    const itemId = selectedDetailItem.id;
+    onMemoriesChange((currentMemories) => currentMemories.filter((item) => item.id !== itemId));
+    setSelectedDetailItem(null);
   };
 
   const openParentSpace = (space: SpaceSummary) => {
@@ -1309,9 +1412,17 @@ export const MemoryList: React.FC<MemoryListProps> = ({
       }}
       className="absolute inset-0 bg-[#E9E6E1] z-[120] flex flex-col overflow-hidden select-none"
     >
+      <img
+        src={MATRIX_DOT_IMAGE_URL}
+        alt=""
+        aria-hidden="true"
+        className="absolute inset-0 z-0 h-full w-full object-cover opacity-100 pointer-events-none select-none"
+        referrerPolicy="no-referrer"
+      />
+
       {selectedParentSpace ? (
         <div
-          className="memory-header-nav w-full pb-0 px-[20px] flex items-center justify-between bg-[#E9E6E1] shrink-0 z-50 select-none"
+          className="memory-header-nav w-full pb-0 px-[20px] flex items-center justify-between bg-transparent shrink-0 z-50 select-none"
           style={{
             height: "calc(var(--noma-statusbar-height) + 56px)",
             minHeight: "calc(var(--noma-statusbar-height) + 56px)",
@@ -1331,11 +1442,8 @@ export const MemoryList: React.FC<MemoryListProps> = ({
           </button>
 
           <button
-            onClick={() => {
-              setSelectedParentSpace(null);
-              setIsSearchOpen(true);
-              setIsMemoryKeyboardOpen(true);
-            }}
+            onPointerDown={openMemorySearch}
+            onClick={openMemorySearch}
             className="w-[22px] h-[22px] active:scale-95 flex items-center justify-center transition-all cursor-pointer border-0 outline-none bg-transparent hover:opacity-70"
             aria-label="Search memories"
           >
@@ -1354,7 +1462,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
         </div>
       ) : isSearchOpen ? (
         <div
-          className="w-full px-[16px] bg-[#E9E6E1] shrink-0 z-50 select-none"
+          className="w-full px-[16px] bg-transparent shrink-0 z-50 select-none"
           style={{
             height: "calc(var(--noma-statusbar-height) + 89px)",
             paddingTop: "calc(var(--noma-statusbar-height) + 15px)",
@@ -1365,6 +1473,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ type: "tween", duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
+              onPointerDown={() => setIsMemoryKeyboardOpen(true)}
               onClick={() => setIsMemoryKeyboardOpen(true)}
               className="flex-1 min-w-0 h-[50px] rounded-full bg-white flex items-center px-[27px] gap-[22px] cursor-text"
             >
@@ -1379,13 +1488,13 @@ export const MemoryList: React.FC<MemoryListProps> = ({
               onClick={handleCancelSearch}
               className="h-[50px] px-[1px] flex items-center justify-center text-[#232121] text-[16px] font-sans font-semibold tracking-tight active:scale-95 transition-transform cursor-pointer"
             >
-              cancel
+              Cancel
             </button>
           </div>
         </div>
       ) : (
         <div
-          className="memory-header-nav w-full pb-0 px-[20px] flex items-center justify-between bg-[#E9E6E1] shrink-0 z-50 select-none"
+          className="memory-header-nav w-full pb-0 px-[20px] flex items-center justify-between bg-transparent shrink-0 z-50 select-none"
           style={{
             height: "calc(var(--noma-statusbar-height) + 56px)",
             paddingTop: "var(--noma-statusbar-height)",
@@ -1406,10 +1515,8 @@ export const MemoryList: React.FC<MemoryListProps> = ({
           </div>
 
           <button
-            onClick={() => {
-              setIsSearchOpen(true);
-              setIsMemoryKeyboardOpen(true);
-            }}
+            onPointerDown={openMemorySearch}
+            onClick={openMemorySearch}
             className="w-[22px] h-[22px] active:scale-95 flex items-center justify-center transition-all cursor-pointer border-0 outline-none bg-transparent hover:opacity-70"
           >
               <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1429,7 +1536,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
 
       {/* Scrollable container inside device bounds (starts under fixed header) */}
       <div
-        className={`flex-1 overflow-y-auto px-[20px] no-scrollbar ${selectedParentSpace ? "pt-[12px]" : isSearchOpen ? "pt-0" : "pt-4"}`}
+        className="relative z-10 flex-1 overflow-y-auto px-[20px] pt-0 no-scrollbar"
         style={{
           paddingBottom: isMemoryKeyboardOpen
             ? "calc(225px + env(safe-area-inset-bottom, 0px))"
@@ -1445,7 +1552,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
             transition={{ type: "tween", duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
             className="px-0 select-none"
           >
-            <div className="flex items-center justify-between text-[#232121] mb-[24px]">
+            <div className="sticky top-0 z-40 -mx-[20px] flex items-center justify-between bg-[#E9E6E1]/90 px-[20px] pb-[20px] pt-[4px] text-[#232121] backdrop-blur-sm">
               <div className="flex items-center min-w-0">
                 <span className="text-[20px] mr-[8px] select-none">📍</span>
                 <span
@@ -1486,45 +1593,54 @@ export const MemoryList: React.FC<MemoryListProps> = ({
           </motion.div>
         ) : isSearchOpen ? (
           <div className="px-0 pt-0 select-none">
-            {activeTab === "items" ? (
-              itemSearchResults.length > 0 && (
-                <div className="grid grid-cols-2 gap-[8px] justify-items-start pl-[32px] pr-[12px]">
-                  {itemSearchResults.map((item) => (
-                    <MemorySearchItem key={item.id} item={item} onClick={() => openDetail(item)} />
-                  ))}
-                </div>
-              )
-            ) : (
-              (parentSpaceSearchResults.length > 0 || childSpaceSearchResults.length > 0) && (
-                <div className="flex flex-col gap-[8px]">
-                  {parentSpaceSearchResults.map((space) => (
-                    <ParentSpaceResultCard
-                      key={`parent-${space.name}`}
-                      space={space}
-                      onClick={() => openParentSpace(space)}
-                    />
-                  ))}
-                  {childSpaceSearchResults
-                    .filter(
-                      (space) =>
-                        !parentSpaceSearchResults.some((parent) => parent.name === space.parentName)
-                    )
-                    .map((space) => (
-                      <ChildSpaceResultCard
+            <div className="flex flex-col gap-[20px]">
+              {itemSearchResults.length > 0 && (
+                <section className="pb-[20px]">
+                  <h2 className="text-[18px] font-sans font-semibold leading-none text-[#232121]">Items</h2>
+                  <div className="mx-auto mt-[20px] grid w-full max-w-[352px] grid-cols-[repeat(3,100px)] justify-center gap-[26px] overflow-visible">
+                    {itemSearchResults.map((item) => (
+                      <MemorySearchItem key={item.id} item={item} size={100} onClick={() => openDetail(item)} />
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {childSpaceSearchResults.length > 0 && (
+                <section>
+                  <h2 className="text-[18px] font-sans font-semibold leading-none text-[#232121]">Sub-Spaces</h2>
+                  <div className="mt-[20px] flex flex-col gap-[8px]">
+                    {childSpaceSearchResults.map((space) => (
+                      <SubLocationListCard
                         key={`child-${space.parentName}-${space.name}`}
                         space={space}
                         onClick={() => openSpaceDetail(space)}
                       />
                     ))}
-                </div>
-              )
-            )}
+                  </div>
+                </section>
+              )}
+
+              {parentSpaceSearchResults.length > 0 && (
+                <section>
+                  <h2 className="text-[18px] font-sans font-semibold leading-none text-[#232121]">Space</h2>
+                  <div className="mt-[20px] flex flex-col gap-[8px]">
+                    {parentSpaceSearchResults.map((space) => (
+                      <ParentSpaceResultCard
+                        key={`parent-${space.name}`}
+                        space={space}
+                        onClick={() => openParentSpace(space)}
+                      />
+                    ))}
+                  </div>
+                </section>
+              )}
+            </div>
           </div>
         ) : (
         <>
         
         {/* Spaces vs Items Primary Toggle Tab Panel */}
-        <div className="flex gap-8 items-center mb-6 select-none pl-1">
+        <div className="sticky top-0 z-40 -mx-[20px] mb-5 flex h-[32px] gap-8 items-center bg-[#E9E6E1]/90 px-[21px] py-0 backdrop-blur-sm select-none">
           {/* Spaces Tab */}
           <div className="relative cursor-pointer" onClick={() => setActiveTab("spaces")}>
             <span
@@ -1571,14 +1687,14 @@ export const MemoryList: React.FC<MemoryListProps> = ({
         {/* Render Tab Contents */}
         {activeTab === "spaces" ? (
           /* Spaces: Column-based Waterfall Flow Layout */
-          <div className="flex gap-[8px] items-start select-none">
+          <div className="mt-0 flex gap-[8px] items-start select-none">
             {/* Column 1 */}
             <div className="flex-1 flex flex-col gap-[8px]">
               {col1.map((space) => (
                 <div
                   key={space.name}
                   onClick={() => openParentSpace(space)}
-                  className="bg-white rounded-[12px] p-[8px] pb-3 hover:scale-[1.02] active:scale-[0.98] transition-all flex flex-col overflow-hidden select-none"
+                  className="bg-white rounded-[12px] p-[8px] pb-3 hover:shadow-[0_4px_12px_rgba(35,33,33,0.08)] active:scale-[0.98] transition-[transform,box-shadow] flex flex-col overflow-hidden select-none"
                 >
                   {/* Space Parent Image with exact 4:5 aspect */}
                   <div className="rounded-[8px] overflow-hidden aspect-[4/5] w-full bg-neutral-100 flex-shrink-0">
@@ -1633,7 +1749,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
                 <div
                   key={space.name}
                   onClick={() => openParentSpace(space)}
-                  className="bg-white rounded-[12px] p-[8px] pb-3 hover:scale-[1.02] active:scale-[0.98] transition-all flex flex-col overflow-hidden select-none"
+                  className="bg-white rounded-[12px] p-[8px] pb-3 hover:shadow-[0_4px_12px_rgba(35,33,33,0.08)] active:scale-[0.98] transition-[transform,box-shadow] flex flex-col overflow-hidden select-none"
                 >
                   {/* Space Parent Image with exact 4:5 aspect */}
                   <div className="rounded-[8px] overflow-hidden aspect-[4/5] w-full bg-neutral-100 flex-shrink-0">
@@ -1687,14 +1803,14 @@ export const MemoryList: React.FC<MemoryListProps> = ({
           <div className="flex flex-col select-none">
             
             {/* Secondary category horizontal slider */}
-            <div className="flex gap-2 items-center overflow-x-auto no-scrollbar pb-4 select-none">
+            <div className="-ml-[20px] -mr-[20px] flex h-[30px] gap-2 items-center overflow-x-auto no-scrollbar pl-[20px] pr-[20px] pb-0 select-none">
               {itemsCategories.map((cat) => {
                 const isActive = activeCategory === cat;
                 return (
                   <button
                     key={cat}
                     onClick={() => setActiveCategory(cat)}
-                    className={`px-4 py-2 text-[12px] font-sans font-bold rounded-full transition-all shrink-0 cursor-pointer border-0 outline-none ${
+                    className={`h-[30px] px-4 py-0 text-[12px] font-sans font-bold rounded-full transition-all shrink-0 cursor-pointer border-0 outline-none ${
                       isActive
                         ? "bg-white text-black"
                         : "bg-white/40 text-neutral-500"
@@ -1712,48 +1828,20 @@ export const MemoryList: React.FC<MemoryListProps> = ({
                 No items found in this category.
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-x-4 gap-y-8 mt-4 select-none">
+              <div className="mx-auto mt-[44px] grid w-[310px] max-w-full grid-cols-[120px_120px] gap-x-[70px] gap-y-[32px] select-none">
                 {filteredItems.map((item) => (
                   <div
                     key={item.id}
                     onClick={() => openDetail(item)}
                     className="relative flex flex-col items-center justify-center overflow-visible select-none h-[160px] cursor-pointer hover:scale-105 active:scale-95 transition-all"
                   >
+                    <div className="absolute left-0 top-0 z-30 max-w-[calc(100%-8px)] truncate text-[14px] font-sans font-semibold leading-none tracking-tight text-[#232121]">
+                      📍 {item.parentLocationName || "Bedroom"}
+                    </div>
+
                     {/* Sticker Display Area - transparent background, centered */}
-                    <div className="relative w-full h-full flex items-center justify-center select-none overflow-visible">
-                      {/* Decorative Soft Yellow Gaussian Glow underlay (delicate, matching the design) */}
-                      <div className="absolute w-[80px] h-[80px] rounded-full bg-[#FFB300] blur-[24px] opacity-25 pointer-events-none z-0" />
-
-                      {/* Cutout sticker element wrapper */}
-                      <div className="relative rotate-[-1.5deg] flex flex-col items-center justify-center w-[120px] h-[120px] overflow-visible">
-                        {item.stickerUrl ? (
-                          <img
-                            src={item.stickerUrl}
-                            alt={item.name}
-                            className="w-full h-full object-contain block select-none"
-                            referrerPolicy="no-referrer"
-                          />
-                        ) : (
-                          <div className="w-[120px] h-[120px] flex items-center justify-center overflow-visible text-[64px] select-none">
-                            {item.emoji || "📦"}
-                          </div>
-                        )}
-
-                        {/* Hand-drawn Alkatra font styled title label overlapping slightly at bottom */}
-                        <div
-                          className="absolute bottom-[-10px] left-[-30px] right-[-30px] text-center font-alkatra z-20 pointer-events-none select-none"
-                          style={{
-                            fontSize: "24px",
-                            fontWeight: "700",
-                            color: "#000000",
-                            WebkitTextStroke: "3.5px #ffffff",
-                            paintOrder: "stroke fill",
-                            lineHeight: "1.1",
-                          }}
-                        >
-                          {item.name}
-                        </div>
-                      </div>
+                    <div className="relative w-full h-full flex items-center justify-start select-none overflow-visible">
+                      <ItemSticker item={item} size={120} alignLeft />
                     </div>
                   </div>
                 ))}
@@ -1771,6 +1859,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
           <MemoryDetailModal
             item={selectedDetailItem}
             onClose={() => setSelectedDetailItem(null)}
+            onDelete={deleteSelectedDetailItem}
           />
         )}
       </AnimatePresence>

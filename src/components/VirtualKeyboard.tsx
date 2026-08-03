@@ -256,9 +256,9 @@ export const VirtualKeyboard: React.FC<VirtualKeyboardProps> = ({
       "{bksp}": "⌫",
       "{numbers}": "123",
       "{lang}": language === "en" ? "中" : "EN",
-      "{space}": language === "en" ? "space" : "空格",
+      "{space}": language === "en" ? "Space" : "空格",
       "{hide}": "⌄",
-      "{send}": sendLabel ?? (mode === "numeric" ? "Done" : "send"),
+      "{send}": sendLabel ?? (mode === "numeric" ? "Done" : "Send"),
     }),
     [language, mode, sendLabel]
   );

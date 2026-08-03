@@ -1,6 +1,6 @@
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect, useLayoutEffect } from "react";
 import { motion } from "motion/react";
-import { NomaSprite } from "./NomaSprite";
+import { PagNomaSprite } from "./PagNomaSprite";
 
 interface VirtualStageProps {
   isChatActive: boolean;
@@ -21,18 +21,25 @@ export const VirtualStage: React.FC<VirtualStageProps> = ({
   const [bgNaturalHeight, setBgNaturalHeight] = useState<number>(1376);
   const [nomaNaturalWidth, setNomaNaturalWidth] = useState<number>(422);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!stageRef.current) return;
     const parent = stageRef.current.parentElement;
     if (!parent) return;
+
+    const updateDimensions = (width: number, height: number) => {
+      if (width <= 0 || height <= 0) return;
+      setParentDimensions((current) =>
+        current.width === width && current.height === height
+          ? current
+          : { width, height },
+      );
+    };
 
     // Monitor parent's size dynamically to adapt on any window resizing/responsive states
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
-        if (width > 0 && height > 0) {
-          setParentDimensions({ width, height });
-        }
+        updateDimensions(width, height);
       }
     });
 
@@ -40,9 +47,7 @@ export const VirtualStage: React.FC<VirtualStageProps> = ({
     
     // Initial measurement
     const rect = parent.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) {
-      setParentDimensions({ width: rect.width, height: rect.height });
-    }
+    updateDimensions(rect.width, rect.height);
 
     return () => observer.disconnect();
   }, []);
@@ -183,7 +188,7 @@ export const VirtualStage: React.FC<VirtualStageProps> = ({
           transformOrigin: "left bottom",
         }}
       >
-        <NomaSprite pose={isChatActive ? "chatting" : "reading"} />
+        <PagNomaSprite pose={isChatActive ? "chatting" : "reading"} />
       </div>
     </motion.div>
   );
