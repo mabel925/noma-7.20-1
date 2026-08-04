@@ -7,6 +7,7 @@ import { ChatFlow } from "./components/ChatFlow";
 import { VirtualKeyboard } from "./components/VirtualKeyboard";
 import { CaptureScanner } from "./components/CaptureScanner";
 import { useKeyboardReset } from "./hooks/useKeyboardReset";
+import { memoryStorage } from "./services/memoryStorage";
 
 import { Wifi, Battery, Signal, RefreshCw, Sparkles, X, Target, Info } from "lucide-react";
 import { motion, AnimatePresence, useAnimation } from "motion/react";
@@ -17,26 +18,6 @@ interface ChatMessage {
 }
 
 import { MemoryList, MemoryItem } from "./components/MemoryList";
-
-const INLINE_ASSET_PERSIST_LIMIT = 240_000;
-
-const trimLargeInlineAssetForStorage = (value?: string) => {
-  if (!value || !value.startsWith("data:") || value.length <= INLINE_ASSET_PERSIST_LIMIT) {
-    return value;
-  }
-  return undefined;
-};
-
-const createPersistableMemories = (memories: MemoryItem[], trimInlineAssets = false): MemoryItem[] =>
-  memories.slice(0, 80).map((memory) => {
-    if (!trimInlineAssets) return memory;
-    return {
-      ...memory,
-      stickerUrl: trimLargeInlineAssetForStorage(memory.stickerUrl),
-      parentLocationImg: memory.parentLocationImg,
-      subLocationImg: memory.subLocationImg,
-    };
-  });
 
 const DEFAULT_MEMORIES: MemoryItem[] = [
   {
@@ -237,34 +218,42 @@ export default function App() {
 
   // Call the global aggressive keyboard reset logic
   useKeyboardReset(isChatActive, isCaptureOpen);
-  const [customMemories, setCustomMemories] = useState<MemoryItem[]>(() => {
-    try {
-      const saved = localStorage.getItem("noma_custom_memories");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          return parsed;
-        }
-      }
-    } catch (e) {
-      console.error("[App] Error parsing noma_custom_memories:", e);
-    }
-    return []; // No default memories (no hardcoded placeholder/fake data)
-  });
+  const [customMemories, setCustomMemories] = useState<MemoryItem[]>([]);
+  const [isMemoryHydrated, setIsMemoryHydrated] = useState(false);
 
-  // Sync customMemories to localStorage whenever it changes
+  // Load local memories through the storage boundary. The service migrates the
+  // legacy localStorage payload into IndexedDB on the first read.
   useEffect(() => {
-    try {
-      localStorage.setItem("noma_custom_memories", JSON.stringify(createPersistableMemories(customMemories)));
-    } catch (err) {
-      console.warn("[App] Failed to persist full memories; retrying with compact image payloads.", err);
-      try {
-        localStorage.setItem("noma_custom_memories", JSON.stringify(createPersistableMemories(customMemories, true)));
-      } catch (compactErr) {
-        console.error("[App] Failed to persist compact memories. Keeping current session state only.", compactErr);
-      }
-    }
-  }, [customMemories]);
+    let cancelled = false;
+
+    memoryStorage
+      .listItems()
+      .then((items) => {
+        if (cancelled) return;
+        setCustomMemories(items);
+        setIsMemoryHydrated(true);
+      })
+      .catch((error) => {
+        console.error("[App] Failed to load local memories:", error);
+        if (!cancelled) {
+          setIsMemoryHydrated(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Persist changes through IndexedDB without allowing the initial empty state
+  // to overwrite data before hydration completes.
+  useEffect(() => {
+    if (!isMemoryHydrated) return;
+
+    memoryStorage.saveItems(customMemories).catch((error) => {
+      console.error("[App] Failed to persist local memories:", error);
+    });
+  }, [customMemories, isMemoryHydrated]);
   const [toast, setToast] = useState<string | null>(null);
   const [currentInfoObj, setCurrentInfoObj] = useState<string | null>(null);
 
@@ -585,13 +574,11 @@ export default function App() {
     let newItem: MemoryItem;
 
     if (typeof nameOrItem === "object") {
-      newItem = {
+      newItem = memoryStorage.createItem({
         ...nameOrItem,
-        id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      };
+      });
     } else {
-      newItem = {
-        id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      newItem = memoryStorage.createItem({
         name: nameOrItem,
         category: "其它",
         price: price || "$25.00",
@@ -599,7 +586,7 @@ export default function App() {
         emoji: emoji || "📝",
         parentLocationName: "Bedroom",
         subLocationName: "Drawer",
-      };
+      });
     }
 
     setCustomMemories((prev) => [newItem, ...prev]);
