@@ -2,11 +2,11 @@ import React, { useState } from "react";
 import { ChevronsUpDown, Search, X } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { VirtualKeyboard } from "./VirtualKeyboard";
-import lightspotImage from "../assets/images/lightspot.png";
 import { getStickerTitleStyle } from "./StickerTitle";
 
 const COLOR_BLUR_IMAGE_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/colorblur.png";
 const MATRIX_DOT_IMAGE_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/%E7%9F%A9%E9%98%B5%E5%9C%86%E7%82%B9.png";
+const LIGHTSPOT_IMAGE_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/lightspot.png";
 const DETAIL_CATEGORIES = ["Electronics", "Apparel", "Docs", "Housewares", "Others"];
 export interface MemoryItem {
   id: string;
@@ -74,6 +74,38 @@ const MatrixDotBackground: React.FC<{ rounded?: boolean }> = ({ rounded = false 
     className={`absolute inset-0 z-0 h-full w-full object-cover pointer-events-none select-none ${rounded ? "rounded-[24px]" : ""}`}
     referrerPolicy="no-referrer"
   />
+);
+
+const MemorySelectedTabLine = () => (
+  <motion.svg
+    layoutId="tabSelectedUnderline"
+    width="62"
+    height="17"
+    viewBox="0 0 62 17"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    className="absolute bottom-[-5px] left-1/2 z-0 h-[17px] w-[62px] -translate-x-1/2 pointer-events-none select-none"
+    transition={{ type: "spring", stiffness: 300, damping: 30 }}
+  >
+    <path
+      d="M31.1671 2.45151C32.3027 2.27348 33.4401 2.76032 34.0958 3.70444C34.7514 4.64862 34.8097 5.88422 34.2462 6.88608L33.0323 9.04233L57.0841 2.51987C58.6832 2.08621 60.3311 3.03113 60.7647 4.63022C61.1984 6.22932 60.2535 7.87723 58.6544 8.31089L27.6944 16.7074C26.5277 17.0238 25.2848 16.6085 24.5421 15.6546C23.7994 14.7009 23.7016 13.3948 24.294 12.3412L25.9825 9.33823L5.33408 12.5775C3.69728 12.8342 2.16214 11.7153 1.90537 10.0785C1.64866 8.44167 2.76759 6.90652 4.4044 6.64976L31.1671 2.45151Z"
+      fill="url(#memory-tab-selected-line-gradient)"
+    />
+    <defs>
+      <linearGradient
+        id="memory-tab-selected-line-gradient"
+        x1="57.98"
+        y1="2.79004"
+        x2="49.5873"
+        y2="25.5213"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop stopColor="#E9B4F5" />
+        <stop offset="0.487511" stopColor="#FEC7A7" />
+        <stop offset="1" stopColor="#A1EBD8" />
+      </linearGradient>
+    </defs>
+  </motion.svg>
 );
 
 const useDetailModalScale = () => {
@@ -638,7 +670,7 @@ const SpaceDetailModal: React.FC<{
               )}
               <div className="absolute left-[70%] top-[62%] -translate-x-1/2 -translate-y-1/2 pointer-events-none">
                 <img
-                  src={lightspotImage}
+                  src={LIGHTSPOT_IMAGE_URL}
                   alt=""
                   aria-hidden="true"
                   className="block h-[84px] w-[84px] object-contain animate-pulse"
@@ -1072,7 +1104,7 @@ const MemoryDetailModal: React.FC<{
               />
               <div className="absolute left-[70%] top-[62%] -translate-x-1/2 -translate-y-1/2 pointer-events-none">
                 <img
-                  src={lightspotImage}
+                  src={LIGHTSPOT_IMAGE_URL}
                   alt=""
                   aria-hidden="true"
                   className="block h-[84px] w-[84px] object-contain animate-pulse"
@@ -1651,14 +1683,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
               Spaces
             </span>
             {activeTab === "spaces" && (
-              <motion.img
-                layoutId="tabSelectedUnderline"
-                src="https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/selected-line.png"
-                alt="Selected"
-                className="absolute left-1/2 -translate-x-1/2 bottom-[-5px] w-[62px] h-[17px] object-contain pointer-events-none select-none z-0"
-                transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                referrerPolicy="no-referrer"
-              />
+              <MemorySelectedTabLine />
             )}
           </div>
 
@@ -1672,14 +1697,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
               Items
             </span>
             {activeTab === "items" && (
-              <motion.img
-                layoutId="tabSelectedUnderline"
-                src="https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/selected-line.png"
-                alt="Selected"
-                className="absolute left-1/2 -translate-x-1/2 bottom-[-5px] w-[62px] h-[17px] object-contain pointer-events-none select-none z-0"
-                transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                referrerPolicy="no-referrer"
-              />
+              <MemorySelectedTabLine />
             )}
           </div>
         </div>

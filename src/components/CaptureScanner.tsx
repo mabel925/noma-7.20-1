@@ -7,7 +7,6 @@ import { motion, AnimatePresence } from "motion/react";
 import { useKeyboardReset } from "../hooks/useKeyboardReset";
 import { useLayoutGuard } from "../hooks/useLayoutGuard";
 import { VirtualKeyboard } from "./VirtualKeyboard";
-import lightspotImage from "../assets/images/lightspot.png";
 import {
   getStickerTitleStyle,
   STICKER_BASE_SIZE,
@@ -15,6 +14,7 @@ import {
   STICKER_TITLE_STROKE,
 } from "./StickerTitle";
 
+const LIGHTSPOT_IMAGE_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/lightspot.png";
 const PRICE_CURRENCIES = ["$", "€", "£", "¥", "₩"] as const;
 
 interface CaptureScannerProps {
@@ -3592,7 +3592,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                       >
                         {/* Instant, gorgeous CSS spotlight ripple & glow */}
                         <img
-                          src={lightspotImage}
+                          src={LIGHTSPOT_IMAGE_URL}
                           alt=""
                           aria-hidden="true"
                           className="block h-[84px] w-[84px] object-contain animate-pulse"
