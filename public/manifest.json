@@ -4,13 +4,13 @@
   "description": "Smart storage and home organization powered by AI vision and background removal",
   "icons": [
     {
-      "src": "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/logo-noma.png",
-      "sizes": "512x512",
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/noma.png",
+      "src": "/icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"

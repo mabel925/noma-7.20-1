@@ -1,13 +1,26 @@
 import React, { useState } from "react";
-import { ChevronsUpDown, Search, X } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { VirtualKeyboard } from "./VirtualKeyboard";
 import { getStickerTitleStyle } from "./StickerTitle";
+import { TagSwitchIcon } from "./TagSwitchIcon";
+import { EditPencilIcon } from "./EditPencilIcon";
 
 const COLOR_BLUR_IMAGE_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/colorblur.png";
 const MATRIX_DOT_IMAGE_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/%E7%9F%A9%E9%98%B5%E5%9C%86%E7%82%B9.png";
 const LIGHTSPOT_IMAGE_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/lightspot.png";
 const DETAIL_CATEGORIES = ["Electronics", "Apparel", "Docs", "Housewares", "Others"];
+
+const preloadColorBlurImage = () => {
+  if (typeof window === "undefined") return;
+  const image = new Image();
+  image.decoding = "async";
+  image.referrerPolicy = "no-referrer";
+  image.src = COLOR_BLUR_IMAGE_URL;
+  image.decode?.().catch(() => undefined);
+};
+
+preloadColorBlurImage();
 export interface MemoryItem {
   id: string;
   name: string;
@@ -413,12 +426,6 @@ const StaticLocationTextGroup: React.FC<{
   </div>
 );
 
-const EditActionIcon: React.FC = () => (
-  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-    <path d="M4.54301 13.2234C4.57813 13.2234 4.61325 13.2199 4.64837 13.2146L7.60213 12.6966C7.63725 12.6895 7.67062 12.6737 7.6952 12.6474L15.1393 5.2033C15.2078 5.13481 15.2078 5.02418 15.1393 4.95569L12.2207 2.0353C12.1873 2.00194 12.1434 1.98438 12.096 1.98438C12.0486 1.98438 12.0047 2.00194 11.9713 2.0353L4.5272 9.4794C4.50086 9.50574 4.48506 9.53735 4.47803 9.57247L3.95998 12.5262C3.92662 12.7212 3.98633 12.9108 4.12506 13.0495C4.24096 13.1619 4.38672 13.2234 4.54301 13.2234ZM5.72662 10.1608L12.096 3.79316L13.3832 5.08037L7.01384 11.448L5.45267 11.7237L5.72662 10.1608ZM15.4712 14.6985H2.54633C2.2355 14.6985 1.98438 14.9496 1.98438 15.2605V15.8927C1.98438 15.9699 2.04759 16.0332 2.12486 16.0332H15.8927C15.9699 16.0332 16.0332 15.9699 16.0332 15.8927V15.2605C16.0332 14.9496 15.782 14.6985 15.4712 14.6985Z" fill="#232121" fillOpacity="0.5" />
-  </svg>
-);
-
 const DeleteActionIcon: React.FC = () => (
   <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
     <path d="M16.2193 4.40684H12.9375V3.75117C12.9375 2.30098 11.7615 1.125 10.3131 1.125H7.68691C6.23848 1.125 5.0625 2.30098 5.0625 3.74941V4.40508H1.78066C1.41855 4.40684 1.125 4.70039 1.125 5.0625C1.125 5.42461 1.41855 5.71816 1.78066 5.71816H3.09375V14.2488C3.09375 15.699 4.26973 16.8732 5.71816 16.8732H12.2801C13.7303 16.8732 14.9045 15.6973 14.9045 14.2488V5.71816H16.2176C16.5797 5.71816 16.8732 5.42461 16.8732 5.0625C16.875 4.70039 16.5814 4.40684 16.2193 4.40684ZM6.37559 3.74941C6.37559 3.0252 6.96269 2.43633 7.68867 2.43633H10.3131C11.0373 2.43633 11.6262 3.02344 11.6262 3.74941V4.40508H6.37559V3.74941ZM13.5932 14.2506C13.5932 14.9748 13.0061 15.5637 12.2801 15.5637H5.71816C4.99394 15.5637 4.40508 14.9766 4.40508 14.2506V5.71816H13.5932V14.2506Z" fill="#232121" fillOpacity="0.5" />
@@ -623,7 +630,7 @@ const SpaceDetailModal: React.FC<{
                   label={isEditingItems ? "Finish selecting items" : "Edit items"}
                   onClick={handleEdit}
                 >
-                  <EditActionIcon />
+                  <EditPencilIcon />
                 </MemoryActionButton>
               )}
               <MemoryActionButton
@@ -668,14 +675,6 @@ const SpaceDetailModal: React.FC<{
               ) : (
                 <div className="w-full h-full bg-[#DDDAD5]" aria-label="Sub-location photo unavailable" />
               )}
-              <div className="absolute left-[70%] top-[62%] -translate-x-1/2 -translate-y-1/2 pointer-events-none">
-                <img
-                  src={LIGHTSPOT_IMAGE_URL}
-                  alt=""
-                  aria-hidden="true"
-                  className="block h-[84px] w-[84px] object-contain animate-pulse"
-                />
-              </div>
             </div>
 
             <StaticLocationTextGroup
@@ -1018,6 +1017,8 @@ const MemoryDetailModal: React.FC<{
                   alt=""
                   aria-hidden="true"
                   className="block h-full w-full object-contain"
+                  loading="eager"
+                  decoding="sync"
                   referrerPolicy="no-referrer"
                 />
               </div>
@@ -1063,7 +1064,7 @@ const MemoryDetailModal: React.FC<{
               </AnimatePresence>
               <button
                 type="button"
-                className="h-[30px] px-5 rounded-full bg-white flex items-center justify-center gap-1.5 active:scale-95 transition-transform"
+                className="h-[30px] pl-5 pr-2 rounded-full bg-white flex items-center justify-center gap-1.5 active:scale-95 transition-transform"
                 onClick={(event) => {
                   event.stopPropagation();
                   setIsCategorySelectorOpen((current) => !current);
@@ -1072,7 +1073,7 @@ const MemoryDetailModal: React.FC<{
                 <span className="text-[14px] font-sans font-normal text-black/45 tracking-tight leading-none">
                   {selectedCategory || "Other"}
                 </span>
-                <ChevronsUpDown className="w-3.5 h-3.5 text-black/35" />
+                <TagSwitchIcon />
               </button>
               <div className="text-[14px] font-sans font-normal text-[#8B8780] tracking-tight">
                 Built {item.date || "Today"}
@@ -1599,7 +1600,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
               </div>
               <div className="flex items-center gap-[8px] shrink-0">
                 <MemoryActionButton label="Edit parent location" onClick={(event) => { event.stopPropagation(); startParentEdit(); }}>
-                  <EditActionIcon />
+                  <EditPencilIcon />
                 </MemoryActionButton>
                 <MemoryActionButton label="Delete parent location" onClick={(event) => { event.stopPropagation(); deleteParentSpace(); }}>
                   <DeleteActionIcon />
@@ -1672,7 +1673,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
         <>
         
         {/* Spaces vs Items Primary Toggle Tab Panel */}
-        <div className="sticky top-0 z-40 -mx-[20px] mb-5 flex h-[32px] gap-8 items-center bg-[#E9E6E1]/90 px-[21px] py-0 backdrop-blur-sm select-none">
+        <div className="sticky top-0 z-40 -mx-[20px] mb-5 flex h-[32px] gap-8 items-center px-[21px] py-0 select-none">
           {/* Spaces Tab */}
           <div className="relative cursor-pointer" onClick={() => setActiveTab("spaces")}>
             <span

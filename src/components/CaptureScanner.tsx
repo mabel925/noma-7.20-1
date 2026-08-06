@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
-import { X, Camera, Check, Image as ImageIcon, RotateCcw, Pencil, ChevronsUpDown } from "lucide-react";
+import { X, Camera, Check, Image as ImageIcon, RotateCcw } from "lucide-react";
 import { recognizeImage, generateStorageTitle, classifyLocation, prepareImage } from "../services/aiService";
 import { remove_background, REMOVE_BG_CONFIG } from "../services/removeBackgroundService";
 import { motion, AnimatePresence } from "motion/react";
 import { useKeyboardReset } from "../hooks/useKeyboardReset";
 import { useLayoutGuard } from "../hooks/useLayoutGuard";
 import { VirtualKeyboard } from "./VirtualKeyboard";
+import { TagSwitchIcon } from "./TagSwitchIcon";
+import { EditPencilIcon } from "./EditPencilIcon";
 import {
   getStickerTitleStyle,
   STICKER_BASE_SIZE,
@@ -16,6 +18,7 @@ import {
 
 const LIGHTSPOT_IMAGE_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/lightspot.png";
 const PRICE_CURRENCIES = ["$", "€", "£", "¥", "₩"] as const;
+const COLOR_BLUR_SIZE = "min(100vw, 512px)";
 
 interface CaptureScannerProps {
   isOpen: boolean;
@@ -57,6 +60,38 @@ type ExistingParentLocationOption = {
   imgUrl: string;
   itemCount: number;
 };
+
+type ResultLocationField = "parent" | "sub";
+type ResultLocationDraft = {
+  name: string;
+  imgUrl: string;
+  parentName?: string;
+  parentImgUrl?: string;
+};
+
+const SelectorSelectedIcon: React.FC<{ selected?: boolean }> = ({ selected = true }) => (
+  <svg
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    aria-hidden="true"
+    focusable="false"
+    className="h-6 w-6 shrink-0"
+  >
+    <rect width="24" height="24" rx="12" fill={selected ? "#FFBA7B" : "rgba(255,255,255,0.5)"} />
+    {selected && (
+      <path
+        d="M8 12.1739L10.7931 16L17 8"
+        stroke="#232121"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    )}
+  </svg>
+);
 
 // Pre-defined cozy item options that fit Noma's room
 interface PredefinedItem {
@@ -189,6 +224,10 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const [selectedExistingParentKey, setSelectedExistingParentKey] = useState<string | null>(null);
   const [isUsingExistingSubLocation, setIsUsingExistingSubLocation] = useState<boolean>(false);
   const [isUsingExistingParentLocation, setIsUsingExistingParentLocation] = useState<boolean>(false);
+  const [newSubLocationDraft, setNewSubLocationDraft] = useState<ResultLocationDraft | null>(null);
+  const [newParentLocationDraft, setNewParentLocationDraft] = useState<ResultLocationDraft | null>(null);
+  const [resultLocationPicker, setResultLocationPicker] = useState<ResultLocationField | null>(null);
+  const [editingResultLocationField, setEditingResultLocationField] = useState<ResultLocationField | null>(null);
   const [expandedExistingLocationPicker, setExpandedExistingLocationPicker] = useState<"sub" | "parent" | null>(null);
   const [frontLocationBubbleWidth, setFrontLocationBubbleWidth] = useState<number>(220);
   const storageScanCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -1450,6 +1489,10 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       setSelectedExistingParentKey(null);
       setIsUsingExistingSubLocation(false);
       setIsUsingExistingParentLocation(false);
+      setNewSubLocationDraft(null);
+      setNewParentLocationDraft(null);
+      setResultLocationPicker(null);
+      setEditingResultLocationField(null);
       setExpandedExistingLocationPicker(null);
     }
   }, [isOpen]);
@@ -1496,6 +1539,38 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       setCustomCategory(getLocalizedCategory(tempIdentifiedCategory));
     }
   }, [tempIdentifiedCategory]);
+
+  useEffect(() => {
+    if (isUsingExistingSubLocation) return;
+    if (!subLocationImg && !subLocationName.trim()) {
+      setNewSubLocationDraft(null);
+      return;
+    }
+    setNewSubLocationDraft({
+      name: subLocationName,
+      imgUrl: subLocationImg || FALLBACK_LOCATION_IMAGE_URL,
+      parentName: parentLocationName,
+      parentImgUrl: parentLocationImg || undefined,
+    });
+  }, [
+    isUsingExistingSubLocation,
+    parentLocationImg,
+    parentLocationName,
+    subLocationImg,
+    subLocationName,
+  ]);
+
+  useEffect(() => {
+    if (isUsingExistingParentLocation) return;
+    if (!parentLocationImg && !parentLocationName.trim()) {
+      setNewParentLocationDraft(null);
+      return;
+    }
+    setNewParentLocationDraft({
+      name: parentLocationName,
+      imgUrl: parentLocationImg || FALLBACK_LOCATION_IMAGE_URL,
+    });
+  }, [isUsingExistingParentLocation, parentLocationImg, parentLocationName]);
 
   // Hook to trigger smoothly timed CSS scaling during disintegration state
   useEffect(() => {
@@ -2354,6 +2429,255 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     setStorageFlowStep("final_result");
   };
 
+  const isResultLocationExisting = (field: ResultLocationField) =>
+    field === "parent" ? isUsingExistingParentLocation : isUsingExistingSubLocation;
+
+  const openResultLocationPicker = (field: ResultLocationField) => {
+    setEditingResultLocationField(null);
+    setIsEditingPrice(false);
+    setResultLocationPicker(field);
+  };
+
+  const startResultLocationEditing = (field: ResultLocationField) => {
+    if (isResultLocationExisting(field)) return;
+    setResultLocationPicker(null);
+    setEditingResultLocationField(field);
+  };
+
+  const closeResultLocationEditor = () => {
+    setEditingResultLocationField(null);
+  };
+
+  const handleResultLocationChange = (value: string) => {
+    if (!editingResultLocationField) return;
+    if (editingResultLocationField === "parent") {
+      setParentLocationName(value);
+    } else {
+      setSubLocationName(value);
+    }
+  };
+
+  const chooseResultLocation = (
+    field: ResultLocationField,
+    option:
+      | { type: "new"; draft: ResultLocationDraft }
+      | { type: "existing"; option: ExistingSubLocationOption | ExistingParentLocationOption }
+  ) => {
+    if (option.type === "new") {
+      if (field === "sub") {
+        setSubLocationName(option.draft.name);
+        setSubLocationImg(option.draft.imgUrl);
+        setIsUsingExistingSubLocation(false);
+        setSelectedExistingSubKey(null);
+      } else {
+        setParentLocationName(option.draft.name);
+        setParentLocationImg(option.draft.imgUrl);
+        setIsUsingExistingParentLocation(false);
+        setSelectedExistingParentKey(null);
+      }
+      setResultLocationPicker(null);
+      return;
+    }
+
+    if (field === "sub") {
+      const location = option.option as ExistingSubLocationOption;
+      setSubLocationName(location.name);
+      setSubLocationImg(location.imgUrl);
+      setSubLocationHighlight(null);
+      setIsUsingExistingSubLocation(true);
+      setSelectedExistingSubKey(location.key);
+      setParentLocationName(location.parentName);
+      setParentLocationImg(location.parentImgUrl || FALLBACK_LOCATION_IMAGE_URL);
+      setIsUsingExistingParentLocation(true);
+      const matchingParent = existingParentLocations.find((parent) => parent.name === location.parentName);
+      setSelectedExistingParentKey(matchingParent?.key || location.parentName);
+    } else {
+      const location = option.option as ExistingParentLocationOption;
+      setParentLocationName(location.name);
+      setParentLocationImg(location.imgUrl);
+      setIsUsingExistingParentLocation(true);
+      setSelectedExistingParentKey(location.key);
+    }
+
+    setResultLocationPicker(null);
+  };
+
+  const renderResultLocationRow = ({
+    field,
+    name,
+    label,
+  }: {
+    field: ResultLocationField;
+    name: string;
+    label: string;
+  }) => {
+    const isExisting = isResultLocationExisting(field);
+    const isEditing = editingResultLocationField === field;
+    return (
+      <div className="flex min-w-0 items-center gap-1.5">
+        <button
+          type="button"
+          onClick={isExisting ? undefined : () => startResultLocationEditing(field)}
+          className={`min-w-0 max-w-full bg-transparent p-0 text-left font-sans tracking-tight ${
+            field === "parent"
+              ? "text-[22px] font-extrabold"
+              : "text-[18px] font-medium"
+          } ${isExisting ? "cursor-default" : "cursor-text"}`}
+          aria-label={isExisting ? label : `Edit ${label}`}
+        >
+          <span className={`inline-flex max-w-full items-center ${isExisting ? "" : "border-b border-[#E9E6E1]"}`}>
+            <span className="truncate">{name || label}</span>
+            {isEditing && (
+              <span className="ml-[2px] inline-block h-[21px] w-[2px] shrink-0 bg-[#232121] align-[-3px] animate-cursor-blink-black" />
+            )}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            openResultLocationPicker(field);
+          }}
+          className="flex h-[24px] w-[24px] shrink-0 items-center justify-center rounded-full active:scale-95"
+          aria-label={`Switch ${label}`}
+          title={`Switch ${label}`}
+        >
+          <TagSwitchIcon />
+        </button>
+      </div>
+    );
+  };
+
+  const renderResultLocationPicker = () => {
+    if (!resultLocationPicker) return null;
+
+    const field = resultLocationPicker;
+    const newDraft = field === "parent" ? newParentLocationDraft : newSubLocationDraft;
+    const existingOptions = field === "parent" ? existingParentLocations : existingSubLocations;
+    const selectedKey = field === "parent" ? selectedExistingParentKey : selectedExistingSubKey;
+    const title = field === "parent" ? "Space" : "Sub-Space";
+    const listTitle = "Existing Space";
+    const newSpaceTitle = "New";
+
+    return (
+      <AnimatePresence>
+        <motion.div
+          key={`result-location-picker-${field}`}
+          className="absolute inset-0 z-[110] flex items-end justify-center bg-black/20 px-[15px] pb-8 backdrop-blur-[5px]"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={() => setResultLocationPicker(null)}
+        >
+          <motion.div
+            className="max-h-[78%] w-full max-w-[382px] overflow-hidden rounded-[30px] bg-[#F4F1EB] p-4 shadow-[0_24px_60px_rgba(0,0,0,0.22)]"
+            initial={{ y: 24, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 24, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 280, damping: 26 }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-[20px] font-sans font-bold tracking-tight text-[#232121]">{title}</h3>
+              <button
+                type="button"
+                onClick={() => setResultLocationPicker(null)}
+                className="flex h-8 w-8 items-center justify-center rounded-full text-[#232121]/55 active:scale-95"
+                aria-label="Close space picker"
+              >
+                <X className="h-[18px] w-[18px]" />
+              </button>
+            </div>
+
+            {newDraft && (
+              <div className="mb-3">
+                <button
+                  type="button"
+                  onClick={() => chooseResultLocation(field, { type: "new", draft: newDraft })}
+                  className="flex h-[80px] w-full items-center gap-3 rounded-[16px] px-3 py-2 text-left active:scale-[0.99]"
+                  style={{
+                    backgroundColor: "rgba(204, 196, 191, 0.2)",
+                    border: "2.5px dashed rgb(204, 196, 189)",
+                    boxSizing: "border-box",
+                  }}
+                >
+                  <img
+                    src={newDraft.imgUrl}
+                    alt={newDraft.name || newSpaceTitle}
+                    className="h-[60px] w-[60px] shrink-0 rounded-[12px] border-[3px] border-white object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span
+                      className="inline-flex h-[18px] max-w-full items-center rounded-[6px] px-1.5 text-[12px] font-sans font-normal leading-none text-[#232121]/60"
+                      style={{
+                        background:
+                          "linear-gradient(to bottom left, rgb(245, 181, 217) 0%, rgb(255, 199, 166) 66%, rgb(161, 235, 217) 100%)",
+                      }}
+                    >
+                      {newSpaceTitle}
+                    </span>
+                    <span className="mt-1 block truncate text-[16px] font-sans font-semibold text-[#232121]">
+                      {newDraft.name || "Untitled Space"}
+                    </span>
+                  </span>
+                  <SelectorSelectedIcon selected={!isResultLocationExisting(field)} />
+                </button>
+              </div>
+            )}
+
+            <div className="max-h-[calc(78vh-170px)] space-y-2 overflow-y-auto no-scrollbar">
+              {existingOptions.length > 0 && (
+                <div className="pt-2">
+                  <div className="mb-2 px-1 text-[14px] font-sans font-normal tracking-tight text-[#232121]/50">
+                    {listTitle}
+                  </div>
+                  <div className="space-y-2">
+                    {existingOptions.map((option) => {
+                      const isSelected = selectedKey === option.key && isResultLocationExisting(field);
+                      return (
+                        <button
+                          type="button"
+                          key={option.key}
+                          onClick={() => chooseResultLocation(field, { type: "existing", option })}
+                          className={`flex w-full items-center gap-3 rounded-[18px] border border-transparent px-3 py-2 text-left active:scale-[0.99] ${
+                            isSelected ? "bg-white" : "bg-white/50"
+                          }`}
+                        >
+                          <img
+                            src={option.imgUrl}
+                            alt={option.name}
+                            className="h-[60px] w-[60px] shrink-0 rounded-[12px] border-[3px] border-white object-cover"
+                            referrerPolicy="no-referrer"
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[16px] font-sans font-semibold text-[#232121]">
+                              {option.name}
+                            </span>
+                            <span className="mt-1 block text-[14px] font-sans text-[#232121]/40">
+                              {option.itemCount} {option.itemCount === 1 ? "item" : "items"}
+                            </span>
+                          </span>
+                          <SelectorSelectedIcon selected={isSelected} />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {!newDraft && existingOptions.length === 0 && (
+                <div className="py-8 text-center text-[13px] font-sans text-[#232121]/45">
+                  No saved spaces yet
+                </div>
+              )}
+            </div>
+          </motion.div>
+        </motion.div>
+      </AnimatePresence>
+    );
+  };
+
   // Transition controller
   const handleCapture = async () => {
     if (isCapturing) return;
@@ -2800,7 +3124,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         onChange={(e) => onChange(e.target.value)}
       />
       <div className="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none text-[#232121]/35">
-        <Pencil className="w-4 h-4" />
+        <EditPencilIcon />
       </div>
     </div>
   );
@@ -2984,6 +3308,52 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
             onSpace={() => {}}
             onSend={() => setIsEditingPrice(false)}
             onDismiss={() => setIsEditingPrice(false)}
+            className="capture-price-simple-keyboard"
+          />
+        </div>
+      </div>
+    );
+  };
+
+  const renderResultLocationKeyboard = () => {
+    if (!editingResultLocationField) return null;
+    const value = editingResultLocationField === "parent" ? parentLocationName : subLocationName;
+    const isParentField = editingResultLocationField === "parent";
+
+    return (
+      <div className="capture-price-keyboard-panel w-full bg-[#E9E6E1] border-t border-black/5 px-4 pt-4 pb-[max(14px,env(safe-area-inset-bottom))] shadow-[0_-16px_40px_rgba(0,0,0,0.12)]">
+        <div className="mx-auto w-full max-w-[360px]">
+          <div className="mb-3 flex items-center justify-between px-1">
+            <button
+              type="button"
+              onClick={closeResultLocationEditor}
+              className="h-10 px-4 rounded-full bg-white/80 text-[#232121] text-[14px] font-sans font-semibold active:scale-95 transition-transform"
+            >
+              Cancel
+            </button>
+            <div className="h-10 min-w-[112px] px-5 rounded-full bg-white/80 flex items-center justify-center text-[#232121] text-[18px] font-sans font-bold">
+              {value || (isParentField ? "Parent Location" : "Sub Location")}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                closeResultLocationEditor();
+                setResultLocationPicker(editingResultLocationField);
+              }}
+              className="h-10 px-4 rounded-full bg-[#232121] text-white text-[14px] font-sans font-semibold active:scale-95 transition-transform"
+            >
+              Switch
+            </button>
+          </div>
+          <VirtualKeyboard
+            value={value}
+            onChange={handleResultLocationChange}
+            onKeyPress={(char) => handleResultLocationChange(`${value}${char}`)}
+            onBackspace={() => handleResultLocationChange(value.slice(0, -1))}
+            onSpace={() => handleResultLocationChange(`${value} `)}
+            onSend={() => closeResultLocationEditor()}
+            onDismiss={() => closeResultLocationEditor()}
+            sendLabel="Done"
             className="capture-price-simple-keyboard"
           />
         </div>
@@ -3201,7 +3571,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
               >
 
                 <div
-                  className={`absolute left-1/2 top-1/2 z-0 h-[512px] w-[512px] max-w-none -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none ${isColorBlurReady ? "noma-color-blur-enter" : "opacity-0"}`}
+                  className={`absolute left-1/2 top-1/2 z-0 -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none ${isColorBlurReady ? "noma-color-blur-enter" : "opacity-0"}`}
+                  style={{ width: COLOR_BLUR_SIZE, height: COLOR_BLUR_SIZE }}
                 >
                   <img
                     src={COLOR_BLUR_IMAGE_URL}
@@ -3387,7 +3758,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                       }}
                     >
                       <div 
-                        className="flex items-center justify-center gap-1.5 bg-white rounded-full shadow-none animate-fade-in cursor-pointer hover:scale-105 active:scale-95 transition-all select-none px-5"
+                        className="flex items-center justify-center gap-1.5 bg-white rounded-full shadow-none animate-fade-in cursor-pointer hover:scale-105 active:scale-95 transition-all select-none pl-5 pr-2"
                         style={{ 
                           height: "34px",
                         }}
@@ -3396,7 +3767,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                         <span className="text-[15px] font-sans font-medium text-black/45 tracking-tight leading-none">
                           {customCategory}
                         </span>
-                        <ChevronsUpDown className="w-3.5 h-3.5 text-black/35" />
+                        <TagSwitchIcon />
                       </div>
                     </div>
                   </>
@@ -3460,7 +3831,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                   onChange={(e) => setCustomName(e.target.value)}
                 />
                 <div className="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none text-[#232121]/35">
-                  <Pencil className="w-4 h-4" />
+                  <EditPencilIcon />
                 </div>
               </div>
             </div>
@@ -3666,14 +4037,6 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                       referrerPolicy="no-referrer"
                     />
 
-                    {/* Top Right Cancel Button */}
-                    <button
-                      onClick={() => setShowDiscardConfirm(true)}
-                      className="capture-top-cancel absolute top-[56px] right-9 z-50 text-[16px] font-sans font-medium text-neutral-400 hover:text-neutral-700 active:scale-95 transition-all cursor-pointer"
-                    >
-                      Cancel
-                    </button>
-
                     {/* Main Sticker Element with + Value Tag & Yellow Gaussian Glow */}
                     <div className="relative z-10 mx-auto flex flex-col items-center justify-center flex-shrink-0" style={{ width: "340px", height: "330px", transform: `translateX(${RESULT_STICKER_CENTER_OFFSET_X}px)` }}>
                       <div 
@@ -3684,7 +4047,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                         }}
                       >
                         <div
-                          className={`absolute left-1/2 top-1/2 z-0 h-[512px] w-[512px] max-w-none -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none ${isColorBlurReady ? "noma-color-blur-enter" : "opacity-0"}`}
+                          className={`absolute left-1/2 top-1/2 z-0 -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none ${isColorBlurReady ? "noma-color-blur-enter" : "opacity-0"}`}
+                          style={{ width: COLOR_BLUR_SIZE, height: COLOR_BLUR_SIZE }}
                         >
                           <img
                             src={COLOR_BLUR_IMAGE_URL}
@@ -3863,13 +4227,13 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                     <div className="relative z-20 mt-[-6px] flex justify-center">
                       <button
                         type="button"
-                        className="h-[34px] min-w-[92px] px-5 rounded-full bg-white flex items-center justify-center gap-1.5 shadow-none active:scale-95 transition-transform"
+                        className="h-[34px] min-w-[92px] pl-5 pr-2 rounded-full bg-white flex items-center justify-center gap-1.5 shadow-none active:scale-95 transition-transform"
                         onClick={() => setIsCategorySelectorOpen(!isCategorySelectorOpen)}
                       >
                         <span className="text-[15px] font-sans font-medium text-neutral-500 tracking-tight leading-none">
                           {customCategory || "Select"}
                         </span>
-                        <ChevronsUpDown className="w-3.5 h-3.5 text-neutral-400 flex-shrink-0" />
+                        <TagSwitchIcon />
                       </button>
                     </div>
 
@@ -3884,11 +4248,14 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                       style={{ width: "calc(100% - 44px)" }}
                     >
                       {/* Left side: Overlapping photos */}
-                      <div className="relative w-[122px] h-[104px] flex-shrink-0">
+                        <div
+                          className="relative w-[122px] h-[104px] flex-shrink-0"
+                          style={{ transform: "translateX(-4px)" }}
+                        >
                         {/* Parent Location Image (Base) */}
                         <div className="w-[96px] h-[96px] rounded-[12px] overflow-hidden shadow-inner bg-neutral-100 border border-neutral-100 flex items-center justify-center">
                           {parentLocationImg ? (
-                            <img src={parentLocationImg} alt="Parent Location" className="w-full h-full object-cover" />
+                            <img src={parentLocationImg} alt="Space" className="w-full h-full object-cover" />
                           ) : (
                             <span className="text-3xl">🏠</span>
                           )}
@@ -3897,33 +4264,32 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                         {/* Sub Location Image (Overlapping at bottom-right corner) */}
                         <div className="absolute bottom-[-4px] right-[4px] w-[58px] h-[58px] rounded-[12px] overflow-hidden border-[4px] border-white shadow-none bg-neutral-100 flex items-center justify-center z-10">
                           {subLocationImg ? (
-                            <img src={subLocationImg} alt="Sub Location" className="w-full h-full object-cover" />
+                            <img src={subLocationImg} alt="Sub-Space" className="w-full h-full object-cover" />
                           ) : (
                             <span className="text-[18px]">📦</span>
                           )}
                         </div>
                       </div>
 
-                      {/* Right side: Location details inputs */}
-                      <div className="flex-1 pl-3 text-left flex flex-col justify-center min-w-0">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-[24px] flex-shrink-0 leading-none">📍</span>
-                          <input
-                            type="text"
-                            value={parentLocationName}
-                            onChange={(e) => setParentLocationName(e.target.value)}
-                            className="font-sans font-extrabold text-[22px] text-[#232121] focus:outline-none bg-transparent w-full min-w-0 caret-[#232121] border-b border-transparent focus:border-neutral-200 py-0.5 outline-none tracking-tight"
-                            placeholder="Parent Location"
-                          />
-                        </div>
-                        <div className="pl-[38px] mt-2">
-                          <input
-                            type="text"
-                            value={subLocationName}
-                            onChange={(e) => setSubLocationName(e.target.value)}
-                            className="font-sans font-medium text-[18px] text-[#232121] focus:outline-none bg-transparent w-full min-w-0 caret-[#232121] border-b border-transparent focus:border-neutral-200 py-0.5 outline-none tracking-tight"
-                            placeholder="Sub Location"
-                          />
+                      {/* Right side: Location details with separate text editing and location switching actions */}
+                      <div
+                        className="flex min-w-0 flex-1 -translate-x-3 items-start pl-3 text-left"
+                        style={{ transform: "translateX(-12px)" }}
+                      >
+                        <span className="mt-[2px] w-[24px] shrink-0 text-[24px] leading-none">📍</span>
+                        <div className="flex min-w-0 flex-1 flex-col justify-center">
+                          {renderResultLocationRow({
+                            field: "parent",
+                            name: parentLocationName,
+                            label: "Space",
+                          })}
+                          <div className="mt-2">
+                            {renderResultLocationRow({
+                              field: "sub",
+                              name: subLocationName,
+                              label: "Sub-Space",
+                            })}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -3942,6 +4308,19 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                       Tap text to adjust
                     </p>
                   </div>
+                )}
+
+                {/* Keep Cancel outside the scrolling result content so it stays visible. */}
+                {storageFlowStep === "final_result" && !showDiscardConfirm && !resultLocationPicker && (
+                  <button
+                    type="button"
+                    onClick={() => setShowDiscardConfirm(true)}
+                    aria-label="Cancel final result"
+                    className="absolute right-5 z-[160] pointer-events-auto cursor-pointer text-[16px] font-sans font-medium text-neutral-400 transition-all hover:text-neutral-700 active:scale-95"
+                    style={{ top: "calc(var(--noma-statusbar-height, env(safe-area-inset-top, 0px)) + 4px)" }}
+                  >
+                    Cancel
+                  </button>
                 )}
 
                 {/* Floating cutout sticker + title anchored beside the storage action sheet */}
@@ -4339,6 +4718,24 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
           </motion.div>
         )}
       </AnimatePresence>
+
+      <AnimatePresence>
+        {storageFlowStep === "final_result" && editingResultLocationField && (
+          <motion.div
+            key="capture-result-location-keyboard"
+            className="absolute inset-x-0 bottom-0 z-[95] pointer-events-auto"
+            initial={{ y: "100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "100%" }}
+            transition={{ type: "tween", duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+            style={{ willChange: "transform" }}
+          >
+            {renderResultLocationKeyboard()}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {storageFlowStep === "final_result" && renderResultLocationPicker()}
 
       <AnimatePresence>
         {showDiscardConfirm && (
