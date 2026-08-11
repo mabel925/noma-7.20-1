@@ -9,7 +9,7 @@ import { CaptureScanner } from "./components/CaptureScanner";
 import { useKeyboardReset } from "./hooks/useKeyboardReset";
 import { memoryStorage } from "./services/memoryStorage";
 
-import { Wifi, Battery, Signal, RefreshCw, Sparkles, X, Target, Info } from "lucide-react";
+import { Wifi, Battery, Signal, RefreshCw, Sparkles, Target, Info } from "lucide-react";
 import { motion, AnimatePresence, useAnimation } from "motion/react";
 
 interface ChatMessage {
@@ -18,6 +18,7 @@ interface ChatMessage {
 }
 
 import { MemoryList, MemoryItem } from "./components/MemoryList";
+import { CloseIcon } from "./components/CloseIcon";
 
 const DEFAULT_MEMORIES: MemoryItem[] = [
   {
@@ -727,7 +728,7 @@ export default function App() {
                 onClick={() => setIsScanning(false)}
                 className="w-8 h-8 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-white"
               >
-                <X className="w-4 h-4" />
+                <CloseIcon className="w-4 h-4" />
               </button>
             </div>
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
-import { X, Camera, Check, Image as ImageIcon, RotateCcw } from "lucide-react";
+import { Camera, Check, Image as ImageIcon, RotateCcw } from "lucide-react";
 import { recognizeImage, generateStorageTitle, classifyLocation, prepareImage } from "../services/aiService";
 import { remove_background, REMOVE_BG_CONFIG } from "../services/removeBackgroundService";
 import { motion, AnimatePresence } from "motion/react";
@@ -9,6 +9,7 @@ import { useLayoutGuard } from "../hooks/useLayoutGuard";
 import { VirtualKeyboard } from "./VirtualKeyboard";
 import { TagSwitchIcon } from "./TagSwitchIcon";
 import { EditPencilIcon } from "./EditPencilIcon";
+import { CloseIcon } from "./CloseIcon";
 import {
   getStickerTitleStyle,
   STICKER_BASE_SIZE,
@@ -2513,6 +2514,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   }) => {
     const isExisting = isResultLocationExisting(field);
     const isEditing = editingResultLocationField === field;
+    const switchOptions = field === "parent" ? existingParentLocations : existingSubLocations;
+    const showSwitchButton = switchOptions.length > 0;
     return (
       <div className="flex min-w-0 items-center gap-1.5">
         <button
@@ -2532,18 +2535,20 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
             )}
           </span>
         </button>
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            openResultLocationPicker(field);
-          }}
-          className="flex h-[24px] w-[24px] shrink-0 items-center justify-center rounded-full active:scale-95"
-          aria-label={`Switch ${label}`}
-          title={`Switch ${label}`}
-        >
-          <TagSwitchIcon />
-        </button>
+        {showSwitchButton && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              openResultLocationPicker(field);
+            }}
+            className="flex h-[24px] w-[24px] shrink-0 items-center justify-center rounded-full active:scale-95"
+            aria-label={`Switch ${label}`}
+            title={`Switch ${label}`}
+          >
+            <TagSwitchIcon />
+          </button>
+        )}
       </div>
     );
   };
@@ -2585,7 +2590,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                 className="flex h-8 w-8 items-center justify-center rounded-full text-[#232121]/55 active:scale-95"
                 aria-label="Close space picker"
               >
-                <X className="h-[18px] w-[18px]" />
+                <CloseIcon className="h-[18px] w-[18px] text-[#232121]/55" />
               </button>
             </div>
 
@@ -2594,13 +2599,31 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                 <button
                   type="button"
                   onClick={() => chooseResultLocation(field, { type: "new", draft: newDraft })}
-                  className="flex h-[80px] w-full items-center gap-3 rounded-[16px] px-3 py-2 text-left active:scale-[0.99]"
+                  className="relative flex h-[80px] w-full items-center gap-3 overflow-hidden rounded-[16px] px-3 py-2 text-left active:scale-[0.99]"
                   style={{
                     backgroundColor: "rgba(204, 196, 191, 0.2)",
-                    border: "2.5px dashed rgb(204, 196, 189)",
-                    boxSizing: "border-box",
                   }}
                 >
+                  <svg
+                    className="pointer-events-none absolute inset-0 h-full w-full"
+                    viewBox="0 0 350 80"
+                    preserveAspectRatio="none"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <rect
+                      x="1.25"
+                      y="1.25"
+                      width="347.5"
+                      height="77.5"
+                      rx="16"
+                      fill="none"
+                      stroke="rgb(204, 196, 189)"
+                      strokeWidth="2.5"
+                      strokeDasharray="5 8"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  </svg>
                   <img
                     src={newDraft.imgUrl}
                     alt={newDraft.name || newSpaceTitle}
@@ -3787,7 +3810,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                     className="w-[62px] h-[62px] rounded-full bg-white flex items-center justify-center border-0 hover:bg-neutral-100 hover:scale-105 active:scale-95 transition-all outline-none cursor-pointer animate-pop-in-1 shadow-none"
                     title="Cancel"
                   >
-                    <X className="w-6 h-6 text-[#232121]/50 stroke-[1.8]" />
+                    <CloseIcon className="w-6 h-6 text-[#232121]/50" />
                   </button>
 
                   {/* CENTER: Main Confirm Save circular button */}
@@ -4022,10 +4045,9 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                 {/* 5. Final Result Summary Page */}
                 {storageFlowStep === "final_result" && (
                   <div 
-                    className="absolute inset-0 isolate w-full h-full overflow-y-auto px-0 pt-[72px] pb-8"
+                    className="absolute inset-0 isolate w-full h-full overflow-y-auto px-0 pt-[88px] pb-8"
                     style={{
                       maxHeight: "100%",
-                      transform: isStandaloneDisplay ? undefined : "translateY(-40px)",
                       WebkitOverflowScrolling: "touch"
                     }}
                   >
@@ -4473,7 +4495,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                             }}
                             title="Cancel Storage Flow"
                           >
-                            <X className="w-6 h-6 stroke-[1.8]" />
+                            <CloseIcon className="w-6 h-6 text-[#232121]" />
                           </StorageRoundButton>
                           <StorageRoundButton
                             onClick={() => {
@@ -4557,7 +4579,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                             }}
                             title="Cancel Storage Flow"
                           >
-                            <X className="w-6 h-6 stroke-[1.8]" />
+                            <CloseIcon className="w-6 h-6 text-[#232121]" />
                           </StorageRoundButton>
                           <StorageRoundButton
                             onClick={() => setStorageFlowStep("final_result")}

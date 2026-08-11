@@ -1,6 +1,7 @@
 import React from "react";
-import { Check, Cloud, ShieldCheck, X } from "lucide-react";
+import { Check, Cloud, ShieldCheck } from "lucide-react";
 import { motion } from "motion/react";
+import { CloseIcon } from "./CloseIcon";
 
 interface SystemSettingsPanelProps {
   isOpen: boolean;
@@ -34,7 +35,7 @@ export const SystemSettingsPanel: React.FC<SystemSettingsPanelProps> = ({
             onClick={onClose}
             className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center transition-all cursor-pointer active:scale-95"
           >
-            <X className="w-4 h-4 text-white/70" />
+            <CloseIcon className="w-4 h-4 text-white/70" />
           </button>
         </div>
 

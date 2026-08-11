@@ -1,8 +1,9 @@
 import React from "react";
-import { Camera, X } from "lucide-react";
+import { Camera } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useKeyboardReset } from "../hooks/useKeyboardReset";
 import { MemoryCoreButton } from "./MemoryCoreButton";
+import { CloseIcon } from "./CloseIcon";
 
 interface ChatMessage {
   sender: "noma" | "user";
@@ -314,7 +315,7 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                     inputValue ? "opacity-100 scale-100" : "opacity-0 scale-50 pointer-events-none"
                   } cursor-pointer`}
                 >
-                  <X className="w-3 h-3 text-neutral-600 stroke-[3]" />
+                  <CloseIcon className="w-3 h-3 text-neutral-600" />
                 </button>
               </div>
   
