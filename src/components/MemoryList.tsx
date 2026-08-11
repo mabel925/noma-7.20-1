@@ -667,11 +667,25 @@ const ParentDetailEditIcon: React.FC = () => (
   </svg>
 );
 
-const SubLocationRetakeCapture: React.FC<{
+const LocationRetakeCapture: React.FC<{
   initialImage?: string;
   onCancel: () => void;
   onConfirm: (imgUrl: string) => void;
-}> = ({ initialImage, onCancel, onConfirm }) => {
+  titleText: string;
+  promptText: string;
+  confirmText: string;
+  captureLabel: string;
+  previewLabel: string;
+}> = ({
+  initialImage,
+  onCancel,
+  onConfirm,
+  titleText,
+  promptText,
+  confirmText,
+  captureLabel,
+  previewLabel,
+}) => {
   const [phase, setPhase] = React.useState<"capture" | "preview">("capture");
   const [capturedImage, setCapturedImage] = React.useState(initialImage || "");
   const [cameraActive, setCameraActive] = React.useState(false);
@@ -784,19 +798,9 @@ const SubLocationRetakeCapture: React.FC<{
     >
       <div className="capture-top-prompt absolute top-[calc(max(56px,env(safe-area-inset-top))+36px)] inset-x-6 z-40 flex flex-col items-center pointer-events-none">
         <h3 className="max-w-[300px] text-center text-[20px] font-sans font-semibold leading-snug tracking-tight text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)]">
-          {phase === "capture" ? "Retake this little home." : "Use this sub-location photo?"}
+          {phase === "capture" ? titleText : promptText}
         </h3>
       </div>
-
-      <button
-        type="button"
-        onClick={handleCancel}
-        className="capture-top-cancel absolute left-5 top-[calc(max(36px,env(safe-area-inset-top))+16px)] z-50 flex h-10 w-10 items-center justify-center rounded-full bg-black/35 text-white active:scale-95"
-        aria-label="Close retake camera"
-        title="Close retake camera"
-      >
-        <CloseIcon className="h-5 w-5 text-white" />
-      </button>
 
       <div className="absolute inset-0 flex h-full w-full items-center justify-center overflow-hidden">
         {phase === "capture" ? (
@@ -854,8 +858,8 @@ const SubLocationRetakeCapture: React.FC<{
                 type="button"
                 onClick={handleCapture}
                 className="group relative flex h-20 w-20 items-center justify-center rounded-full bg-white p-1 shadow-[0_8px_24px_rgba(0,0,0,0.15)] active:scale-95"
-                aria-label="Capture sub-location photo"
-                title="Capture sub-location photo"
+                aria-label={captureLabel}
+                title={captureLabel}
               >
                 <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-cyan-400 via-orange-400 to-red-400 opacity-90 blur-[2px]" />
                 <div className="relative flex h-full w-full items-center justify-center rounded-full border-2 border-white bg-[#F3F1EC] shadow-inner">
@@ -878,8 +882,8 @@ const SubLocationRetakeCapture: React.FC<{
                 type="button"
                 onClick={() => setPhase("capture")}
                 className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-[#232121] active:scale-95"
-                aria-label="Retake sub-location photo"
-                title="Retake sub-location photo"
+                aria-label={previewLabel}
+                title={previewLabel}
               >
                 <RotateCcw className="h-5 w-5 stroke-[2]" />
               </button>
@@ -887,8 +891,8 @@ const SubLocationRetakeCapture: React.FC<{
                 type="button"
                 onClick={handleConfirm}
                 className="flex h-16 w-16 items-center justify-center rounded-full bg-[#232121] text-white shadow-[0_8px_24px_rgba(0,0,0,0.16)] active:scale-95"
-                aria-label="Confirm sub-location photo"
-                title="Confirm sub-location photo"
+                aria-label={confirmText}
+                title={confirmText}
               >
                 <Check className="h-[22px] w-[22px] stroke-[3]" />
               </button>
@@ -1511,10 +1515,15 @@ const SpaceDetailModal: React.FC<{
 
       <AnimatePresence>
         {isRetakeCaptureOpen && (
-          <SubLocationRetakeCapture
+          <LocationRetakeCapture
             initialImage={spaceImage}
             onCancel={() => setIsRetakeCaptureOpen(false)}
             onConfirm={handleRetakeConfirm}
+            titleText="Retake this little home."
+            promptText="Use this sub-location photo?"
+            confirmText="Confirm sub-location photo"
+            captureLabel="Capture sub-location photo"
+            previewLabel="Retake sub-location photo"
           />
         )}
       </AnimatePresence>
@@ -2102,6 +2111,8 @@ export const MemoryList: React.FC<MemoryListProps> = ({
   const [selectedSpaceDetail, setSelectedSpaceDetail] = useState<SubLocationSummary | null>(null);
   const [isEditingParentName, setIsEditingParentName] = useState(false);
   const [parentNameDraft, setParentNameDraft] = useState("");
+  const [parentImageDraft, setParentImageDraft] = useState("");
+  const [isParentRetakeCaptureOpen, setIsParentRetakeCaptureOpen] = useState(false);
   const [pendingDeleteParentName, setPendingDeleteParentName] = useState<string | null>(null);
   const [isEditingItemsList, setIsEditingItemsList] = useState(false);
   const [selectedItemsListIds, setSelectedItemsListIds] = useState<string[]>([]);
@@ -2212,6 +2223,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
   const selectedParentSubLocations = selectedParentSpace
     ? subLocationList.filter((space) => space.parentName === selectedParentSpace.name)
     : [];
+  const parentHeroImage = isEditingParentName ? parentImageDraft || selectedParentSpace?.imgUrl || "" : selectedParentSpace?.imgUrl || "";
   const memoryParentLocationOptions: MemoryParentLocationOption[] = spacesList.map((space) => ({
     key: space.name,
     name: space.name,
@@ -2338,12 +2350,15 @@ export const MemoryList: React.FC<MemoryListProps> = ({
   const startParentEdit = () => {
     if (!selectedParentSpace) return;
     setParentNameDraft(selectedParentSpace.name);
+    setParentImageDraft(selectedParentSpace.imgUrl);
     setIsEditingParentName(true);
     setIsMemoryKeyboardOpen(true);
   };
 
   const cancelParentEdit = () => {
     setParentNameDraft(selectedParentSpace?.name || "");
+    setParentImageDraft(selectedParentSpace?.imgUrl || "");
+    setIsParentRetakeCaptureOpen(false);
     setIsEditingParentName(false);
     setIsMemoryKeyboardOpen(false);
   };
@@ -2356,7 +2371,11 @@ export const MemoryList: React.FC<MemoryListProps> = ({
       onMemoriesChange((currentMemories) =>
         currentMemories.map((item) =>
           item.parentLocationName === previousName
-            ? { ...item, parentLocationName: nextName }
+            ? {
+                ...item,
+                parentLocationName: nextName,
+                parentLocationImg: parentImageDraft || item.parentLocationImg,
+              }
             : item
         )
       );
@@ -2365,13 +2384,29 @@ export const MemoryList: React.FC<MemoryListProps> = ({
           ? {
               ...current,
               name: nextName,
+              imgUrl: parentImageDraft || current.imgUrl,
               items: current.items.map((item) =>
                 item.parentLocationName === previousName
-                  ? { ...item, parentLocationName: nextName }
+                  ? {
+                      ...item,
+                      parentLocationName: nextName,
+                      parentLocationImg: parentImageDraft || item.parentLocationImg,
+                    }
                   : item
               ),
             }
           : current
+      );
+    } else if (selectedParentSpace) {
+      onMemoriesChange((currentMemories) =>
+        currentMemories.map((item) =>
+          item.parentLocationName === previousName
+            ? { ...item, parentLocationImg: parentImageDraft || item.parentLocationImg }
+            : item
+        )
+      );
+      setSelectedParentSpace((current) =>
+        current ? { ...current, imgUrl: parentImageDraft || current.imgUrl } : current
       );
     }
     cancelParentEdit();
@@ -2424,6 +2459,11 @@ export const MemoryList: React.FC<MemoryListProps> = ({
       )
     );
     setSelectedSpaceDetail((current) => (current ? { ...current, imgUrl } : current));
+  };
+
+  const handleParentRetakeConfirm = (imgUrl: string) => {
+    setParentImageDraft(imgUrl);
+    setIsParentRetakeCaptureOpen(false);
   };
 
   const saveSelectedSpaceDetail = (updates: { parentName: string; subName: string; parentImgUrl?: string; imgUrl?: string }) => {
@@ -2482,13 +2522,15 @@ export const MemoryList: React.FC<MemoryListProps> = ({
       }}
       className="absolute inset-0 bg-[#E9E6E1] z-[120] flex flex-col overflow-hidden select-none"
     >
-      <img
-        src={MATRIX_DOT_IMAGE_URL}
-        alt=""
-        aria-hidden="true"
-        className="absolute inset-0 z-0 h-full w-full object-cover opacity-100 pointer-events-none select-none"
-        referrerPolicy="no-referrer"
-      />
+      {!selectedParentSpace ? (
+        <img
+          src={MATRIX_DOT_IMAGE_URL}
+          alt=""
+          aria-hidden="true"
+          className="absolute inset-0 z-0 h-full w-full object-cover opacity-100 pointer-events-none select-none"
+          referrerPolicy="no-referrer"
+        />
+      ) : null}
 
       {selectedParentSpace ? (
         <div
@@ -2508,17 +2550,41 @@ export const MemoryList: React.FC<MemoryListProps> = ({
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M7.74009 17.5658L1.55258 11.4079L7.74009 5.25M1.55258 11.4079H16.4064C19.9661 11.4079 22.5175 14.8418 21.4901 18.25" stroke="black" strokeWidth="2.14584" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
+              </svg>
+            </button>
 
-          <button
-            onClick={startParentEdit}
-            className="w-[24px] h-[24px] active:scale-95 flex items-center justify-center transition-all cursor-pointer border-0 outline-none bg-transparent hover:opacity-70"
-            aria-label="Edit parent location"
-            title="Edit parent location"
-          >
-            <ParentDetailEditIcon />
-          </button>
+          {isEditingParentName ? (
+            <div className="flex items-center gap-[12px]">
+              <MemoryActionButton
+                label="Confirm edits"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  confirmParentEdit();
+                }}
+                className="!bg-[#232121] text-white"
+              >
+                <Check className="h-4 w-4 text-white stroke-[3]" />
+              </MemoryActionButton>
+              <MemoryActionButton
+                label="Cancel editing"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  cancelParentEdit();
+                }}
+              >
+                <CloseIcon className="h-4 w-4 text-[#232121]/50" />
+              </MemoryActionButton>
+            </div>
+          ) : (
+            <button
+              onClick={startParentEdit}
+              className="w-[24px] h-[24px] active:scale-95 flex items-center justify-center transition-all cursor-pointer border-0 outline-none bg-transparent hover:opacity-70"
+              aria-label="Edit parent location"
+              title="Edit parent location"
+            >
+              <ParentDetailEditIcon />
+            </button>
+          )}
         </div>
       ) : isSearchOpen ? (
         <div
@@ -2614,28 +2680,101 @@ export const MemoryList: React.FC<MemoryListProps> = ({
             transition={{ type: "tween", duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
             className="px-0 select-none"
           >
-            <div className="-mx-[20px] flex flex-col items-center px-0 pb-[42px] pt-[10px] text-center text-[#232121]">
-              <div className="relative flex h-[136px] w-[174px] -translate-x-[10px] items-center justify-center">
-                <div className="absolute left-[55px] top-[32px] h-[94px] w-[112px] rotate-[8deg] rounded-[26px] bg-[linear-gradient(135deg,#FFB0B0_0%,#FFD2B4_50%,#8DEBD9_100%)] opacity-95" />
-                <img
-                  src={selectedParentSpace.imgUrl}
-                  alt={selectedParentSpace.name}
-                  className="relative z-10 h-[114px] w-[114px] rotate-[-9deg] rounded-[26px] border-[3px] border-white object-cover shadow-[0_16px_32px_rgba(35,33,33,0.12)]"
-                  referrerPolicy="no-referrer"
+            <motion.div
+              className="-mx-[20px] flex flex-col items-center px-0 text-center text-[#232121]"
+              animate={{ y: isEditingParentName ? 48 : 0 }}
+              transition={{ type: "spring", stiffness: 220, damping: 24 }}
+              style={{ paddingBottom: isEditingParentName ? 220 : 42, paddingTop: 10 }}
+            >
+              <motion.div
+                className="relative flex items-center justify-center overflow-visible"
+                animate={{
+                  width: isEditingParentName ? 228 : 174,
+                  height: isEditingParentName ? 228 : 136,
+                  x: isEditingParentName ? 0 : -10,
+                }}
+                transition={{ type: "spring", stiffness: 220, damping: 24 }}
+              >
+                <motion.div
+                  className="absolute h-[94px] w-[112px] rotate-[8deg] rounded-[26px] bg-[linear-gradient(135deg,#FFB0B0_0%,#FFD2B4_50%,#8DEBD9_100%)] opacity-95"
+                  animate={{
+                    left: 55,
+                    top: isEditingParentName ? 84 : 32,
+                    opacity: isEditingParentName ? 0 : 0.95,
+                    y: isEditingParentName ? 200 : 0,
+                  }}
+                  transition={{ type: "spring", stiffness: 220, damping: 24 }}
                 />
-              </div>
-              <div className="mt-[20px] flex max-w-[270px] items-center justify-center text-center">
+                <motion.img
+                  src={parentHeroImage}
+                  alt={selectedParentSpace.name}
+                  className={`relative z-10 rounded-[26px] border-[3px] border-white object-cover ${
+                    isEditingParentName ? "shadow-none" : "shadow-[0_16px_32px_rgba(35,33,33,0.12)]"
+                  }`}
+                  referrerPolicy="no-referrer"
+                  animate={{
+                    width: isEditingParentName ? 228 : 114,
+                    height: isEditingParentName ? 228 : 114,
+                    rotate: isEditingParentName ? 0 : -9,
+                  }}
+                  transition={{ type: "spring", stiffness: 220, damping: 24 }}
+                />
+                {isEditingParentName && (
+                  <div className="absolute inset-0 z-20 flex items-center justify-center">
+                    <RetakePhotoButton
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setIsMemoryKeyboardOpen(false);
+                        setIsParentRetakeCaptureOpen(true);
+                      }}
+                      label="Retake parent photo"
+                    />
+                  </div>
+                )}
+              </motion.div>
+              <div
+                className={`flex max-w-[270px] items-center justify-center text-center ${isEditingParentName ? "mt-[70px]" : "mt-[20px]"}`}
+                style={isEditingParentName ? { transform: "translateX(-6px)" } : undefined}
+              >
                 <span className="mr-[8px] text-[24px] leading-none select-none">📍</span>
-                <span className="relative truncate text-[34px] font-sans font-extrabold leading-none tracking-tight">
+                <span
+                  className={`relative truncate font-sans font-extrabold leading-none tracking-tight ${
+                    isEditingParentName ? "border-b border-[#CCC4BE] pb-[4px]" : ""
+                  }`}
+                  style={{ fontSize: isEditingParentName ? "24px" : "34px" }}
+                >
                   {isEditingParentName ? parentNameDraft : selectedParentSpace.name}
                   {isEditingParentName && (
                     <span className="ml-[3px] inline-block h-[32px] w-[2px] animate-cursor-blink-black bg-[#232121] align-[-4px]" />
                   )}
                 </span>
               </div>
-            </div>
+              {isEditingParentName && (
+                <motion.button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setIsMemoryKeyboardOpen(false);
+                    deleteParentSpace();
+                  }}
+                  className="mt-[56px] flex h-[34px] w-[89px] items-center justify-center gap-[6px] rounded-full bg-white px-[14px] text-[14px] font-sans font-semibold leading-none text-[#232121]/50 active:scale-95 transition-transform"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ type: "tween", duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                >
+                  <span>Delete</span>
+                  <DeleteActionIcon color="#232121" opacity={0.5} size={16} />
+                </motion.button>
+              )}
+            </motion.div>
 
-            <div className="flex flex-col gap-[8px]">
+            <motion.div
+              className="flex flex-col gap-[8px]"
+              animate={{ opacity: isEditingParentName ? 0 : 1, y: isEditingParentName ? 18 : 0 }}
+              transition={{ type: "tween", duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+              style={{ pointerEvents: isEditingParentName ? "none" : "auto" }}
+              aria-hidden={isEditingParentName}
+            >
               {selectedParentSubLocations.length > 0 ? (
                 selectedParentSubLocations.map((space) => (
                   <SubLocationListCard
@@ -2649,7 +2788,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
                   No sub-locations yet
                 </div>
               )}
-            </div>
+            </motion.div>
           </motion.div>
         ) : isSearchOpen ? (
           <div className="px-0 pt-0 select-none">
@@ -3006,6 +3145,21 @@ export const MemoryList: React.FC<MemoryListProps> = ({
               </button>
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {selectedParentSpace && isParentRetakeCaptureOpen && (
+          <LocationRetakeCapture
+            initialImage={parentImageDraft || selectedParentSpace.imgUrl}
+            onCancel={() => setIsParentRetakeCaptureOpen(false)}
+            onConfirm={handleParentRetakeConfirm}
+            titleText="Retake this parent space."
+            promptText="Use this parent photo?"
+            confirmText="Confirm parent photo"
+            captureLabel="Capture parent photo"
+            previewLabel="Retake parent photo"
+          />
         )}
       </AnimatePresence>
 
