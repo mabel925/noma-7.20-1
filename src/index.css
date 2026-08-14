@@ -22,35 +22,22 @@
 
 :root {
   --noma-statusbar-height: env(safe-area-inset-top, 0px);
+  --app-height: 100dvh;
 }
 
 .pwa-standalone {
   --noma-statusbar-height: max(env(safe-area-inset-top, 0px), 44px);
 }
 
-/* 核心：默认使用 100dvh 保证普通浏览器下内容不被导航栏/地址栏截断，PWA模式下则覆盖为 100vh */
+/* All full-screen layers share one measured viewport height. */
 html, body, #root, .pwa-shell, .iframe-wrap, .home-container, #app-container {
   margin: 0 !important;
   padding: 0 !important;
   width: 100vw !important;
-  height: 100vh !important;
-  height: 100dvh !important;
+  height: var(--app-height) !important;
   background-color: #E9E6E1 !important;
   overflow: hidden !important;
   overscroll-behavior: none !important;
-}
-
-/* 当处于 PWA 独立运行模式（或 iOS Standalone）下：覆盖高度为 100vh，防止 dvh 在 WebKit Standalone 模式下边缘白条 bug */
-.pwa-standalone,
-.pwa-standalone html,
-.pwa-standalone body,
-.pwa-standalone #root,
-.pwa-standalone .pwa-shell,
-.pwa-standalone .iframe-wrap,
-.pwa-standalone .home-container,
-.pwa-standalone #app-container,
-.pwa-standalone #app-bg {
-  height: 100vh !important;
 }
 
 html, body {
@@ -73,7 +60,7 @@ html, body {
   position: fixed !important;
   inset: 0 !important;
   width: 100% !important;
-  height: 100% !important;
+  height: var(--app-height) !important;
   background-color: transparent !important;
 }
 
@@ -90,20 +77,13 @@ html, body {
     position: fixed !important;
     inset: 0 !important;
     width: 100vw !important;
-    height: 100vh !important;
-    height: 100dvh !important;
+    height: var(--app-height) !important;
     border-radius: 0 !important;
     max-width: none !important;
     background-color: transparent !important;
     margin-bottom: 0 !important;
     padding-bottom: 0 !important;
     border: none !important;
-  }
-
-  /* iOS PWA 独立模式下：一切贴到底部，让屏幕空间最大化，完全铺满不留白边 */
-  .pwa-standalone #noma-iphone-frame {
-    height: 100vh !important;
-    padding-bottom: 0 !important;
   }
 
   .capture-drawer {
@@ -609,8 +589,7 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
   position: fixed !important;
   inset: 0 !important;
   width: 100vw !important;
-  height: 100vh !important;
-  height: 100dvh !important;
+  height: var(--app-height) !important;
   z-index: 0 !important;
   pointer-events: none !important;
   background-color: #E9E6E1 !important;
@@ -662,7 +641,7 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
   right: 0 !important;
   width: auto !important;
   max-width: none !important;
-  height: var(--app-height, 100vh) !important; /* 优化高度计算，用 JS 动态 innerHeight 变量替换 100dvh，防止与 pwa-standalone 冲突 */
+  height: var(--app-height) !important;
   display: flex !important;
   flex-direction: column !important;
   justify-content: flex-end !important; /* 让内容在底部对齐 */

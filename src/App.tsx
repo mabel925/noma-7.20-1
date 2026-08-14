@@ -20,6 +20,7 @@ interface ChatMessage {
 import { MemoryList, MemoryItem } from "./components/MemoryList";
 import { CloseIcon } from "./components/CloseIcon";
 import { useAuth } from "./auth/AuthContext";
+import { isStandalonePwa, syncDisplayModeClasses } from "./utils/appViewport";
 
 const DEFAULT_MEMORIES: MemoryItem[] = [
   {
@@ -308,29 +309,9 @@ export default function App() {
     const checkStandalone = () => {
       const searchParams = new URLSearchParams(window.location.search);
       const forceStandalonePreview = searchParams.get("pwa") === "1";
-      const isActualStandalone =
-        (window.navigator as any).standalone ||
-        window.matchMedia("(display-mode: standalone)").matches;
-      const isStandalone = 
-        forceStandalonePreview ||
-        isActualStandalone;
+      const isActualStandalone = isStandalonePwa();
       setIsStandaloneMode(isActualStandalone && !forceStandalonePreview);
-      
-      if (isStandalone) {
-        document.documentElement.classList.add("pwa-standalone");
-        document.body.classList.add("pwa-standalone");
-      } else {
-        document.documentElement.classList.remove("pwa-standalone");
-        document.body.classList.remove("pwa-standalone");
-      }
-
-      if (forceStandalonePreview && !isActualStandalone) {
-        document.documentElement.classList.add("pwa-preview");
-        document.body.classList.add("pwa-preview");
-      } else {
-        document.documentElement.classList.remove("pwa-preview");
-        document.body.classList.remove("pwa-preview");
-      }
+      syncDisplayModeClasses();
     };
     checkStandalone();
     window.addEventListener("popstate", checkStandalone);

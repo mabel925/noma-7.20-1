@@ -1,4 +1,5 @@
 import { useLayoutEffect } from "react";
+import { syncAppViewportHeight } from "../utils/appViewport";
 
 export function useLayoutGuard(isOpen: boolean) {
   useLayoutEffect(() => {
@@ -70,8 +71,7 @@ export function useLayoutGuard(isOpen: boolean) {
 
     // Set dynamic app height on mount / resize
     const updateAppHeight = () => {
-      const h = window.innerHeight;
-      document.documentElement.style.setProperty('--app-height', `${h}px`);
+      syncAppViewportHeight();
       applyScrubbing();
     };
 

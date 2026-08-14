@@ -4,22 +4,9 @@ import App from './App.tsx';
 import './index.css';
 import { AuthProvider } from './auth/AuthContext';
 import { AuthDialog } from './components/AuthDialog';
+import { installAppViewportSync } from './utils/appViewport';
 
-const syncDisplayModeClasses = () => {
-  const searchParams = new URLSearchParams(window.location.search);
-  const forceStandalonePreview = searchParams.get("pwa") === "1";
-  const isActualStandalone =
-    (window.navigator as Navigator & { standalone?: boolean }).standalone === true ||
-    window.matchMedia("(display-mode: standalone)").matches;
-  const isStandalone = isActualStandalone && !forceStandalonePreview;
-
-  document.documentElement.classList.toggle("pwa-standalone", isStandalone);
-  document.body.classList.toggle("pwa-standalone", isStandalone);
-  document.documentElement.classList.toggle("pwa-preview", forceStandalonePreview && !isActualStandalone);
-  document.body.classList.toggle("pwa-preview", forceStandalonePreview && !isActualStandalone);
-};
-
-syncDisplayModeClasses();
+installAppViewportSync();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
