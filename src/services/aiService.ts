@@ -1,3 +1,5 @@
+import { NOMA_AI_URL } from "./backendUrls";
+
 export interface RecognitionResult {
   title: string;
   category: string;
@@ -90,7 +92,7 @@ export function isApiEnabled(): boolean {
   }
 }
 
-const NOMA_BACKEND_URL = "https://noma.38786547.workers.dev/";
+const NOMA_BACKEND_URL = NOMA_AI_URL;
 
 function getRequestOrigin(): string {
   return typeof window === "undefined" ? "server" : window.location.origin;

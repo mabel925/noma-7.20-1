@@ -8,6 +8,7 @@ import { VirtualKeyboard } from "./components/VirtualKeyboard";
 import { CaptureScanner } from "./components/CaptureScanner";
 import { useKeyboardReset } from "./hooks/useKeyboardReset";
 import { memoryStorage } from "./services/memoryStorage";
+import { NOMA_AI_URL } from "./services/backendUrls";
 
 import { Wifi, Battery, Signal, RefreshCw, Sparkles, Target, Info } from "lucide-react";
 import { motion, AnimatePresence, useAnimation } from "motion/react";
@@ -404,7 +405,7 @@ export default function App() {
       }, 300);
 
       // Call our direct Worker endpoint
-      fetch("https://noma.38786547.workers.dev/", {
+      fetch(NOMA_AI_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"

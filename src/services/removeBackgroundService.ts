@@ -3,6 +3,8 @@
  * Supporting local development and the Cloudflare Worker-backed production matting flow.
  */
 
+import { NOMA_AI_URL } from "./backendUrls";
+
 export type CutoutMode = "api" | "local";
 
 export interface RemoveBgConfig {
@@ -313,7 +315,7 @@ export async function remove_background(
     }
 
     if (onProgress) onProgress("Uploading and extracting subject...");
-    const workerUrl = "https://noma.38786547.workers.dev/";
+    const workerUrl = NOMA_AI_URL;
     console.log(`[RemoveBgService] Fetching from proxy ${workerUrl} with type: 'matting'. origin=${window.location.origin} apiEnabled=true`);
 
     const response = await fetch(workerUrl, {
