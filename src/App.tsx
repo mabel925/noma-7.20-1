@@ -272,11 +272,12 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [currentInfoObj, setCurrentInfoObj] = useState<string | null>(null);
 
-  // Keep API usage opt-in so repeated camera tests do not spend remote tokens by default.
+  // Remote AI is enabled by default in production. The hidden diagnostic
+  // toggle remains available for temporarily switching to local fallbacks.
   useEffect(() => {
-    const API_TOGGLE_VERSION = "five-click-v1";
+    const API_TOGGLE_VERSION = "remote-default-on-v1";
     if (localStorage.getItem("IS_API_TOGGLE_VERSION") !== API_TOGGLE_VERSION) {
-      localStorage.setItem("IS_API_ENABLED", "false");
+      localStorage.setItem("IS_API_ENABLED", "true");
       localStorage.setItem("IS_API_TOGGLE_VERSION", API_TOGGLE_VERSION);
     }
   }, []);

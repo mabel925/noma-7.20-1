@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { CloseIcon } from "./CloseIcon";
 import { useAuth } from "../auth/AuthContext";
@@ -55,11 +56,11 @@ export const AuthDialog: React.FC = () => {
     }
   };
 
-  return (
+  return createPortal(
     <AnimatePresence>
       {isLoginOpen && (
         <motion.div
-          className="pointer-events-auto fixed inset-0 z-[20000] flex items-center justify-center bg-[#232121]/35 px-6 backdrop-blur-sm"
+          className="pointer-events-auto fixed inset-0 z-[100000] isolate flex items-center justify-center bg-[#232121]/35 px-6 backdrop-blur-sm"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
           onMouseDown={(event) => { if (event.target === event.currentTarget) closeLogin(); }}
         >
@@ -67,7 +68,7 @@ export const AuthDialog: React.FC = () => {
             onSubmit={user ? (event) => { event.preventDefault(); } : step === "email" ? submitEmail : submitOtp}
             initial={{ opacity: 0, y: 18, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 12, scale: 0.97 }}
             transition={{ type: "spring", stiffness: 310, damping: 27 }}
-            className="relative w-full max-w-[360px] rounded-[26px] bg-[#E9E6E1] px-6 pb-7 pt-8 text-[#232121] shadow-[0_24px_80px_rgba(0,0,0,0.28)]"
+            className="relative z-10 w-full max-w-[360px] rounded-[36px] bg-[#E9E6E1] px-6 pb-7 pt-8 text-[#232121] shadow-[0_24px_80px_rgba(0,0,0,0.28)]"
           >
             <button type="button" aria-label="Close login" onClick={closeLogin} className="absolute right-5 top-5 flex h-8 w-8 items-center justify-center rounded-full bg-white/70">
               <CloseIcon className="h-4 w-4 text-[#232121]" />
@@ -107,6 +108,7 @@ export const AuthDialog: React.FC = () => {
           </motion.form>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 };

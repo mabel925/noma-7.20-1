@@ -41,8 +41,8 @@ const DEFAULT_CONFIG: RemoveBgConfig = {
   },
   
   api: {
-    provider: "picwish", // Default to the new serverless backend (labeled picwish for compatibility)
-    endpoint: "https://image-fndeprfgmx.cn-hangzhou.fcapp.run", // Pre-configured new endpoint
+    provider: "shiliu",
+    endpoint: "https://api.shiliuai.com/api/matting/v1",
     headers: {}
   }
 };
@@ -62,9 +62,10 @@ export function loadRemoveBgConfig(): RemoveBgConfig {
         local: { ...DEFAULT_CONFIG.local, ...parsed.local },
         api: { ...DEFAULT_CONFIG.api, ...parsed.api }
       };
-      // Overwrite shiliu or old api.shiliuai.com endpoints to the new authentication-free Aliyun FC endpoint
-      if (loadedConfig.api.provider === "shiliu" || loadedConfig.api.endpoint?.includes("api.shiliuai.com")) {
-        loadedConfig.api.endpoint = "https://image-fndeprfgmx.cn-hangzhou.fcapp.run";
+      // Migrate the retired Aliyun proxy configuration to the official Shiliu endpoint.
+      if (loadedConfig.api.endpoint?.includes("fcapp.run")) {
+        loadedConfig.api.provider = "shiliu";
+        loadedConfig.api.endpoint = "https://api.shiliuai.com/api/matting/v1";
       }
       return loadedConfig;
     }
@@ -286,9 +287,9 @@ export async function remove_background(
     }
 
     // 统一 API 拦截
-    let isApiEnabled = false;
+    let isApiEnabled = true;
     try {
-      isApiEnabled = localStorage.getItem("IS_API_ENABLED") === "true";
+      isApiEnabled = localStorage.getItem("IS_API_ENABLED") !== "false";
     } catch (e) {
       console.warn("[RemoveBgService] Failed to read IS_API_ENABLED from localStorage:", e);
     }
