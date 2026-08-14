@@ -6,6 +6,19 @@ export type AuthUser = {
   id: string;
   email: string;
   displayName: string;
+  avatarUrl: string;
+  isMock?: boolean;
+};
+
+export const DEFAULT_AVATAR_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/%E9%BB%98%E8%AE%A4%E5%A4%B4%E5%83%8F.jpg";
+
+const MOCK_AUTH_ENABLED = import.meta.env.DEV && new URLSearchParams(window.location.search).get("mockAuth") === "1";
+const MOCK_AUTH_USER: AuthUser = {
+  id: "00000000-0000-4000-8000-000000000001",
+  email: "preview@noma.local",
+  displayName: "Noma Test User",
+  avatarUrl: DEFAULT_AVATAR_URL,
+  isMock: true,
 };
 
 type AuthContextValue = {
@@ -28,16 +41,18 @@ const mapUser = (user: User | null): AuthUser | null => {
     id: user.id,
     email: user.email,
     displayName: String(user.user_metadata?.display_name || user.email.split("@")[0] || "Noma user"),
+    avatarUrl: String(user.user_metadata?.avatar_url || DEFAULT_AVATAR_URL),
   };
 };
 
 export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
-  const [user, setUser] = React.useState<AuthUser | null>(null);
-  const [authLoading, setAuthLoading] = React.useState(true);
+  const [user, setUser] = React.useState<AuthUser | null>(MOCK_AUTH_ENABLED ? MOCK_AUTH_USER : null);
+  const [authLoading, setAuthLoading] = React.useState(!MOCK_AUTH_ENABLED);
   const [isLoginOpen, setIsLoginOpen] = React.useState(false);
   const pendingActionRef = React.useRef<(() => void) | null>(null);
 
   React.useEffect(() => {
+    if (MOCK_AUTH_ENABLED) return;
     let mounted = true;
     supabase.auth.getSession().then(({ data }) => {
       if (!mounted) return;
@@ -102,7 +117,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
 
   const signOut = React.useCallback(async () => {
     pendingActionRef.current = null;
-    await supabase.auth.signOut();
+    if (!MOCK_AUTH_ENABLED) await supabase.auth.signOut();
     setUser(null);
   }, []);
 

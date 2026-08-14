@@ -240,6 +240,11 @@ export default function App() {
     setIsMemoryHydrated(false);
     setHydratedUserId(null);
     if (!user) return () => { cancelled = true; };
+    if (user.isMock) {
+      setIsMemoryHydrated(true);
+      setHydratedUserId(user.id);
+      return () => { cancelled = true; };
+    }
 
     memoryStorage
       .listItems(user.id)
@@ -259,17 +264,17 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [user?.id]);
+  }, [user?.id, user?.isMock]);
 
   // Persist changes through IndexedDB without allowing the initial empty state
   // to overwrite data before hydration completes.
   useEffect(() => {
-    if (!isMemoryHydrated || !user || hydratedUserId !== user.id) return;
+    if (!isMemoryHydrated || !user || user.isMock || hydratedUserId !== user.id) return;
 
     memoryStorage.saveItems(user.id, customMemories).catch((error) => {
       console.error("[App] Failed to persist local memories:", error);
     });
-  }, [customMemories, isMemoryHydrated, hydratedUserId, user?.id]);
+  }, [customMemories, isMemoryHydrated, hydratedUserId, user?.id, user?.isMock]);
   const [toast, setToast] = useState<string | null>(null);
   const [currentInfoObj, setCurrentInfoObj] = useState<string | null>(null);
 

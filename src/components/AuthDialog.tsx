@@ -11,15 +11,26 @@ export const AuthDialog: React.FC = () => {
   const [token, setToken] = React.useState("");
   const [step, setStep] = React.useState<"email" | "otp">("email");
   const [busy, setBusy] = React.useState(false);
+  const [resending, setResending] = React.useState(false);
+  const [resendSeconds, setResendSeconds] = React.useState(0);
   const [error, setError] = React.useState("");
 
   React.useEffect(() => {
     if (!isLoginOpen) {
       setStep("email");
       setToken("");
+      setResendSeconds(0);
       setError("");
     }
   }, [isLoginOpen]);
+
+  React.useEffect(() => {
+    if (!isLoginOpen || step !== "otp" || resendSeconds <= 0) return;
+    const timer = window.setInterval(() => {
+      setResendSeconds((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [isLoginOpen, resendSeconds, step]);
 
   const submitEmail = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -32,10 +43,25 @@ export const AuthDialog: React.FC = () => {
     try {
       await requestOtp(email);
       setStep("otp");
+      setResendSeconds(60);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Unable to send the verification code.");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const resendOtp = async () => {
+    if (busy || resending || resendSeconds > 0) return;
+    setResending(true);
+    setError("");
+    try {
+      await requestOtp(email);
+      setResendSeconds(60);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Unable to resend the verification code.");
+    } finally {
+      setResending(false);
     }
   };
 
@@ -73,13 +99,13 @@ export const AuthDialog: React.FC = () => {
             <button type="button" aria-label="Close login" onClick={closeLogin} className="absolute right-5 top-5 flex h-8 w-8 items-center justify-center rounded-full bg-white/70">
               <CloseIcon className="h-4 w-4 text-[#232121]" />
             </button>
-            {user ? (
+            {user && step === "email" ? (
               <>
                 <p className="text-[13px] font-semibold text-[#232121]/50">Noma account</p>
                 <h2 className="mt-2 text-[28px] font-bold leading-tight">{user.displayName}</h2>
                 <p className="mt-3 text-[14px] leading-5 text-[#232121]/60">{user.email}</p>
                 <p className="mt-7 rounded-[16px] bg-white/60 px-4 py-3 text-[13px] leading-5 text-[#232121]/60">Your Memory data is stored in your private cloud account.</p>
-                <button type="button" onClick={() => { void signOut(); closeLogin(); }} className="mt-7 flex h-12 w-full items-center justify-center rounded-full border border-[#232121]/20 text-[15px] font-semibold text-[#232121] active:scale-[0.98]">Sign out</button>
+                <button type="button" onClick={() => { void signOut(); closeLogin(); }} className="mt-7 flex h-[50px] w-full items-center justify-center rounded-full border border-[#232121]/20 text-[15px] font-semibold text-[#232121] active:scale-[0.98]">Sign out</button>
               </>
             ) : step === "email" ? (
               <>
@@ -91,7 +117,7 @@ export const AuthDialog: React.FC = () => {
                 <label className="mt-5 block text-[13px] font-semibold">Email</label>
                 <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" autoComplete="email" className="mt-2 h-12 w-full border-b border-[#CCC4BE] bg-transparent text-[16px] outline-none" />
                 {error && <p className="mt-3 text-[13px] text-red-600">{error}</p>}
-                <button disabled={busy} type="submit" className="mt-7 flex h-12 w-full items-center justify-center rounded-full bg-[#232121] text-[15px] font-semibold text-white active:scale-[0.98] disabled:opacity-50">{busy ? "Sending..." : "Send code"}</button>
+                <button disabled={busy} type="submit" className="mt-7 flex h-[50px] w-full items-center justify-center rounded-full bg-[#232121] text-[15px] font-semibold text-white active:scale-[0.98] disabled:opacity-50">{busy ? "Sending..." : "Send code"}</button>
               </>
             ) : (
               <>
@@ -99,9 +125,19 @@ export const AuthDialog: React.FC = () => {
                 <h2 className="mt-2 text-[28px] font-bold leading-tight">Verify email</h2>
                 <p className="mt-3 text-[14px] leading-5 text-[#232121]/60">We sent a 6-digit code to {email}.</p>
                 <label className="mt-7 block text-[13px] font-semibold">Verification code</label>
-                <input value={token} onChange={(event) => setToken(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" className="mt-2 h-14 w-full border-b border-[#CCC4BE] bg-transparent text-center text-[24px] tracking-[0.3em] outline-none" />
+                <div className="relative mt-2 flex h-14 w-full items-center border-b border-[#CCC4BE]">
+                  <input value={token} onChange={(event) => setToken(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" className="h-full min-w-0 flex-1 bg-transparent pr-[76px] text-center text-[24px] tracking-[0.3em] outline-none" />
+                  <button
+                    type="button"
+                    disabled={busy || resending || resendSeconds > 0}
+                    onClick={() => { void resendOtp(); }}
+                    className="absolute right-0 flex h-8 min-w-[64px] items-center justify-end text-[13px] font-semibold text-[#232121]/60 disabled:cursor-default disabled:text-[#232121]/35"
+                  >
+                    {resending ? "Sending..." : resendSeconds > 0 ? `${resendSeconds}s` : "Resend"}
+                  </button>
+                </div>
                 {error && <p className="mt-3 text-[13px] text-red-600">{error}</p>}
-                <button disabled={busy} type="submit" className="mt-7 flex h-12 w-full items-center justify-center rounded-full bg-[#232121] text-[15px] font-semibold text-white active:scale-[0.98] disabled:opacity-50">{busy ? "Verifying..." : "Verify and continue"}</button>
+                <button disabled={busy || resending} type="submit" className="mt-7 flex h-[50px] w-full items-center justify-center rounded-full bg-[#232121] text-[15px] font-semibold text-white active:scale-[0.98] disabled:opacity-50">{busy ? "Verifying..." : "Verify and continue"}</button>
                 <button type="button" onClick={() => { setStep("email"); setError(""); }} className="mt-4 w-full text-center text-[13px] text-[#232121]/55">Use a different email</button>
               </>
             )}

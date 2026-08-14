@@ -5,6 +5,16 @@ export const STICKER_TITLE_HEIGHT = 104;
 export const STICKER_TITLE_FONT_SIZE = 44;
 export const STICKER_TITLE_STROKE = 12;
 
+const getRoundedOutlineShadow = (radius: number): string => {
+  const samples = 48;
+  return Array.from({ length: samples }, (_, index) => {
+    const angle = (index / samples) * Math.PI * 2;
+    const x = Math.cos(angle) * radius;
+    const y = Math.sin(angle) * radius;
+    return `${x.toFixed(2)}px ${y.toFixed(2)}px 0 #ffffff`;
+  }).join(", ");
+};
+
 export const getStickerTitleStyle = (size: number): CSSProperties => {
   const scale = size / STICKER_BASE_SIZE;
 
@@ -18,8 +28,8 @@ export const getStickerTitleStyle = (size: number): CSSProperties => {
     fontSize: `${STICKER_TITLE_FONT_SIZE * scale}px`,
     fontWeight: "700",
     color: "#000000",
-    WebkitTextStroke: `${STICKER_TITLE_STROKE * scale}px #ffffff`,
-    paintOrder: "stroke fill",
+    WebkitTextStroke: "0 transparent",
+    textShadow: getRoundedOutlineShadow((STICKER_TITLE_STROKE * scale) / 2),
     lineHeight: `${STICKER_TITLE_FONT_SIZE * scale}px`,
     whiteSpace: "normal",
     overflowWrap: "anywhere",

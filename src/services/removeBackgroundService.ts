@@ -49,6 +49,93 @@ const DEFAULT_CONFIG: RemoveBgConfig = {
   }
 };
 
+const MATTING_MAX_DIMENSION = 1280;
+const MATTING_JPEG_QUALITY = 0.86;
+const MATTING_REQUEST_TIMEOUT_MS = 20_000;
+
+type PreparedMattingInput = {
+  base64: string;
+  originalBytes: number;
+  uploadBytes: number;
+  originalWidth: number;
+  originalHeight: number;
+  uploadWidth: number;
+  uploadHeight: number;
+};
+
+const stripDataUrlPrefix = (value: string): string => {
+  const commaIndex = value.indexOf(",");
+  return commaIndex >= 0 ? value.slice(commaIndex + 1) : value;
+};
+
+const estimateBase64Bytes = (base64: string): number => {
+  const clean = base64.replace(/\s/g, "");
+  if (!clean) return 0;
+  const padding = clean.endsWith("==") ? 2 : clean.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor((clean.length * 3) / 4) - padding);
+};
+
+const loadImageElement = (imageSrc: string): Promise<HTMLImageElement> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    if (!imageSrc.startsWith("data:") && !imageSrc.startsWith("blob:")) {
+      img.crossOrigin = "anonymous";
+    }
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Failed to decode image before matting upload"));
+    img.src = imageSrc;
+  });
+};
+
+async function prepareMattingInput(imageSrc: string): Promise<PreparedMattingInput> {
+  const [originalDataUrl, img] = await Promise.all([
+    getBase64FromImageSrc(imageSrc),
+    loadImageElement(imageSrc),
+  ]);
+  const originalBase64 = stripDataUrlPrefix(originalDataUrl);
+  const originalWidth = img.naturalWidth || img.width || 1;
+  const originalHeight = img.naturalHeight || img.height || 1;
+  const scale = Math.min(1, MATTING_MAX_DIMENSION / Math.max(originalWidth, originalHeight));
+  const uploadWidth = Math.max(1, Math.round(originalWidth * scale));
+  const uploadHeight = Math.max(1, Math.round(originalHeight * scale));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = uploadWidth;
+  canvas.height = uploadHeight;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    return {
+      base64: originalBase64,
+      originalBytes: estimateBase64Bytes(originalBase64),
+      uploadBytes: estimateBase64Bytes(originalBase64),
+      originalWidth,
+      originalHeight,
+      uploadWidth: originalWidth,
+      uploadHeight: originalHeight,
+    };
+  }
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, uploadWidth, uploadHeight);
+  ctx.drawImage(img, 0, 0, uploadWidth, uploadHeight);
+
+  const optimizedBase64 = stripDataUrlPrefix(canvas.toDataURL("image/jpeg", MATTING_JPEG_QUALITY));
+  const shouldUseOptimized = scale < 1 || optimizedBase64.length < originalBase64.length;
+  const selectedBase64 = shouldUseOptimized ? optimizedBase64 : originalBase64;
+
+  return {
+    base64: selectedBase64,
+    originalBytes: estimateBase64Bytes(originalBase64),
+    uploadBytes: estimateBase64Bytes(selectedBase64),
+    originalWidth,
+    originalHeight,
+    uploadWidth: shouldUseOptimized ? uploadWidth : originalWidth,
+    uploadHeight: shouldUseOptimized ? uploadHeight : originalHeight,
+  };
+}
+
 /**
  * Loads configuration from browser local storage, falling back to default values.
  */
@@ -300,36 +387,59 @@ export async function remove_background(
       return await localChromaKeyFallback(imageSrc, onProgress);
     }
 
-    if (onProgress) onProgress("Converting image to base64...");
-    const base64Str = await getBase64FromImageSrc(imageSrc);
-
-    // Stripping base64 prefix
-    let pureBase64 = base64Str;
-    if (base64Str.includes(",")) {
-      pureBase64 = base64Str.split(",")[1];
-    } else if (base64Str.startsWith("data:")) {
-      const commaIndex = base64Str.indexOf(",");
-      if (commaIndex !== -1) {
-        pureBase64 = base64Str.substring(commaIndex + 1);
-      }
-    }
+    const totalStartedAt = performance.now();
+    if (onProgress) onProgress("Optimizing image upload...");
+    const preparationStartedAt = performance.now();
+    const preparedInput = await prepareMattingInput(imageSrc);
+    const preparationMs = performance.now() - preparationStartedAt;
+    const reduction = preparedInput.originalBytes > 0
+      ? Math.max(0, 1 - preparedInput.uploadBytes / preparedInput.originalBytes)
+      : 0;
+    console.info(
+      `[RemoveBgTiming] Prepared ${preparedInput.originalWidth}x${preparedInput.originalHeight} -> ` +
+      `${preparedInput.uploadWidth}x${preparedInput.uploadHeight} in ${preparationMs.toFixed(0)}ms; ` +
+      `${(preparedInput.originalBytes / 1024).toFixed(0)}KB -> ` +
+      `${(preparedInput.uploadBytes / 1024).toFixed(0)}KB (${(reduction * 100).toFixed(0)}% smaller).`
+    );
 
     if (onProgress) onProgress("Uploading and extracting subject...");
     const workerUrl = NOMA_AI_URL;
     console.log(`[RemoveBgService] Fetching from proxy ${workerUrl} with type: 'matting'. origin=${window.location.origin} apiEnabled=true`);
 
-    const response = await fetch(workerUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        type: "matting",
-        image_base64: pureBase64,
-      }),
+    const requestBody = JSON.stringify({
+      type: "matting",
+      image_base64: preparedInput.base64,
     });
+    const controller = new AbortController();
+    const requestTimeout = window.setTimeout(() => controller.abort(), MATTING_REQUEST_TIMEOUT_MS);
+    const requestStartedAt = performance.now();
+    let response: Response;
+    try {
+      response = await fetch(workerUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: requestBody,
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (controller.signal.aborted) {
+        throw new Error(`Matting request timed out after ${MATTING_REQUEST_TIMEOUT_MS / 1000}s`);
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(requestTimeout);
+    }
 
+    const responseStartedAt = performance.now();
     const responseText = await response.text();
+    const responseFinishedAt = performance.now();
+    console.info(
+      `[RemoveBgTiming] Worker/provider wait ${(responseStartedAt - requestStartedAt).toFixed(0)}ms; ` +
+      `response download ${(responseFinishedAt - responseStartedAt).toFixed(0)}ms; ` +
+      `total ${(responseFinishedAt - totalStartedAt).toFixed(0)}ms.`
+    );
     if (!response.ok) {
       let detail = responseText.replace(/\s+/g, " ").trim().slice(0, 500);
       try {

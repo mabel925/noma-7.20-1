@@ -210,27 +210,6 @@ html, body {
 }
 .animate-polaroid-fly { animation: polaroid-fly-in 0.85s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 
-@keyframes noma-color-blur-in {
-  0% {
-    opacity: 0;
-    transform: scale(0.72);
-  }
-  70% {
-    opacity: 1;
-    transform: scale(1.06);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-.noma-color-blur-enter {
-  animation: noma-color-blur-in 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
-  transform-origin: center;
-  will-change: opacity, transform;
-}
-
 @keyframes cursor-blink { from, to { border-color: transparent } 50% { border-color: #3b82f6 } }
 @keyframes cursor-blink-black { from, to { opacity: 0; } 50% { opacity: 1; } }
 
@@ -564,6 +543,16 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
   left: 14px !important;
   bottom: calc(2rem + env(safe-area-inset-bottom, 0px) + 6px) !important;
   z-index: 9999 !important;
+}
+
+@media (max-width: 767px) {
+  .pwa-standalone .home-action-buttons-fixed {
+    bottom: 22px !important;
+  }
+
+  .pwa-standalone .home-memory-entry-fixed {
+    bottom: 28px !important;
+  }
 }
 
 @media (min-width: 768px) {

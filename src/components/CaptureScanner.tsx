@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Camera, Check, Image as ImageIcon, RotateCcw } from "lucide-react";
-import { recognizeImage, generateStorageTitle, classifyLocation, prepareImage } from "../services/aiService";
+import { recognizeImage, classifyLocation, prepareImage } from "../services/aiService";
 import { remove_background, REMOVE_BG_CONFIG } from "../services/removeBackgroundService";
 import { motion, AnimatePresence } from "motion/react";
 import { useKeyboardReset } from "../hooks/useKeyboardReset";
@@ -14,7 +14,6 @@ import {
   getStickerTitleStyle,
   STICKER_BASE_SIZE,
   STICKER_TITLE_FONT_SIZE,
-  STICKER_TITLE_STROKE,
 } from "./StickerTitle";
 
 const LIGHTSPOT_IMAGE_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/lightspot.png";
@@ -242,8 +241,16 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const RESULT_INPUT_BOTTOM_GAP = 130;
   const RESULT_BUTTON_INPUT_GAP = 26;
   const DISINTEGRATE_DURATION = 1850;
-  const CUTOUT_FLIGHT_DELAY = DISINTEGRATE_DURATION * 0.5;
-  const CUTOUT_FLIGHT_DURATION = DISINTEGRATE_DURATION - CUTOUT_FLIGHT_DELAY;
+  const CUTOUT_FLIGHT_DELAY = DISINTEGRATE_DURATION * 0.35;
+  const CUTOUT_FLIGHT_DURATION = DISINTEGRATE_DURATION * 0.52;
+  const RESULT_TITLE_REVEAL_DELAY = CUTOUT_FLIGHT_DELAY + 220;
+  const OUTLINE_TRACE_DURATION = 300;
+  const OUTLINE_TRACE_COMMIT_LEAD = 1000 / 60;
+  const OUTLINE_TRACE_MANUAL_LEAD = 60;
+  const OUTLINE_TRACE_START_OFFSET = Math.max(
+    0,
+    CUTOUT_FLIGHT_DURATION - OUTLINE_TRACE_DURATION - OUTLINE_TRACE_COMMIT_LEAD - OUTLINE_TRACE_MANUAL_LEAD
+  );
   const [browserChromeInset, setBrowserChromeInset] = useState<number>(0);
   const [isStandaloneDisplay, setIsStandaloneDisplay] = useState<boolean>(() =>
     typeof window !== "undefined" && (
@@ -301,11 +308,16 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
   const [customName, setCustomName] = useState<string>("");
   const [customCategory, setCustomCategory] = useState<string>("");
-  const [tempIdentifiedTitle, setTempIdentifiedTitle] = useState<string>("");
   const [tempIdentifiedCategory, setTempIdentifiedCategory] = useState<string>("");
   const [isCategorySelectorOpen, setIsCategorySelectorOpen] = useState<boolean>(false);
   const [isColorBlurReady, setIsColorBlurReady] = useState<boolean>(false);
+  const [isResultDecorationVisible, setIsResultDecorationVisible] = useState<boolean>(false);
+  const [isResultTitleRevealReady, setIsResultTitleRevealReady] = useState<boolean>(false);
+  const [isOutlineTraceReady, setIsOutlineTraceReady] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const preparedTitleRef = useRef("");
+  const classificationPromiseRef = useRef<Promise<void> | null>(null);
+  const classificationRequestIdRef = useRef(0);
 
   // Pre-defined list of categories for the interactive fan-out switcher
   const isChinese = false; // Temporarily forced to English as requested
@@ -387,6 +399,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const outlineTraceCanvasRef = useRef<HTMLCanvasElement>(null);
   const cutoutFlightRef = useRef<HTMLDivElement>(null);
   const cutoutFlightAnimationRef = useRef<Animation | null>(null);
+  const outlineTraceDeadlineRef = useRef<number | null>(null);
   const stickerSizeSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // States for advanced cinematic contour tracing
@@ -560,7 +573,6 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const RESULT_STICKER_VISUAL_SIZE = STICKER_BASE_SIZE;
   const RESULT_STICKER_TITLE_WIDTH = RESULT_STICKER_VISUAL_SIZE;
   const RESULT_STICKER_TITLE_FONT_SIZE = STICKER_TITLE_FONT_SIZE;
-  const RESULT_STICKER_TITLE_STROKE = STICKER_TITLE_STROKE;
   const finalStickerVisualSize = RESULT_STICKER_VISUAL_SIZE;
   const RESULT_STICKER_CENTER_OFFSET_X = -8;
   const finalStickerLeft = (containerWidth - finalStickerVisualSize) / 2 + RESULT_STICKER_CENTER_OFFSET_X;
@@ -584,9 +596,48 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const activeItem = MEMORY_ITEMS[selectedItemIndex];
   const STICKER_CANVAS_SIZE = 256;
   const STICKER_BORDER_SIZE = 8;
-  const stickerTitleText = customName || activeItem.name;
+  const stickerTitleText = customName.trim();
   const stickerTitleLines = formatStickerTitleLines(stickerTitleText);
   const stickerTitleStyle = getStickerTitleStyle(RESULT_STICKER_VISUAL_SIZE);
+  const isResultTitleVisible = isResultTitleRevealReady && Boolean(stickerTitleText);
+  const resultTitleOverlayStyle: React.CSSProperties = {
+    ...stickerTitleStyle,
+    left: "50%",
+    width: `${RESULT_STICKER_TITLE_WIDTH}px`,
+    maxWidth: `${RESULT_STICKER_TITLE_WIDTH}px`,
+    marginLeft: `${-RESULT_STICKER_TITLE_WIDTH / 2}px`,
+    flexDirection: "column",
+    boxSizing: "border-box",
+    opacity: isResultTitleVisible ? 1 : 0,
+    transition: "opacity 520ms cubic-bezier(0.16, 1, 0.3, 1)",
+    willChange: "opacity",
+  };
+
+  const commitPreparedTitle = (title: string) => {
+    preparedTitleRef.current = title;
+    setCustomName(title);
+  };
+
+  const waitForPreparedTitle = async () => {
+    if (preparedTitleRef.current) return;
+    const pendingClassification = classificationPromiseRef.current;
+
+    if (pendingClassification) {
+      await new Promise<void>((resolve) => {
+        const timeout = window.setTimeout(resolve, 6500);
+        pendingClassification.finally(() => {
+          window.clearTimeout(timeout);
+          resolve();
+        });
+      });
+    }
+
+    if (!preparedTitleRef.current) {
+      classificationRequestIdRef.current += 1;
+      classificationPromiseRef.current = null;
+      commitPreparedTitle("Scanned Item");
+    }
+  };
 
   const getCoverLayoutFromDimensions = (sourceWidth?: number, sourceHeight?: number) => {
     if (!sourceWidth || !sourceHeight) return layout;
@@ -609,7 +660,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     return { ...layout, left, top, width, height };
   };
 
-  const beginCutoutTransition = (sourceWidth?: number, sourceHeight?: number, cutoutBounds?: CutoutBounds | null) => {
+  const beginCutoutTransition = async (sourceWidth?: number, sourceHeight?: number, cutoutBounds?: CutoutBounds | null) => {
+    await waitForPreparedTitle();
     const sourceLayout = getCoverLayoutFromDimensions(sourceWidth, sourceHeight);
     const boundsSourceWidth = cutoutBounds?.sourceWidth || sourceWidth || sourceLayout.width;
     const boundsSourceHeight = cutoutBounds?.sourceHeight || sourceHeight || sourceLayout.height;
@@ -622,14 +674,24 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         }
       : sourceLayout;
 
+    const normalizedContentSize = STICKER_CANVAS_SIZE - Math.max(2, STICKER_BORDER_SIZE + 2) * 2;
+    const normalizedContentRatio = normalizedContentSize / STICKER_CANVAS_SIZE;
+    const normalizedFlightSize = Math.max(flightRect.width, flightRect.height) / normalizedContentRatio;
+    const flightCenterX = flightRect.left + flightRect.width / 2;
+    const flightCenterY = flightRect.top + flightRect.height / 2;
+
     setCutoutFlightStartRect({
-      left: flightRect.left,
-      top: flightRect.top,
-      width: flightRect.width,
-      height: flightRect.height,
+      left: flightCenterX - normalizedFlightSize / 2,
+      top: flightCenterY - normalizedFlightSize / 2,
+      width: normalizedFlightSize,
+      height: normalizedFlightSize,
     });
     setStickerSizeSettled(false);
     setTraceCompleted(false);
+    setIsResultDecorationVisible(false);
+    setIsResultTitleRevealReady(false);
+    setIsOutlineTraceReady(false);
+    outlineTraceDeadlineRef.current = null;
     setScanStep("disintegrating");
   };
 
@@ -834,7 +896,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
           return;
         }
 
-        const size = STICKER_CANVAS_SIZE;
+        const renderScale = 3;
+        const size = STICKER_CANVAS_SIZE * renderScale;
         canvas.width = size;
         canvas.height = size;
         console.log(`[StickerEngine] Target canvas layout initialized containing fixed dimension: ${size}x${size}`);
@@ -847,9 +910,20 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
           resolve(transparentImgSrc);
           return;
         }
+        normalizedCtx.imageSmoothingEnabled = true;
+        normalizedCtx.imageSmoothingQuality = "high";
         normalizedCtx.clearRect(0, 0, size, size);
-        drawContainCentered(normalizedCtx, sourceObject, sourceObject.width, sourceObject.height, size, Math.max(2, borderSize + 2));
+        drawContainCentered(
+          normalizedCtx,
+          sourceObject,
+          sourceObject.width,
+          sourceObject.height,
+          size,
+          Math.max(2, borderSize + 2) * renderScale
+        );
 
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
         ctx.clearRect(0, 0, size, size);
 
         console.log("[StickerEngine] Rendering dilated background cushion in progress (360 degrees, step 6)...");
@@ -857,10 +931,10 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         ctx.globalCompositeOperation = "source-over";
         // Iterate around 360 degrees to stamp a perfectly thick clean white uniform border
         // Step size 6 for highly detailed, beautiful and crisp border outlines
-        for (let angle = 0; angle < 360; angle += 6) {
+        for (let angle = 0; angle < 360; angle += 2) {
           const rad = (angle * Math.PI) / 180;
-          const ox = Math.cos(rad) * borderSize;
-          const oy = Math.sin(rad) * borderSize;
+          const ox = Math.cos(rad) * borderSize * renderScale;
+          const oy = Math.sin(rad) * borderSize * renderScale;
           ctx.drawImage(normalizedSourceCanvas, ox, oy);
         }
 
@@ -1216,39 +1290,20 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       // 1. Calculate target scale synchronously and trigger instant transition
       calculateTargetScaleFromDimensions(iw, ih);
 
-      const alignedCutout = await generateViewportAlignedCutout(transparentCutout, iw, ih, useFallbackMock);
-      const flightCutout = await generateFlightCutout(transparentCutout, iw, ih, useFallbackMock);
-      const normalizedCutout = await generateTransparentCutoutWithPadding(transparentCutout, 0, useFallbackMock);
+      const [alignedCutout, flightCutout, paddedCutout, finalSticker] = await Promise.all([
+        generateViewportAlignedCutout(transparentCutout, iw, ih, useFallbackMock),
+        generateFlightCutout(transparentCutout, iw, ih, useFallbackMock),
+        generateTransparentCutoutWithPadding(transparentCutout, STICKER_BORDER_SIZE, useFallbackMock),
+        generatePhysicalSticker(transparentCutout, STICKER_BORDER_SIZE, "#FFFFFF", useFallbackMock),
+      ]);
       setAlignedCutoutUrl(alignedCutout);
-      setFlightCutoutUrl(flightCutout.url);
+      setFlightCutoutUrl(paddedCutout);
       setTransparentCutoutUrl(transparentCutout);
+      setPaddedCutoutUrl(paddedCutout);
+      setGeneratedStickerUrl(finalSticker);
       setTraceCompleted(false);
-      beginCutoutTransition(iw, ih, flightCutout.bounds);
+      await beginCutoutTransition(iw, ih, flightCutout.bounds);
       setAiProgress("Done");
-
-      // 🌟 Trigger AI classification has already been initiated immediately on capture
-      // if (!isPreset) {
-      //   classifyUploadedImage(transparentCutout, "camera_capture.png");
-      // }
-
-      // 2. Perform the heavy physical sticker calculations asynchronously in the background
-      generatePhysicalSticker(transparentCutout, STICKER_BORDER_SIZE, "#FFFFFF", useFallbackMock)
-        .then((finalSticker) => {
-          setGeneratedStickerUrl(finalSticker);
-        })
-        .catch((err) => {
-          console.error("[Pipeline] Async physical sticker generation failed:", err);
-          setGeneratedStickerUrl(normalizedCutout);
-        });
-
-      generateTransparentCutoutWithPadding(transparentCutout, STICKER_BORDER_SIZE, useFallbackMock)
-        .then((paddedCutout) => {
-          setPaddedCutoutUrl(paddedCutout);
-        })
-        .catch((err) => {
-          console.error("[Pipeline] Async padded cutout generation failed:", err);
-          setPaddedCutoutUrl(normalizedCutout);
-        });
 
     } catch (e) {
       console.error("[Pipeline] Pipeline broken, falling back directly to original source image:", e);
@@ -1257,14 +1312,19 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       let ih = height || 500;
       calculateTargetScaleFromDimensions(iw, ih);
 
-      const flightCutout = await generateFlightCutout(sourceUrl, iw, ih, false);
-      generatePhysicalSticker(sourceUrl, STICKER_BORDER_SIZE, "#FFFFFF", false).then(setGeneratedStickerUrl);
-      generateViewportAlignedCutout(sourceUrl, iw, ih, false).then(setAlignedCutoutUrl);
-      setFlightCutoutUrl(flightCutout.url);
+      const [flightCutout, alignedCutout, paddedCutout, finalSticker] = await Promise.all([
+        generateFlightCutout(sourceUrl, iw, ih, false),
+        generateViewportAlignedCutout(sourceUrl, iw, ih, false),
+        generateTransparentCutoutWithPadding(sourceUrl, STICKER_BORDER_SIZE, false),
+        generatePhysicalSticker(sourceUrl, STICKER_BORDER_SIZE, "#FFFFFF", false),
+      ]);
+      setAlignedCutoutUrl(alignedCutout);
+      setFlightCutoutUrl(paddedCutout);
       setTransparentCutoutUrl(sourceUrl);
-      generateTransparentCutoutWithPadding(sourceUrl, STICKER_BORDER_SIZE, false).then(setPaddedCutoutUrl);
+      setPaddedCutoutUrl(paddedCutout);
+      setGeneratedStickerUrl(finalSticker);
       setTraceCompleted(false);
-      beginCutoutTransition(iw, ih, flightCutout.bounds);
+      await beginCutoutTransition(iw, ih, flightCutout.bounds);
       setAiProgress("Done");
     }
   };
@@ -1472,13 +1532,19 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       setPaddedCutoutUrl(null);
       setCustomName("");
       setCustomCategory("");
-      setTempIdentifiedTitle("");
+      preparedTitleRef.current = "";
+      classificationPromiseRef.current = null;
+      classificationRequestIdRef.current += 1;
       setTempIdentifiedCategory("");
       setGeneratedStickerUrl(null);
       setAiProgress(null);
       setTraceCompleted(false);
       setDisintegrateStart(false);
       setStickerSizeSettled(false);
+      setIsResultDecorationVisible(false);
+      setIsResultTitleRevealReady(false);
+      setIsOutlineTraceReady(false);
+      outlineTraceDeadlineRef.current = null;
       setIsTracingContour(false);
       setStorageFlowStep("none");
       setSubLocationImg(null);
@@ -1527,13 +1593,6 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       cancelled = true;
     };
   }, [isOpen]);
-
-  // Synchronize pre-fetched AI title and category to active displaying states immediately
-  useEffect(() => {
-    if (tempIdentifiedTitle) {
-      setCustomName(tempIdentifiedTitle);
-    }
-  }, [tempIdentifiedTitle]);
 
   useEffect(() => {
     if (tempIdentifiedCategory) {
@@ -1590,10 +1649,20 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
     let firstFrame = 0;
     let secondFrame = 0;
+    let outlineTraceTimer: number | undefined;
+    const titleRevealTimer = setTimeout(() => {
+      setIsResultTitleRevealReady(true);
+    }, RESULT_TITLE_REVEAL_DELAY);
     const flightDelayTimer = setTimeout(() => {
       firstFrame = requestAnimationFrame(() => {
+        setIsResultDecorationVisible(true);
         secondFrame = requestAnimationFrame(() => {
           const flightEl = cutoutFlightRef.current;
+          outlineTraceDeadlineRef.current =
+            performance.now() + CUTOUT_FLIGHT_DURATION - OUTLINE_TRACE_COMMIT_LEAD - OUTLINE_TRACE_MANUAL_LEAD;
+          outlineTraceTimer = window.setTimeout(() => {
+            setIsOutlineTraceReady(true);
+          }, OUTLINE_TRACE_START_OFFSET);
           if (flightEl?.animate) {
             cutoutFlightAnimationRef.current?.cancel();
             cutoutFlightAnimationRef.current = flightEl.animate(
@@ -1620,6 +1689,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
     return () => {
       clearTimeout(flightDelayTimer);
+      clearTimeout(titleRevealTimer);
+      if (outlineTraceTimer !== undefined) clearTimeout(outlineTraceTimer);
       if (firstFrame) cancelAnimationFrame(firstFrame);
       if (secondFrame) cancelAnimationFrame(secondFrame);
       cutoutFlightAnimationRef.current?.cancel();
@@ -1633,6 +1704,10 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     cutoutFlightTargetScale,
     CUTOUT_FLIGHT_DELAY,
     CUTOUT_FLIGHT_DURATION,
+    RESULT_TITLE_REVEAL_DELAY,
+    OUTLINE_TRACE_START_OFFSET,
+    OUTLINE_TRACE_COMMIT_LEAD,
+    OUTLINE_TRACE_MANUAL_LEAD,
   ]);
 
   // Particle sparkle animation engine during Step 3-1: "识别物体粒子闪动"
@@ -1788,7 +1863,10 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   // Advanced Step: Clockwise progressive line-tracing sweep (走线动画) on canvas overlay
   useEffect(() => {
     const activeTraceImageSrc = paddedCutoutUrl || transparentCutoutUrl;
-    if (scanStep !== "sticker" || !stickerSizeSettled || traceCompleted || !activeTraceImageSrc) {
+    const canStartTrace =
+      (scanStep === "disintegrating" && isOutlineTraceReady) ||
+      scanStep === "sticker";
+    if (!canStartTrace || traceCompleted || !activeTraceImageSrc) {
       setTraceProgress(0);
       setIsTracingContour(false);
       return;
@@ -1813,7 +1891,11 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     const startTracing = () => {
       setIsTracingContour(true);
       const startTime = performance.now();
-      const duration = 300; // Extremely snappy 300ms progress trace
+      const landingDeadline = outlineTraceDeadlineRef.current;
+      const remainingUntilLanding = landingDeadline === null
+        ? OUTLINE_TRACE_DURATION
+        : landingDeadline - startTime;
+      const duration = Math.max(16, Math.min(OUTLINE_TRACE_DURATION, remainingUntilLanding));
 
       // Compile outline stamp buffer
       const outlineCanvas = document.createElement("canvas");
@@ -1900,11 +1982,9 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         if (progress < 1.0) {
           frameId = requestAnimationFrame(animateTrace);
         } else {
-          // White outline tracing is complete! Switch to final sticker view.
-          setTimeout(() => {
-            setIsTracingContour(false);
-            setTraceCompleted(true);
-          }, 200);
+          // The completed outline and the returning subject land on the same keyframe.
+          setIsTracingContour(false);
+          setTraceCompleted(true);
         }
       };
 
@@ -1927,7 +2007,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     return () => {
       if (cleanupFn) cleanupFn();
     };
-  }, [scanStep, stickerSizeSettled, traceCompleted, paddedCutoutUrl, transparentCutoutUrl]);
+  }, [scanStep, isOutlineTraceReady, traceCompleted, paddedCutoutUrl, transparentCutoutUrl, OUTLINE_TRACE_DURATION]);
 
   // Step 3-2 PixiJS dynamic quantum pixelate background disintegrating simulator with continuous organic particle physics flight
   useEffect(() => {
@@ -2173,7 +2253,6 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
           clearTimeout(stickerSizeSettleTimerRef.current);
         }
         setStickerSizeSettled(false);
-        setTraceCompleted(false);
         setScanStep("sticker");
         setAiProgress(null);
         stickerSizeSettleTimerRef.current = setTimeout(() => {
@@ -2762,16 +2841,16 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     }
 
     if (isPreset) {
-      setCustomName(activeItem.name);
-      setTempIdentifiedTitle(activeItem.name);
+      classificationRequestIdRef.current += 1;
+      classificationPromiseRef.current = null;
+      commitPreparedTitle(activeItem.name);
       setTempIdentifiedCategory("");
     } else {
       setCustomName("");
       setCustomCategory(isChinese ? "其它" : "Others");
-      setTempIdentifiedTitle("");
       setTempIdentifiedCategory("");
       // Start classification immediately on capture!
-      classifyUploadedImage(sourceBaseUrl, "camera_capture.png");
+      startImageClassification(sourceBaseUrl, "camera_capture.png");
     }
 
     startCinematicScanner(sourceBaseUrl, width, height);
@@ -2833,7 +2912,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   };
 
   // Upload classification is routed exclusively through the Cloudflare Worker.
-  const classifyUploadedImage = async (imageInput: string | File, originalFileName: string) => {
+  const classifyUploadedImage = async (imageInput: string | File, originalFileName: string, requestId: number) => {
     try {
       console.log("[Classifier] Starting image compression to maximum width 800 for optimal token economy...");
       
@@ -2843,6 +2922,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
       if (!cleanedBase64) {
         console.warn("[Classifier] Image compression returned empty string.");
+        if (requestId === classificationRequestIdRef.current) commitPreparedTitle("Scanned Item");
         return;
       }
 
@@ -2861,21 +2941,14 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
       // Run image recognition using secure smart AI dispatcher
       const result = await recognizeImage(cleanedBase64, mimeType);
+      if (requestId !== classificationRequestIdRef.current) return;
       console.log("[Classifier] Auto-recognition result:", result);
 
       if (result.title) {
-        let cleanTitle = cleanAndShortenTitle(result.title);
-        try {
-          // Generate customized storage title based on identified object info
-          const storageTitle = await generateStorageTitle(result.title, result.category || "", result.labels || []);
-          if (storageTitle) {
-            cleanTitle = cleanAndShortenTitle(storageTitle);
-          }
-        } catch (titleErr) {
-          console.warn("[Classifier] Failed to generate customized storage title:", titleErr);
-        }
-        setTempIdentifiedTitle(cleanTitle);
-        setCustomName(cleanTitle);
+        const cleanTitle = cleanAndShortenTitle(result.title);
+        commitPreparedTitle(cleanTitle);
+      } else {
+        commitPreparedTitle("Scanned Item");
       }
       if (result.category) {
         setTempIdentifiedCategory(result.category);
@@ -2883,8 +2956,16 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       }
     } catch (err: any) {
       console.warn("[Classifier] Handled exception or rate-limit in auto-recognize item:", err.message || err);
-      setTempIdentifiedTitle(`Scanned Item`);
+      if (requestId === classificationRequestIdRef.current) commitPreparedTitle("Scanned Item");
     }
+  };
+
+  const startImageClassification = (imageInput: string | File, originalFileName: string) => {
+    const requestId = classificationRequestIdRef.current + 1;
+    classificationRequestIdRef.current = requestId;
+    preparedTitleRef.current = "";
+    const task = classifyUploadedImage(imageInput, originalFileName, requestId);
+    classificationPromiseRef.current = task;
   };
 
   // Live real file uploaded event with Aoscdn API and high-fidelity Chroma Keying fallback
@@ -2932,9 +3013,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     // Synchronously clean state and start async classification immediately on raw File in parallel!
     setCustomName("");
     setCustomCategory(isChinese ? "其它" : "Others");
-    setTempIdentifiedTitle("");
     setTempIdentifiedCategory("");
-    classifyUploadedImage(file, file.name);
+    startImageClassification(file, file.name);
 
     // 1. 同步进行本地预览
     const localReader = new FileReader();
@@ -2967,59 +3047,55 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         setAiProgress(isChinese ? "正在剥离图片背景..." : "Extracting subject silhouette...");
         try {
           const transparentBase64 = await processImageForSticker(b64);
-          const alignedCutout = await generateViewportAlignedCutout(transparentBase64, iw, ih, false);
-          const flightCutout = await generateFlightCutout(transparentBase64, iw, ih, false);
-          const normalizedCutout = await generateTransparentCutoutWithPadding(transparentBase64, 0, false);
+          const [alignedCutout, flightCutout, paddedCutout, finalSticker] = await Promise.all([
+            generateViewportAlignedCutout(transparentBase64, iw, ih, false),
+            generateFlightCutout(transparentBase64, iw, ih, false),
+            generateTransparentCutoutWithPadding(transparentBase64, STICKER_BORDER_SIZE, false),
+            generatePhysicalSticker(transparentBase64, STICKER_BORDER_SIZE, "#FFFFFF", false),
+          ]);
 
           setAlignedCutoutUrl(alignedCutout);
-          setFlightCutoutUrl(flightCutout.url);
+          setFlightCutoutUrl(paddedCutout);
           setTransparentCutoutUrl(transparentBase64);
+          setPaddedCutoutUrl(paddedCutout);
+          setGeneratedStickerUrl(finalSticker);
           setTraceCompleted(false);
-          beginCutoutTransition(iw, ih, flightCutout.bounds);
+          await beginCutoutTransition(iw, ih, flightCutout.bounds);
           setAiProgress("Done");
-
-          // Generate physical white borders and padded cutout asynchronously
-          generatePhysicalSticker(transparentBase64, STICKER_BORDER_SIZE, "#FFFFFF", false)
-            .then((finalStickerUrl) => {
-              setGeneratedStickerUrl(finalStickerUrl);
-            })
-            .catch((stickerErr) => {
-              console.error("[Sticker Generation] Failed to generate border:", stickerErr);
-              setGeneratedStickerUrl(normalizedCutout);
-            });
-
-          generateTransparentCutoutWithPadding(transparentBase64, STICKER_BORDER_SIZE, false)
-            .then((paddedCutoutUrl) => {
-              setPaddedCutoutUrl(paddedCutoutUrl);
-            })
-            .catch((paddedErr) => {
-              console.error("[Padded Cutout] Failed to generate padding:", paddedErr);
-              setPaddedCutoutUrl(normalizedCutout);
-            });
         } catch (err: any) {
           console.error("[Background Removal] Processing failed:", err);
           // Complete fallback: use original image as transparent url
-          const flightCutout = await generateFlightCutout(b64, iw, ih, false);
-          generateViewportAlignedCutout(b64, iw, ih, false).then(setAlignedCutoutUrl);
-          setFlightCutoutUrl(flightCutout.url);
+          const [flightCutout, alignedCutout, paddedCutout, finalSticker] = await Promise.all([
+            generateFlightCutout(b64, iw, ih, false),
+            generateViewportAlignedCutout(b64, iw, ih, false),
+            generateTransparentCutoutWithPadding(b64, STICKER_BORDER_SIZE, false),
+            generatePhysicalSticker(b64, STICKER_BORDER_SIZE, "#FFFFFF", false),
+          ]);
+          setAlignedCutoutUrl(alignedCutout);
+          setFlightCutoutUrl(paddedCutout);
           setTransparentCutoutUrl(b64);
-          generatePhysicalSticker(b64, STICKER_BORDER_SIZE, "#FFFFFF", false).then(setGeneratedStickerUrl);
-          generateTransparentCutoutWithPadding(b64, STICKER_BORDER_SIZE, false).then(setPaddedCutoutUrl);
+          setPaddedCutoutUrl(paddedCutout);
+          setGeneratedStickerUrl(finalSticker);
           setTraceCompleted(false);
-          beginCutoutTransition(iw, ih, flightCutout.bounds);
+          await beginCutoutTransition(iw, ih, flightCutout.bounds);
           setAiProgress("Done");
         }
       };
       img.onerror = async () => {
         calculateTargetScaleFromDimensions(500, 500);
-        const flightCutout = await generateFlightCutout(b64, 500, 500, false);
-        generateViewportAlignedCutout(b64, 500, 500, false).then(setAlignedCutoutUrl);
-        setFlightCutoutUrl(flightCutout.url);
+        const [flightCutout, alignedCutout, paddedCutout, finalSticker] = await Promise.all([
+          generateFlightCutout(b64, 500, 500, false),
+          generateViewportAlignedCutout(b64, 500, 500, false),
+          generateTransparentCutoutWithPadding(b64, STICKER_BORDER_SIZE, false),
+          generatePhysicalSticker(b64, STICKER_BORDER_SIZE, "#FFFFFF", false),
+        ]);
+        setAlignedCutoutUrl(alignedCutout);
+        setFlightCutoutUrl(paddedCutout);
         setTransparentCutoutUrl(b64);
-        generatePhysicalSticker(b64, STICKER_BORDER_SIZE, "#FFFFFF", false).then(setGeneratedStickerUrl);
-        generateTransparentCutoutWithPadding(b64, STICKER_BORDER_SIZE, false).then(setPaddedCutoutUrl);
+        setPaddedCutoutUrl(paddedCutout);
+        setGeneratedStickerUrl(finalSticker);
         setTraceCompleted(false);
-        beginCutoutTransition(500, 500, flightCutout.bounds);
+        await beginCutoutTransition(500, 500, flightCutout.bounds);
         setAiProgress("Done");
       };
       img.src = b64;
@@ -3537,7 +3613,37 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                 className="absolute inset-0 w-full h-full pointer-events-none" 
               />
 
-              {/* Decorative Soft Yellow Gaussian Glow underlay removed from Phase 3-2 */}
+              {/* The result decoration fades in exactly when the cutout begins its return. */}
+              <div
+                className="absolute left-1/2 z-10 flex items-center justify-center pointer-events-none select-none"
+                style={{
+                  top: `${targetCenterY}px`,
+                  width: "300px",
+                  height: "300px",
+                  transform: `translate(calc(-50% + ${RESULT_STICKER_CENTER_OFFSET_X}px), -50%)`,
+                }}
+              >
+                <div
+                  className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+                  style={{
+                    width: COLOR_BLUR_SIZE,
+                    height: COLOR_BLUR_SIZE,
+                    marginLeft: "8px",
+                    opacity: isResultDecorationVisible && isColorBlurReady ? 1 : 0,
+                    transition: "opacity 700ms cubic-bezier(0.16, 1, 0.3, 1)",
+                    willChange: "opacity",
+                  }}
+                >
+                  <img
+                    src={COLOR_BLUR_IMAGE_URL}
+                    alt=""
+                    aria-hidden="true"
+                    onLoad={() => setIsColorBlurReady(true)}
+                    className="block h-full w-full object-contain"
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+              </div>
 
               {/* Cutout subject shrinks smoothly to its target place while disintegration particles disperse concurrently! */}
               {cutoutFlightImageUrl && (
@@ -3561,8 +3667,49 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                     className="absolute inset-0 w-full h-full object-fill z-[12]"
                     referrerPolicy="no-referrer"
                   />
+                  {generatedStickerUrl && (
+                    <img
+                      src={generatedStickerUrl}
+                      alt="Returning outlined subject"
+                      className={`absolute inset-0 z-20 h-full w-full object-fill ${
+                        traceCompleted ? "opacity-100" : "opacity-0"
+                      }`}
+                      referrerPolicy="no-referrer"
+                    />
+                  )}
+                  {!traceCompleted && (
+                    <canvas
+                      ref={outlineTraceCanvasRef}
+                      className="absolute inset-0 z-30 h-full w-full pointer-events-none"
+                    />
+                  )}
                 </div>
               )}
+
+              <div
+                className="absolute left-1/2 z-30 pointer-events-none select-none"
+                style={{
+                  top: `${targetCenterY}px`,
+                  width: `${RESULT_STICKER_VISUAL_SIZE}px`,
+                  height: `${RESULT_STICKER_VISUAL_SIZE}px`,
+                  transform: `translate(calc(-50% + ${RESULT_STICKER_CENTER_OFFSET_X}px), -50%)`,
+                }}
+              >
+                <div
+                  className="absolute text-center z-20 font-alkatra overflow-visible"
+                  style={resultTitleOverlayStyle}
+                >
+                  {stickerTitleLines.map((line, index) => (
+                    <span
+                      key={`${line}-${index}`}
+                      className="block w-full whitespace-normal break-words"
+                      style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
+                    >
+                      {line}
+                    </span>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
 
@@ -3594,8 +3741,15 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
               >
 
                 <div
-                  className={`absolute left-1/2 top-1/2 z-0 -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none ${isColorBlurReady ? "noma-color-blur-enter" : "opacity-0"}`}
-                  style={{ width: COLOR_BLUR_SIZE, height: COLOR_BLUR_SIZE }}
+                  className="absolute left-1/2 top-1/2 z-0 -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none"
+                  style={{
+                    width: COLOR_BLUR_SIZE,
+                    height: COLOR_BLUR_SIZE,
+                    marginLeft: "8px",
+                    opacity: isResultDecorationVisible && isColorBlurReady ? 1 : 0,
+                    transition: "opacity 700ms cubic-bezier(0.16, 1, 0.3, 1)",
+                    willChange: "opacity",
+                  }}
                 >
                   <img
                     src={COLOR_BLUR_IMAGE_URL}
@@ -3608,43 +3762,50 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                 </div>
 
                 {/* Sticker element wrapper kept upright to avoid a rotation jump after the cutout flight. */}
-                <motion.div 
-                  layoutId="sticker-and-title-layout"
+                <div
                   className="relative flex items-center justify-center z-10"
                   style={{
                     width: `${RESULT_STICKER_VISUAL_SIZE}px`,
                     height: `${RESULT_STICKER_VISUAL_SIZE}px`,
-                    rotate: "0deg",
                   }}
-                  transition={{ type: "spring", stiffness: 180, damping: 22 }}
                 >
-                  {!traceCompleted && (paddedCutoutUrl || transparentCutoutUrl) ? (
-                    // Tracing phase displays the fixed 256x256 asset at the larger visual size.
+                  {(cutoutFlightImageUrl || paddedCutoutUrl || transparentCutoutUrl) ? (
                     <div
                       className="relative flex items-center justify-center"
                       style={{ width: `${RESULT_STICKER_VISUAL_SIZE}px`, height: `${RESULT_STICKER_VISUAL_SIZE}px` }}
                     >
-                      <img 
-                        src={paddedCutoutUrl || transparentCutoutUrl || ""} 
-                        alt="Cutout Subject" 
+                      <img
+                        src={cutoutFlightImageUrl || paddedCutoutUrl || transparentCutoutUrl || ""}
+                        alt="Cutout Subject"
                         className="w-full h-full object-contain block select-none pointer-events-none"
                         referrerPolicy="no-referrer"
                       />
-                      <canvas 
-                        ref={outlineTraceCanvasRef} 
-                        className="absolute inset-0 w-full h-full pointer-events-none z-30" 
-                      />
+                      {generatedStickerUrl && (
+                        <img
+                          id="final-sticker-view"
+                          src={generatedStickerUrl}
+                          alt="Physical Contour Cutout Sticker"
+                          className={`absolute inset-0 z-20 h-full w-full object-contain block select-none cursor-grab ${
+                            traceCompleted ? "opacity-100" : "opacity-0"
+                          }`}
+                          style={{ filter: "none" }}
+                          referrerPolicy="no-referrer"
+                        />
+                      )}
+                      {!traceCompleted && (
+                        <canvas
+                          ref={outlineTraceCanvasRef}
+                          className="absolute inset-0 w-full h-full pointer-events-none z-30"
+                        />
+                      )}
                     </div>
                   ) : generatedStickerUrl ? (
-                    <motion.img 
+                    <img
                       id="final-sticker-view"
-                      layoutId="sticker-image-layout"
-                      src={generatedStickerUrl} 
-                      alt="Physical Contour Cutout Sticker" 
-                      className="w-full h-full object-contain block select-none transform transition-all duration-300 hover:scale-105 active:scale-95 cursor-grab"
-                      style={{
-                        filter: "none",
-                      }}
+                      src={generatedStickerUrl}
+                      alt="Physical Contour Cutout Sticker"
+                      className="w-full h-full object-contain block select-none cursor-grab"
+                      style={{ filter: "none" }}
                       referrerPolicy="no-referrer"
                     />
                   ) : (
@@ -3662,27 +3823,21 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                     </div>
                   )}
 
-                  {/* 🌟 识别出来的物体的标题放在抠图的上层，下方的位置，使用alkatra字体，44号，文字颜色#000000，有白色描边粗细为6 */}
-                  {/* Tracing completed before title fade in to avoid overlap */}
-                  {(traceCompleted || scanStep === "done") && stickerTitleText && (
-                    <motion.div 
-                      layoutId="sticker-title-layout"
-                      className="absolute text-center pointer-events-none select-none z-20 animate-fade-in font-alkatra overflow-visible"
-                      style={{
-                        ...stickerTitleStyle,
-                        left: "50%",
-                        width: `${RESULT_STICKER_TITLE_WIDTH}px`,
-                        marginLeft: `${-RESULT_STICKER_TITLE_WIDTH / 2}px`,
-                      }}
-                    >
-                      {stickerTitleLines.map((line) => (
-                        <span key={line} className="block whitespace-normal break-words">
-                          {line}
-                        </span>
-                      ))}
-                    </motion.div>
-                  )}
-                </motion.div>
+                  <div
+                    className="absolute text-center pointer-events-none select-none z-30 font-alkatra overflow-visible"
+                    style={resultTitleOverlayStyle}
+                  >
+                    {stickerTitleLines.map((line, index) => (
+                      <span
+                        key={`${line}-${index}`}
+                        className="block w-full whitespace-normal break-words"
+                        style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
+                      >
+                        {line}
+                      </span>
+                    ))}
+                  </div>
+                </div>
 
                 {/* 🌟 识别出来归类的分类为一个白色小标签，位置上移，离标题更近，且描边结束后淡入 */}
                 {(traceCompleted || scanStep === "done") && customCategory && (
@@ -4069,8 +4224,15 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                         }}
                       >
                         <div
-                          className={`absolute left-1/2 top-1/2 z-0 -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none ${isColorBlurReady ? "noma-color-blur-enter" : "opacity-0"}`}
-                          style={{ width: COLOR_BLUR_SIZE, height: COLOR_BLUR_SIZE }}
+                          className="absolute left-1/2 top-1/2 z-0 -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none"
+                          style={{
+                            width: COLOR_BLUR_SIZE,
+                            height: COLOR_BLUR_SIZE,
+                            marginLeft: "8px",
+                            opacity: isResultDecorationVisible && isColorBlurReady ? 1 : 0,
+                            transition: "opacity 700ms cubic-bezier(0.16, 1, 0.3, 1)",
+                            willChange: "opacity",
+                          }}
                         >
                           <img
                             src={COLOR_BLUR_IMAGE_URL}
@@ -4149,8 +4311,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                             style={{
                               fontSize: `${RESULT_STICKER_TITLE_FONT_SIZE}px`,
                               color: "#000000",
-                              WebkitTextStroke: `${RESULT_STICKER_TITLE_STROKE}px #ffffff`,
-                              paintOrder: "stroke fill",
+                              WebkitTextStroke: "0 transparent",
+                              textShadow: stickerTitleStyle.textShadow,
                               lineHeight: `${RESULT_STICKER_TITLE_FONT_SIZE}px`,
                               overflowWrap: "anywhere",
                             }}
@@ -4388,18 +4550,25 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                       )}
                       
                       {/* Alkatra overlay title exactly like the results page but styled proportionally */}
-                      {(customName || activeItem.name) && (
+                      {stickerTitleText && (
                         <div
                           className="absolute text-center pointer-events-none select-none z-20 font-alkatra overflow-visible"
                           style={{
                             ...stickerTitleStyle,
                             left: "50%",
                             width: `${RESULT_STICKER_TITLE_WIDTH}px`,
+                            maxWidth: `${RESULT_STICKER_TITLE_WIDTH}px`,
                             marginLeft: `${-RESULT_STICKER_TITLE_WIDTH / 2}px`,
+                            flexDirection: "column",
+                            boxSizing: "border-box",
                           }}
                         >
-                          {stickerTitleLines.map((line) => (
-                            <span key={line} className="block whitespace-normal break-words">
+                          {stickerTitleLines.map((line, index) => (
+                            <span
+                              key={`${line}-${index}`}
+                              className="block w-full whitespace-normal break-words"
+                              style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
+                            >
                               {line}
                             </span>
                           ))}

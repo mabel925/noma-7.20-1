@@ -20,7 +20,7 @@ const UserIcon: React.FC = () => (
 
 export const Header: React.FC<HeaderProps> = ({
   onUserClick,
-  user: _user,
+  user,
   isChatActive = false,
 }) => {
   return createPortal(
@@ -40,12 +40,23 @@ export const Header: React.FC<HeaderProps> = ({
 
       <button
         type="button"
-        aria-label="Log in"
-        title="Log in"
+        aria-label={user ? "Open account" : "Log in"}
+        title={user ? "Open account" : "Log in"}
         onClick={onUserClick}
-        className="pointer-events-auto flex h-14 w-14 items-center justify-center rounded-full border-0 bg-black/[0.12] shadow-none transition-transform active:scale-95"
+        className={`pointer-events-auto relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border-0 shadow-none transition-transform active:scale-95 ${
+          user ? "bg-white p-[2px]" : "bg-black/[0.12]"
+        }`}
       >
-        <UserIcon />
+        {user ? (
+          <img
+            src={user.avatarUrl}
+            alt={user.displayName}
+            className="h-full w-full rounded-full object-cover"
+            referrerPolicy="no-referrer"
+          />
+        ) : (
+          <UserIcon />
+        )}
       </button>
     </header>,
     document.body,
