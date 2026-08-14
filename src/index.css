@@ -579,6 +579,20 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
   z-index: 9999 !important;
 }
 
+.home-memory-entry-fixed {
+  position: fixed !important;
+  left: 14px !important;
+  bottom: calc(2rem + env(safe-area-inset-bottom, 0px) + 6px) !important;
+  z-index: 9999 !important;
+}
+
+@media (min-width: 768px) {
+  .home-memory-entry-fixed {
+    left: calc(50% - 192px) !important;
+    bottom: calc(50% - 384px) !important;
+  }
+}
+
 @media (min-width: 768px) {
   .home-action-buttons-fixed {
     right: calc(50% - 192px) !important;

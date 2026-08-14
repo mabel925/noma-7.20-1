@@ -30,12 +30,12 @@ export const MemoryCoreButton: React.FC<MemoryCoreButtonProps> = ({
       />
 
       <svg
-        width="30"
-        height="30"
+        width="32"
+        height="32"
         viewBox="0 0 30 30"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
-        className={`w-[30px] h-[30px] text-white transition-transform duration-[1000ms] ${
+        className={`w-[32px] h-[32px] text-white transition-transform duration-[1000ms] ${
           isHovered ? "rotate-[120deg] scale-105" : "rotate-0"
         }`}
       >

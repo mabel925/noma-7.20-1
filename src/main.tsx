@@ -2,6 +2,8 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import { AuthProvider } from './auth/AuthContext';
+import { AuthDialog } from './components/AuthDialog';
 
 const syncDisplayModeClasses = () => {
   const searchParams = new URLSearchParams(window.location.search);
@@ -21,7 +23,10 @@ syncDisplayModeClasses();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <AuthProvider>
+      <App />
+      <AuthDialog />
+    </AuthProvider>
   </StrictMode>,
 );
 

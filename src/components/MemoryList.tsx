@@ -45,6 +45,9 @@ interface MemoryListProps {
   onClose: () => void;
   memories: MemoryItem[];
   onMemoriesChange: React.Dispatch<React.SetStateAction<MemoryItem[]>>;
+  isAuthenticated?: boolean;
+  onRequireAuth?: (action?: () => void) => boolean;
+  onLogin?: () => void;
 }
 
 const normalizeCategory = (cat: string): string => {
@@ -2100,6 +2103,9 @@ export const MemoryList: React.FC<MemoryListProps> = ({
   onClose,
   memories,
   onMemoriesChange,
+  isAuthenticated = false,
+  onRequireAuth,
+  onLogin,
 }) => {
   const [activeTab, setActiveTab] = useState<"spaces" | "items">("spaces");
   const [activeCategory, setActiveCategory] = useState<string>("All");
@@ -2260,6 +2266,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
   };
 
   const openMemorySearch = () => {
+    if (onRequireAuth && !onRequireAuth(openMemorySearch)) return;
     setSelectedParentSpace(null);
     setSelectedSpaceDetail(null);
     setIsEditingParentName(false);
@@ -2671,7 +2678,24 @@ export const MemoryList: React.FC<MemoryListProps> = ({
               : "calc(20px + env(safe-area-inset-bottom, 0px))",
         }}
       >
-        {selectedParentSpace ? (
+        {!memories.length ? (
+          <div className="flex h-full flex-col items-center justify-center px-8 pb-20 text-center text-[#232121]">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white/70 text-[27px]">✦</div>
+            <p className="mt-5 text-[16px] font-semibold">{isAuthenticated ? "暂无内容" : "暂无内容，请登录查看更多"}</p>
+            <p className="mt-2 max-w-[250px] text-[13px] leading-5 text-[#232121]/45">
+              {isAuthenticated ? "拍照添加你的第一个物品，开始建立专属记忆库。" : "登录后，你的物品和空间会安全保存在自己的记忆库中。"}
+            </p>
+            {!isAuthenticated && (
+              <button
+                type="button"
+                onClick={onLogin}
+                className="mt-6 flex h-10 min-w-[96px] items-center justify-center rounded-full bg-[#232121] px-5 text-[14px] font-semibold text-white active:scale-95"
+              >
+                登录
+              </button>
+            )}
+          </div>
+        ) : selectedParentSpace ? (
           <motion.div
             key={`parent-space-${selectedParentSpace.name}`}
             initial={{ opacity: 0, x: 18 }}

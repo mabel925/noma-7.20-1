@@ -1,19 +1,30 @@
 import React from "react";
 import { Compass, Plus } from "lucide-react";
+import { MemoryCoreButton } from "./MemoryCoreButton";
 
 interface ActionButtonsProps {
   onChatToggle: () => void;
   onCaptureClick: () => void;
+  onMemoryClick: () => void;
   isChatActive: boolean;
 }
 
 export const ActionButtons: React.FC<ActionButtonsProps> = ({
   onChatToggle,
   onCaptureClick,
+  onMemoryClick,
   isChatActive,
 }) => {
   return (
-    <div
+    <>
+      <div
+        className={`home-memory-entry-fixed transition-[opacity,transform] duration-[850ms] ease-[cubic-bezier(0.16,1,0.3,1)] ${
+          isChatActive ? "pointer-events-none translate-x-[-120px] opacity-0" : "translate-x-0 opacity-100"
+        }`}
+      >
+        <MemoryCoreButton onClick={onMemoryClick} className="!h-11 !w-11" />
+      </div>
+      <div
       className={`home-action-buttons-fixed flex flex-col items-center gap-3.5 select-none ${
         isChatActive
           ? "opacity-0 translate-x-[120px] pointer-events-none"
@@ -67,6 +78,7 @@ export const ActionButtons: React.FC<ActionButtonsProps> = ({
           <path d="M9 15.6361L9 2.36389" stroke="#232121" strokeWidth="2.25" strokeLinecap="round" />
         </svg>
       </button>
-    </div>
+      </div>
+    </>
   );
 };

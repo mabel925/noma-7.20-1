@@ -19,6 +19,7 @@ interface ChatMessage {
 
 import { MemoryList, MemoryItem } from "./components/MemoryList";
 import { CloseIcon } from "./components/CloseIcon";
+import { useAuth } from "./auth/AuthContext";
 
 const DEFAULT_MEMORIES: MemoryItem[] = [
   {
@@ -176,6 +177,11 @@ const DEFAULT_MEMORIES: MemoryItem[] = [
 ];
 
 export default function App() {
+  const { user, requireAuth, openLogin } = useAuth();
+  const userRef = React.useRef(user);
+  React.useEffect(() => {
+    userRef.current = user;
+  }, [user]);
   const [isChatActive, setIsChatActive] = useState<boolean>(false);
   const [inputValue, setInputValue] = useState<string>("");
   const [isScanning, setIsScanning] = useState<boolean>(false);
@@ -221,18 +227,25 @@ export default function App() {
   useKeyboardReset(isChatActive, isCaptureOpen);
   const [customMemories, setCustomMemories] = useState<MemoryItem[]>([]);
   const [isMemoryHydrated, setIsMemoryHydrated] = useState(false);
+  const [hydratedUserId, setHydratedUserId] = useState<string | null>(null);
 
-  // Load local memories through the storage boundary. The service migrates the
-  // legacy localStorage payload into IndexedDB on the first read.
+  // Only hydrate data after a user exists. Signed-out sessions intentionally
+  // never read the old test database or any account-scoped data.
   useEffect(() => {
     let cancelled = false;
 
+    setCustomMemories([]);
+    setIsMemoryHydrated(false);
+    setHydratedUserId(null);
+    if (!user) return () => { cancelled = true; };
+
     memoryStorage
-      .listItems()
+      .listItems(user.id)
       .then((items) => {
         if (cancelled) return;
         setCustomMemories(items);
         setIsMemoryHydrated(true);
+        setHydratedUserId(user.id);
       })
       .catch((error) => {
         console.error("[App] Failed to load local memories:", error);
@@ -244,17 +257,17 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [user?.id]);
 
   // Persist changes through IndexedDB without allowing the initial empty state
   // to overwrite data before hydration completes.
   useEffect(() => {
-    if (!isMemoryHydrated) return;
+    if (!isMemoryHydrated || !user || hydratedUserId !== user.id) return;
 
-    memoryStorage.saveItems(customMemories).catch((error) => {
+    memoryStorage.saveItems(user.id, customMemories).catch((error) => {
       console.error("[App] Failed to persist local memories:", error);
     });
-  }, [customMemories, isMemoryHydrated]);
+  }, [customMemories, isMemoryHydrated, hydratedUserId, user?.id]);
   const [toast, setToast] = useState<string | null>(null);
   const [currentInfoObj, setCurrentInfoObj] = useState<string | null>(null);
 
@@ -273,7 +286,7 @@ export default function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       sender: "noma",
-      text: "Hi there! I’ve got all your memories saved right here. What are we looking for today?",
+      text: "Hi, I'm noma. Snap a photo of the items scattered around your space, and I'll help you find the perfect home for them.",
     },
   ]);
 
@@ -382,6 +395,10 @@ export default function App() {
 
   // Pre-configured room search knowledgebase
   const handleNomaSearch = (query: string) => {
+    if (!userRef.current) {
+      requireAuth(() => handleNomaSearch(query));
+      return;
+    }
     const cleanQuery = query.toLowerCase().trim();
 
     // Check if user is asking to generate/draw/create/make an image
@@ -541,6 +558,14 @@ export default function App() {
   const handleSend = () => {
     if (!inputValue.trim()) return;
     const currentInput = inputValue;
+    if (!userRef.current) {
+      requireAuth(() => {
+      setMessages((prev) => [...prev, { sender: "user", text: currentInput }]);
+      setInputValue("");
+      handleNomaSearch(currentInput);
+      });
+      return;
+    }
     setMessages((prev) => [...prev, { sender: "user", text: currentInput }]);
     setInputValue("");
     handleNomaSearch(currentInput);
@@ -560,6 +585,10 @@ export default function App() {
 
   // Quick preset keyword taps
   const handlePresetSearch = (preset: string) => {
+    if (!userRef.current) {
+      requireAuth(() => handlePresetSearch(preset));
+      return;
+    }
     setInputValue("");
     setMessages((prev) => [...prev, { sender: "user", text: preset }]);
     handleNomaSearch(preset);
@@ -572,14 +601,18 @@ export default function App() {
     date?: string,
     emoji?: string
   ) => {
+    if (!userRef.current) {
+      requireAuth(() => handleItemAdded(nameOrItem, price, date, emoji));
+      return;
+    }
     let newItem: MemoryItem;
 
     if (typeof nameOrItem === "object") {
-      newItem = memoryStorage.createItem({
+      newItem = memoryStorage.createItem(user.id, {
         ...nameOrItem,
       });
     } else {
-      newItem = memoryStorage.createItem({
+      newItem = memoryStorage.createItem(user.id, {
         name: nameOrItem,
         category: "其它",
         price: price || "$25.00",
@@ -674,9 +707,8 @@ export default function App() {
         {!isMemoryOpen && (
           <Header
             isChatActive={isChatActive || isCaptureOpen}
-            onMemoryCoreClick={() => {
-              setIsMemoryOpen(true);
-            }}
+            user={user}
+            onUserClick={openLogin}
           />
         )}
 
@@ -687,6 +719,9 @@ export default function App() {
             onClose={() => setIsMemoryOpen(false)}
             memories={customMemories}
             onMemoriesChange={setCustomMemories}
+            isAuthenticated={Boolean(user)}
+            onRequireAuth={(action) => requireAuth(action)}
+            onLogin={openLogin}
           />
         )}
 
@@ -832,11 +867,14 @@ export default function App() {
             messages={messages}
             onInputChange={(val) => setInputValue(val)}
             onClearInput={() => setInputValue("")}
-            onTriggerCamera={() => setIsCaptureOpen(true)}
+            onTriggerCamera={() => {
+              if (requireAuth(() => setIsCaptureOpen(true))) setIsCaptureOpen(true);
+            }}
             onMemoryCoreClick={() => setIsMemoryOpen(true)}
             isChatActive={isChatActive}
             isCaptureOpen={isCaptureOpen}
             onPresetSearch={handlePresetSearch}
+            isAuthenticated={Boolean(user)}
           />
         )}
 
@@ -868,7 +906,10 @@ export default function App() {
         {!isMemoryOpen && createPortal(
           <ActionButtons
             onChatToggle={() => setIsChatActive((prev) => !prev)}
-            onCaptureClick={() => setIsCaptureOpen(true)}
+            onCaptureClick={() => {
+              if (requireAuth(() => setIsCaptureOpen(true))) setIsCaptureOpen(true);
+            }}
+            onMemoryClick={() => setIsMemoryOpen(true)}
             isChatActive={isChatActive || isCaptureOpen}
           />,
           document.body

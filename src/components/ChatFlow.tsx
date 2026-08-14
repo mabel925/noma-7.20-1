@@ -20,6 +20,7 @@ interface ChatFlowProps {
   isChatActive: boolean;
   isCaptureOpen: boolean;
   onPresetSearch: (preset: string) => void;
+  isAuthenticated?: boolean;
 }
 
 export const ChatFlow: React.FC<ChatFlowProps> = ({
@@ -32,6 +33,7 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
   isChatActive,
   isCaptureOpen,
   onPresetSearch,
+  isAuthenticated = false,
 }) => {
   const [isFocused, setIsFocused] = React.useState(false);
   const outerRef = React.useRef<HTMLDivElement>(null);
@@ -213,7 +215,7 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
         {/* 1. Quick Suggestion Pills wrapped in fixed-height container to prevent layout shifts */}
         <div className="h-[40px] relative w-full flex items-center shrink-0">
           <AnimatePresence>
-            {isChatActive && (
+            {isChatActive && isAuthenticated && (
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: inputValue ? 0 : 1 }}
