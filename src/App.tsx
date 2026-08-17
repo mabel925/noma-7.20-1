@@ -196,6 +196,7 @@ export default function App() {
   const launchStartedAtRef = React.useRef(performance.now());
   const [areStageAssetsReady, setAreStageAssetsReady] = useState(false);
   const [areHomeChromeAssetsReady, setAreHomeChromeAssetsReady] = useState(false);
+  const [startupProgress, setStartupProgress] = useState(4);
   const [isHomeReady, setIsHomeReady] = useState(false);
   const handleHomeReady = React.useCallback(() => setAreStageAssetsReady(true), []);
 
@@ -218,15 +219,47 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (isHomeReady) return;
+    const timer = window.setInterval(() => {
+      setStartupProgress((current) => {
+        if (areStageAssetsReady && areHomeChromeAssetsReady) return 100;
+        const ceiling = areStageAssetsReady ? 94 : areHomeChromeAssetsReady ? 76 : 62;
+        const step = Math.max(0.6, (ceiling - current) * 0.075);
+        return Math.min(ceiling, current + step);
+      });
+    }, 140);
+    return () => window.clearInterval(timer);
+  }, [areHomeChromeAssetsReady, areStageAssetsReady, isHomeReady]);
+
+  useEffect(() => {
+    const splash = document.getElementById("startup-splash");
+    const fill = document.getElementById("startup-progress-fill");
+    const label = document.getElementById("startup-progress-label");
+    const progressbar = splash?.querySelector<HTMLElement>('[role="progressbar"]');
+    const roundedProgress = Math.min(100, Math.round(startupProgress));
+    if (fill) fill.style.width = `${roundedProgress}%`;
+    if (label) label.textContent = `${roundedProgress}%`;
+    progressbar?.setAttribute("aria-valuenow", String(roundedProgress));
+  }, [startupProgress]);
+
+  useEffect(() => {
     if (!areStageAssetsReady || !areHomeChromeAssetsReady) return;
+    setStartupProgress(100);
     const elapsed = performance.now() - launchStartedAtRef.current;
-    const timer = window.setTimeout(() => setIsHomeReady(true), Math.max(0, 650 - elapsed));
+    const timer = window.setTimeout(() => setIsHomeReady(true), Math.max(240, 650 - elapsed));
     return () => window.clearTimeout(timer);
   }, [areHomeChromeAssetsReady, areStageAssetsReady]);
 
   useEffect(() => {
-    const safetyTimer = window.setTimeout(() => setIsHomeReady(true), 12000);
-    return () => window.clearTimeout(safetyTimer);
+    let finishTimer: number | null = null;
+    const safetyTimer = window.setTimeout(() => {
+      setStartupProgress(100);
+      finishTimer = window.setTimeout(() => setIsHomeReady(true), 240);
+    }, 12000);
+    return () => {
+      window.clearTimeout(safetyTimer);
+      if (finishTimer !== null) window.clearTimeout(finishTimer);
+    };
   }, []);
 
   useEffect(() => {

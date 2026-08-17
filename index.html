@@ -7,7 +7,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#E9E6E1">
     <title>Noma</title>
+    <link rel="apple-touch-startup-image" href="/startup.jpg">
+    <link rel="apple-touch-startup-image" href="/startup.jpg" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3)">
     <link rel="preload" href="/font/Alkatra-SemiBold.ttf" as="font" type="font/ttf" crossorigin="anonymous">
     <link rel="preload" href="/icons/icon-192.png" as="image" type="image/png">
     <link rel="preload" href="/startup.jpg" as="image" type="image/jpeg">
@@ -28,11 +31,63 @@
         overflow: hidden;
         overscroll-behavior: none;
       }
+      #startup-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483646;
+        width: 100vw;
+        height: var(--app-height, 100dvh);
+        overflow: hidden;
+        background: #E9E6E1;
+        opacity: 1;
+        transition: opacity 350ms ease-out;
+      }
+      #startup-splash > img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center;
+      }
+      #startup-splash.is-hidden { opacity: 0; pointer-events: none; }
+      .startup-progress {
+        position: absolute;
+        left: 50%;
+        bottom: max(42px, calc(env(safe-area-inset-bottom, 0px) + 18px));
+        transform: translateX(-50%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      .startup-progress-track {
+        width: 126px;
+        height: 6px;
+        overflow: hidden;
+        border-radius: 3px;
+        background: #FFFFFF;
+      }
+      #startup-progress-fill {
+        display: block;
+        width: 0%;
+        height: 100%;
+        border-radius: inherit;
+        background: #232121;
+        transition: width 180ms ease-out;
+      }
+      #startup-progress-label {
+        margin-top: 14px;
+        color: rgba(35, 33, 33, 0.5);
+        font: 400 18px/1.2 system-ui, sans-serif;
+      }
     </style>
   </head>
   <body>
     <div id="startup-splash" role="status" aria-label="Loading Noma">
       <img src="/startup.jpg" alt="" />
+      <div class="startup-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div class="startup-progress-track"><span id="startup-progress-fill"></span></div>
+        <span id="startup-progress-label">0%</span>
+      </div>
     </div>
     <!-- 页面根容器，让背景色/图片和应用布局自适应自撑满整个视口 -->
     <div id="root"></div>

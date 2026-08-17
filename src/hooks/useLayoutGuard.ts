@@ -44,6 +44,8 @@ export function useLayoutGuard(isOpen: boolean) {
 
     // 2. Perform aggressive, DOM-level environmental scrubbing
     const applyScrubbing = () => {
+      document.documentElement.classList.add('capture-page-open');
+      document.body.classList.add('capture-page-open');
       document.documentElement.style.setProperty("overflow", "hidden", "important");
       document.body.style.setProperty("overflow", "hidden", "important");
       document.documentElement.style.setProperty("overscroll-behavior", "none", "important");
@@ -191,6 +193,8 @@ export function useLayoutGuard(isOpen: boolean) {
       }
       document.documentElement.classList.remove('capture-native-keyboard-open');
       document.body.classList.remove('capture-native-keyboard-open');
+      document.documentElement.classList.remove('capture-page-open');
+      document.body.classList.remove('capture-page-open');
 
       elements.forEach((el, index) => {
         const orig = originalElementStyles[index];

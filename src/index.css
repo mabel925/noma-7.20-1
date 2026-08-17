@@ -46,6 +46,15 @@
   pointer-events: none;
 }
 
+body.capture-page-open::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 20000;
+  background: #E9E6E1;
+  pointer-events: none;
+}
+
 :root {
   --noma-statusbar-height: env(safe-area-inset-top, 0px);
   --app-height: 100dvh;
@@ -575,11 +584,11 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 
 @media (max-width: 767px) {
   .pwa-standalone .home-action-buttons-fixed {
-    bottom: 22px !important;
+    bottom: 44px !important;
   }
 
   .pwa-standalone .home-memory-entry-fixed {
-    bottom: 28px !important;
+    bottom: 50px !important;
   }
 }
 
@@ -654,7 +663,7 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
   position: fixed !important;
   top: var(--capture-viewport-top) !important;
   bottom: auto !important;
-  z-index: 9999 !important;
+  z-index: 20001 !important;
   left: 0 !important;
   right: 0 !important;
   width: auto !important;

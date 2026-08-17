@@ -1,4 +1,4 @@
-const CACHE_NAME = "noma-app-v4";
+const CACHE_NAME = "noma-app-v5";
 const APP_SHELL = [
   "/",
   "/manifest.json",
