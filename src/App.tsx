@@ -650,25 +650,27 @@ export default function App() {
           />
         </motion.div>
 
-        <motion.div
-          initial={isCustomKeyboardVisible ? "visible" : "hidden"}
-          animate={controls}
-          variants={keyboardVariants}
-          transition={syncTransition}
-          className="home-keyboard-container absolute bottom-0 inset-x-0 h-[242px] z-40 pointer-events-auto"
-          style={{ willChange: "transform" }}
-        >
-          <VirtualKeyboard
-            value={inputValue}
-            onChange={setInputValue}
-            onKeyPress={handleKeyPress}
-            onBackspace={handleBackspace}
-            onSpace={handleSpace}
-            onSend={handleSend}
-            onDismiss={() => setIsChatActive(false)}
-            className="h-full"
-          />
-        </motion.div>
+        {!isCaptureOpen && (
+          <motion.div
+            initial={isCustomKeyboardVisible ? "visible" : "hidden"}
+            animate={controls}
+            variants={keyboardVariants}
+            transition={syncTransition}
+            className="home-keyboard-container absolute bottom-0 inset-x-0 h-[242px] z-40 pointer-events-auto"
+            style={{ willChange: "transform" }}
+          >
+            <VirtualKeyboard
+              value={inputValue}
+              onChange={setInputValue}
+              onKeyPress={handleKeyPress}
+              onBackspace={handleBackspace}
+              onSpace={handleSpace}
+              onSend={handleSend}
+              onDismiss={() => setIsChatActive(false)}
+              className="h-full"
+            />
+          </motion.div>
+        )}
       </div>
       
       {/* Background radial atmosphere lights */}

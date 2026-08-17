@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Camera, Check, Image as ImageIcon, RotateCcw } from "lucide-react";
-import { recognizeImage, classifyLocation, prepareImage } from "../services/aiService";
+import { recognizeImage, prepareImage } from "../services/aiService";
 import { remove_background, REMOVE_BG_CONFIG } from "../services/removeBackgroundService";
 import { motion, AnimatePresence } from "motion/react";
 import { useKeyboardReset } from "../hooks/useKeyboardReset";
 import { useLayoutGuard } from "../hooks/useLayoutGuard";
-import { VirtualKeyboard } from "./VirtualKeyboard";
 import { TagSwitchIcon } from "./TagSwitchIcon";
 import { EditPencilIcon } from "./EditPencilIcon";
 import { CloseIcon } from "./CloseIcon";
@@ -214,7 +213,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const [scanStep, setScanStep] = useState<"viewport" | "scanning" | "disintegrating" | "flight" | "sticker" | "done">("viewport");
 
   // Storage Location Flow States
-  const [storageFlowStep, setStorageFlowStep] = useState<"none" | "sub_capture" | "sub_scanning" | "sub_spot" | "parent_capture" | "parent_scanning" | "parent_confirm" | "final_result">("none");
+  const [storageFlowStep, setStorageFlowStep] = useState<"none" | "sub_capture" | "sub_spot" | "parent_capture" | "parent_confirm" | "final_result">("none");
   const [subLocationImg, setSubLocationImg] = useState<string | null>(null);
   const [subLocationName, setSubLocationName] = useState<string>("");
   const [subLocationHighlight, setSubLocationHighlight] = useState<{ x: number; y: number } | null>(null);
@@ -230,7 +229,6 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const [editingResultLocationField, setEditingResultLocationField] = useState<ResultLocationField | null>(null);
   const [expandedExistingLocationPicker, setExpandedExistingLocationPicker] = useState<"sub" | "parent" | null>(null);
   const [frontLocationBubbleWidth, setFrontLocationBubbleWidth] = useState<number>(220);
-  const storageScanCanvasRef = useRef<HTMLCanvasElement>(null);
 
   // Bottom drawer gesture drag-to-dismiss states
   const [drawerY, setDrawerY] = useState<number>(0);
@@ -1785,81 +1783,6 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     };
   }, [scanStep]);
 
-  // Particle sparkle animation engine during Storage Location Scanning
-  useEffect(() => {
-    if (storageFlowStep !== "sub_scanning" && storageFlowStep !== "parent_scanning") return;
-
-    const canvas = storageScanCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const W = canvas.parentElement?.clientWidth || 320;
-    const H = canvas.parentElement?.clientHeight || 450;
-    canvas.width = W;
-    canvas.height = H;
-
-    let animationId: number;
-    const particles: Array<{
-      x: number;
-      y: number;
-      vx: number;
-      vy: number;
-      size: number;
-      alpha: number;
-      life: number;
-      maxLife: number;
-    }> = [];
-
-    const run = () => {
-      ctx.clearRect(0, 0, W, H);
-
-      // Keep spawning sparse capture points to maintain density (reduced count)
-      while (particles.length < 8) {
-        particles.push({
-          x: Math.random() * W,
-          y: Math.random() * H,
-          vx: 0,
-          vy: 0,
-          size: Math.random() < 0.5 ? 3 : 5, // 6*6 (radius 3) or 10*10 (radius 5) random diameter
-          alpha: Math.random() < 0.5 ? 0.3 : 1.0, // 30% or 100% random transparency
-          life: 0,
-          maxLife: Math.random() * 80 + 60, // Elegant local fade cycle
-        });
-      }
-
-      // Safe backward loop iteration to update, draw, and remove particles without array mutations skipped index/stuttering
-      for (let i = particles.length - 1; i >= 0; i--) {
-        const p = particles[i];
-        p.life++;
-
-        // Smooth sinusoidal fade-in-out curve based on life ratio
-        const progress = p.life / p.maxLife;
-        const currentAlpha = p.alpha * Math.sin(progress * Math.PI);
-
-        ctx.save();
-        ctx.globalAlpha = Math.max(0, Math.min(currentAlpha, 1));
-        ctx.fillStyle = "#FFFFFF"; // Pure white circular points
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-
-        if (p.life >= p.maxLife) {
-          particles.splice(i, 1);
-        }
-      }
-
-      animationId = requestAnimationFrame(run);
-    };
-
-    run();
-
-    return () => {
-      cancelAnimationFrame(animationId);
-    };
-  }, [storageFlowStep]);
-
   // Advanced Step: Clockwise progressive line-tracing sweep (走线动画) on canvas overlay
   useEffect(() => {
     const activeTraceImageSrc = paddedCutoutUrl || transparentCutoutUrl;
@@ -2423,58 +2346,6 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     }
   }, [scanStep, stickerSizeSettled, traceCompleted]);
 
-  // Storage Location classification assistant
-  const handleStorageLocationClassification = async (imageSrc: string, phase: "sub" | "parent") => {
-    const startTime = Date.now();
-    let detectedName = "";
-    
-    try {
-      // Query the Cloudflare Worker for location classification
-      console.log(`[Storage AI] Requesting classification for ${phase} location directly to Worker...`);
-      const result = await classifyLocation(imageSrc, phase, parentLocationName);
-      detectedName = result.name;
-      console.log(`[Storage AI] Successfully identified: ${detectedName}`);
-    } catch (err) {
-      console.warn("[Storage AI] Error or rate limit calling Worker vision API:", err);
-    }
-
-    // Smart fallback if the Worker returned empty or failed
-    if (!detectedName) {
-      const itemKey = activeItem.id;
-      if (phase === "sub") {
-        if (itemKey === "camera") detectedName = isChinese ? "书桌" : "Desk";
-        else if (itemKey === "mug") detectedName = isChinese ? "茶几" : "Tea table";
-        else if (itemKey === "keys") detectedName = isChinese ? "玄关收纳盘" : "Tray";
-        else if (itemKey === "book") detectedName = isChinese ? "书架" : "Bookshelf";
-        else detectedName = isChinese ? "床头柜" : "Bedside table";
-      } else {
-        if (itemKey === "camera" || itemKey === "keys") detectedName = isChinese ? "书房" : "Study Room";
-        else if (itemKey === "mug") detectedName = isChinese ? "客厅" : "Living Room";
-        else detectedName = isChinese ? "卧室" : "Bedroom";
-      }
-    }
-
-    // Set target state
-    if (phase === "sub") {
-      setSubLocationName(detectedName);
-    } else {
-      setParentLocationName(detectedName);
-    }
-
-    // Maintain particle scanner for at least 2.2 seconds to allow perfect visual pacing
-    const elapsed = Date.now() - startTime;
-    const delay = Math.max(0, 2200 - elapsed);
-    setTimeout(() => {
-      if (phase === "sub") {
-        setStorageFlowStep("sub_spot");
-        setSubLocationHighlight(null);
-      } else {
-        setStorageFlowStep("parent_confirm");
-      }
-      setAiProgress(null);
-    }, delay);
-  };
-
   const confirmExistingSubLocation = () => {
     const location = selectedExistingSubLocation;
     if (!location) return;
@@ -2794,9 +2665,9 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       }
       setIsUsingExistingSubLocation(false);
       setSubLocationImg(frame);
-      setStorageFlowStep("sub_scanning");
-      setAiProgress(isChinese ? "正在分析收纳空间..." : "Analyzing storage spot...");
-      handleStorageLocationClassification(frame, "sub");
+      setSubLocationName("");
+      setSubLocationHighlight(null);
+      setStorageFlowStep("sub_spot");
       return;
     }
 
@@ -2810,9 +2681,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       }
       setIsUsingExistingParentLocation(false);
       setParentLocationImg(frame);
-      setStorageFlowStep("parent_scanning");
-      setAiProgress(isChinese ? "正在分析全景环境..." : "Analyzing wider scene...");
-      handleStorageLocationClassification(frame, "parent");
+      setParentLocationName("");
+      setStorageFlowStep("parent_confirm");
       return;
     }
 
@@ -2979,9 +2849,9 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         const result = reader.result as string;
         setIsUsingExistingSubLocation(false);
         setSubLocationImg(result);
-        setStorageFlowStep("sub_scanning");
-        setAiProgress(isChinese ? "正在分析收纳空间..." : "Analyzing storage spot...");
-        handleStorageLocationClassification(result, "sub");
+        setSubLocationName("");
+        setSubLocationHighlight(null);
+        setStorageFlowStep("sub_spot");
       };
       reader.readAsDataURL(file);
       return;
@@ -2993,9 +2863,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         const result = reader.result as string;
         setIsUsingExistingParentLocation(false);
         setParentLocationImg(result);
-        setStorageFlowStep("parent_scanning");
-        setAiProgress(isChinese ? "正在分析全景环境..." : "Analyzing wider scene...");
-        handleStorageLocationClassification(result, "parent");
+        setParentLocationName("");
+        setStorageFlowStep("parent_confirm");
       };
       reader.readAsDataURL(file);
       return;
@@ -3108,6 +2977,11 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
   // Add item save to Noma's searchable memory bank
   const handleSaveMemory = () => {
+    if (!parentLocationName.trim() || !subLocationName.trim()) {
+      setEditingResultLocationField(!parentLocationName.trim() ? "parent" : "sub");
+      return;
+    }
+
     if (onItemAdded) {
       const rawName = uploadedImageUrl ? (customName.trim() || "Uploaded Item") : activeItem.name;
       const priceCurrency = PRICE_CURRENCIES[priceCurrencyIndex];
@@ -3123,8 +2997,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         date: customDate,
         emoji: uploadedImageUrl ? "🖼️" : activeItem.emoji,
         stickerUrl: generatedStickerUrl || transparentCutoutUrl || undefined,
-        parentLocationName: parentLocationName.trim() || "Bedroom",
-        subLocationName: subLocationName.trim() || "Drawer",
+        parentLocationName: parentLocationName.trim(),
+        subLocationName: subLocationName.trim(),
         parentLocationImg: parentLocationImg || undefined,
         subLocationImg: subLocationImg || undefined,
       });
@@ -3157,12 +3031,14 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     title,
     variant = "light",
     className = "",
+    disabled = false,
   }: {
     children: React.ReactNode;
     onClick: () => void;
     title?: string;
     variant?: "light" | "dark" | "ghost";
     className?: string;
+    disabled?: boolean;
   }) => {
     const sizeClass = variant === "dark" ? "w-[72px] h-[72px]" : "w-[62px] h-[62px]";
     const toneClass =
@@ -3177,7 +3053,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         type="button"
         onClick={onClick}
         title={title}
-        className={`${sizeClass} rounded-full flex items-center justify-center border-0 hover:scale-105 active:scale-95 transition-all outline-none cursor-pointer shadow-none ${toneClass} ${className}`}
+        disabled={disabled}
+        className={`${sizeClass} rounded-full flex items-center justify-center border-0 transition-all outline-none shadow-none ${toneClass} ${disabled ? "cursor-not-allowed opacity-35" : "cursor-pointer hover:scale-105 active:scale-95"} ${className}`}
       >
         {children}
       </button>
@@ -3375,9 +3252,9 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
   const renderPriceKeyboard = () => {
     return (
-      <div className="capture-price-keyboard-panel w-full bg-[#E9E6E1] border-t border-black/5 px-4 pt-4 pb-[max(14px,env(safe-area-inset-bottom))] shadow-[0_-16px_40px_rgba(0,0,0,0.12)]">
+      <div className="capture-price-keyboard-panel w-full bg-[#E9E6E1] border-t border-black/5 px-4 py-4 shadow-[0_-16px_40px_rgba(0,0,0,0.12)]">
         <div className="mx-auto w-full max-w-[360px]">
-          <div className="mb-3 flex items-center justify-between px-1">
+          <div className="flex items-center gap-3 px-1">
             <button
               type="button"
               onClick={cyclePriceCurrency}
@@ -3387,28 +3264,39 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
             >
               {priceCurrency}
             </button>
-            <div className="h-10 min-w-[112px] px-5 rounded-full bg-white/80 flex items-center justify-center text-[#232121] text-[18px] font-sans font-bold">
-              {priceCurrency}{priceInput || "0.00"}
+            <div className="relative h-10 min-w-0 flex-1">
+              <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[18px] font-sans font-bold text-[#232121]">
+                {priceCurrency}
+              </span>
+              <input
+                autoFocus
+                type="text"
+                inputMode="decimal"
+                enterKeyHint="done"
+                value={priceInput}
+                onChange={(event) => handlePriceInputChange(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.currentTarget.blur();
+                    setIsEditingPrice(false);
+                  }
+                }}
+                placeholder="0.00"
+                aria-label="Item value"
+                className="h-full w-full rounded-full border-0 bg-white/80 pl-9 pr-4 text-center text-[18px] font-sans font-bold text-[#232121] outline-none focus:ring-2 focus:ring-[#232121]/10"
+              />
             </div>
             <button
               type="button"
-              onClick={() => setIsEditingPrice(false)}
+              onClick={() => {
+                if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+                setIsEditingPrice(false);
+              }}
               className="h-10 px-5 rounded-full bg-[#232121] text-white text-[14px] font-sans font-semibold active:scale-95 transition-transform"
             >
               Done
             </button>
           </div>
-          <VirtualKeyboard
-            mode="numeric"
-            value={priceInput}
-            onChange={handlePriceInputChange}
-            onKeyPress={() => {}}
-            onBackspace={() => setPriceInput((current) => current.slice(0, -1))}
-            onSpace={() => {}}
-            onSend={() => setIsEditingPrice(false)}
-            onDismiss={() => setIsEditingPrice(false)}
-            className="capture-price-simple-keyboard"
-          />
         </div>
       </div>
     );
@@ -3420,22 +3308,39 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     const isParentField = editingResultLocationField === "parent";
 
     return (
-      <div className="capture-price-keyboard-panel w-full bg-[#E9E6E1] border-t border-black/5 px-4 pt-4 pb-[max(14px,env(safe-area-inset-bottom))] shadow-[0_-16px_40px_rgba(0,0,0,0.12)]">
+      <div className="capture-price-keyboard-panel w-full bg-[#E9E6E1] border-t border-black/5 px-4 py-4 shadow-[0_-16px_40px_rgba(0,0,0,0.12)]">
         <div className="mx-auto w-full max-w-[360px]">
-          <div className="mb-3 flex items-center justify-between px-1">
+          <div className="flex items-center gap-3 px-1">
             <button
               type="button"
-              onClick={closeResultLocationEditor}
+              onClick={() => {
+                if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+                closeResultLocationEditor();
+              }}
               className="h-10 px-4 rounded-full bg-white/80 text-[#232121] text-[14px] font-sans font-semibold active:scale-95 transition-transform"
             >
               Cancel
             </button>
-            <div className="h-10 min-w-[112px] px-5 rounded-full bg-white/80 flex items-center justify-center text-[#232121] text-[18px] font-sans font-bold">
-              {value || (isParentField ? "Parent Location" : "Sub Location")}
-            </div>
+            <input
+              autoFocus
+              type="text"
+              enterKeyHint="done"
+              value={value}
+              onChange={(event) => handleResultLocationChange(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.currentTarget.blur();
+                  closeResultLocationEditor();
+                }
+              }}
+              placeholder={isParentField ? "Parent Location" : "Sub Location"}
+              aria-label={isParentField ? "Parent location name" : "Sub location name"}
+              className="h-10 min-w-0 flex-1 rounded-full border-0 bg-white/80 px-4 text-center text-[17px] font-sans font-bold text-[#232121] outline-none focus:ring-2 focus:ring-[#232121]/10"
+            />
             <button
               type="button"
               onClick={() => {
+                if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
                 closeResultLocationEditor();
                 setResultLocationPicker(editingResultLocationField);
               }}
@@ -3444,17 +3349,6 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
               Switch
             </button>
           </div>
-          <VirtualKeyboard
-            value={value}
-            onChange={handleResultLocationChange}
-            onKeyPress={(char) => handleResultLocationChange(`${value}${char}`)}
-            onBackspace={() => handleResultLocationChange(value.slice(0, -1))}
-            onSpace={() => handleResultLocationChange(`${value} `)}
-            onSend={() => closeResultLocationEditor()}
-            onDismiss={() => closeResultLocationEditor()}
-            sendLabel="Done"
-            className="capture-price-simple-keyboard"
-          />
         </div>
       </div>
     );
@@ -4047,28 +3941,6 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                   height: "100%" 
                 }}
               >
-                {/* 1. Sub/Parent Location Scanning Animation */}
-                {(storageFlowStep === "sub_scanning" || storageFlowStep === "parent_scanning") && (
-                  <div 
-                    className="absolute inset-x-0 top-0 w-full overflow-hidden bg-[#1F1F1E] z-10 flex items-center justify-center animate-fade-in"
-                    style={{ height: "100%" }}
-                  >
-                    {/* Live feed thumbnail under scanning particles (slightly dimmed for contrast) */}
-                    {(storageFlowStep === "sub_scanning" ? subLocationImg : parentLocationImg) && (
-                      <img 
-                        src={storageFlowStep === "sub_scanning" ? subLocationImg! : parentLocationImg!} 
-                        alt="Scanning preview" 
-                        className="absolute w-full h-full object-cover opacity-35 filter blur-[1px]"
-                      />
-                    )}
-                    
-                    <canvas 
-                      ref={storageScanCanvasRef}
-                      className="absolute inset-0 w-full h-full object-cover z-10 animate-fade-in-slow"
-                    />
-                  </div>
-                )}
-
                 {cameraPermissionUnavailable && cameraErrorMessage &&
                   (storageFlowStep === "sub_capture" || storageFlowStep === "parent_capture") && (
                     <div className="absolute inset-x-8 top-1/2 -translate-y-1/2 z-40 flex items-center justify-center text-center">
@@ -4675,6 +4547,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                             }}
                             title={isUsingExistingSubLocation ? "Continue to Final Result" : "Continue to Parent Scene"}
                             variant="dark"
+                            disabled={!isUsingExistingSubLocation && !subLocationName.trim()}
                           >
                             <Check className="w-[22px] h-[22px] stroke-[3]" />
                           </StorageRoundButton>
@@ -4692,7 +4565,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
                         {!isUsingExistingSubLocation && (
                           <StorageDrawerInput
-                            placeholder="Name of this little home? (e.g. Bedside table)"
+                            placeholder={isChinese ? "例如：床头柜、衣柜" : "e.g. Bedside table, wardrobe"}
                             value={subLocationName}
                             onChange={setSubLocationName}
                           />
@@ -4754,6 +4627,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                             onClick={() => setStorageFlowStep("final_result")}
                             title="Save Memory & Storage Spot"
                             variant="dark"
+                            disabled={!isUsingExistingParentLocation && !parentLocationName.trim()}
                           >
                             <Check className="w-[22px] h-[22px] stroke-[3]" />
                           </StorageRoundButton>
@@ -4771,7 +4645,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
                         {!isUsingExistingParentLocation && (
                           <StorageDrawerInput
-                            placeholder="Where is this little home? (e.g. Master Bedroom)"
+                            placeholder={isChinese ? "例如：客厅、卧室" : "e.g. Living room, bedroom"}
                             value={parentLocationName}
                             onChange={setParentLocationName}
                           />
