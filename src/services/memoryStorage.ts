@@ -27,6 +27,7 @@ type ItemRow = {
   parent_location_img?: string | null;
   sub_location_img?: string | null;
   sub_location_highlight?: { x: number; y: number } | null;
+  space_id?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -36,6 +37,7 @@ type SpaceRow = {
   user_id: string;
   name: string;
   kind: "parent" | "sub";
+  parent_id?: string | null;
   parent_name?: string | null;
   image_url?: string | null;
   metadata?: Record<string, unknown> | null;
@@ -53,12 +55,20 @@ const createId = () => {
   return `item-${randomId}`;
 };
 
+const spaceIdsForLocation = (ownerId: string, parentName: string, subName: string) => ({
+  parentId: `parent:${ownerId}:${parentName}`,
+  subId: `sub:${ownerId}:${parentName}::${subName}`,
+});
+
 const requireOwner = (ownerId: string) => {
   if (!ownerId) throw new Error("A signed-in user is required for cloud memory storage.");
 };
 
 const toItemRow = (ownerId: string, item: MemoryItem | StoredMemoryItem, existing?: ItemRow): ItemRow => {
   const id = item.id || createId();
+  const parentLocationName = item.parentLocationName || "Bedroom";
+  const subLocationName = item.subLocationName || "Drawer";
+  const { subId } = spaceIdsForLocation(ownerId, parentLocationName, subLocationName);
   return {
     id,
     user_id: ownerId,
@@ -68,11 +78,12 @@ const toItemRow = (ownerId: string, item: MemoryItem | StoredMemoryItem, existin
     date: item.date,
     emoji: item.emoji,
     sticker_url: item.stickerUrl || null,
-    parent_location_name: item.parentLocationName || "Bedroom",
-    sub_location_name: item.subLocationName || "Drawer",
+    parent_location_name: parentLocationName,
+    sub_location_name: subLocationName,
     parent_location_img: item.parentLocationImg || null,
     sub_location_img: item.subLocationImg || null,
     sub_location_highlight: item.subLocationHighlight || null,
+    space_id: subId,
     created_at: existing?.created_at || (item as Partial<StoredMemoryItem>).createdAt || nowIso(),
     updated_at: nowIso(),
   };
@@ -134,6 +145,8 @@ const fromItemRow = (row: ItemRow): StoredMemoryItem => ({
   parentLocationImg: displayMediaValue(row.parent_location_img),
   subLocationImg: displayMediaValue(row.sub_location_img),
   subLocationHighlight: row.sub_location_highlight || undefined,
+  // Keep the legacy names during the compatibility period; relation IDs are
+  // now also written for reporting and future relational reads.
   ownerId: row.user_id,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
@@ -149,12 +162,15 @@ const toSpaceRows = (ownerId: string, items: ItemRow[]): SpaceRow[] => {
 
   items.forEach((item) => {
     const parentKey = item.parent_location_name || "Bedroom";
+    const subName = item.sub_location_name || "Drawer";
+    const { parentId, subId } = spaceIdsForLocation(ownerId, parentKey, subName);
     if (!parents.has(parentKey)) {
       parents.set(parentKey, {
-        id: `parent:${ownerId}:${parentKey}`,
+        id: parentId,
         user_id: ownerId,
         name: parentKey,
         kind: "parent",
+        parent_id: null,
         image_url: item.parent_location_img || null,
         metadata: { item_count: 0 },
         updated_at: timestamp,
@@ -165,13 +181,14 @@ const toSpaceRows = (ownerId: string, items: ItemRow[]): SpaceRow[] => {
     parent.metadata = { ...(parent.metadata || {}), item_count: Number(parent.metadata?.item_count || 0) + 1 };
     if (!parent.image_url && item.parent_location_img) parent.image_url = item.parent_location_img;
 
-    const subKey = `${parentKey}::${item.sub_location_name || "Drawer"}`;
+    const subKey = `${parentKey}::${subName}`;
     if (!subs.has(subKey)) {
       subs.set(subKey, {
-        id: `sub:${ownerId}:${subKey}`,
+        id: subId,
         user_id: ownerId,
-        name: item.sub_location_name || "Drawer",
+        name: subName,
         kind: "sub",
+        parent_id: parentId,
         parent_name: parentKey,
         image_url: item.sub_location_img || null,
         metadata: { item_count: 0 },
