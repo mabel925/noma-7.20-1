@@ -1,4 +1,4 @@
-const CACHE_NAME = "noma-app-v11";
+const CACHE_NAME = "noma-app-v13";
 const APP_SHELL = [
   "/",
   "/manifest.json",
@@ -52,6 +52,12 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
 
   if (request.method !== "GET" || url.origin !== self.location.origin) {
+    return;
+  }
+
+  // Authenticated API and private R2 responses must never enter the shared
+  // app-shell cache. Their own HTTP cache headers control browser caching.
+  if (url.pathname.startsWith("/api/")) {
     return;
   }
 

@@ -1,4 +1,5 @@
 import type { MemoryItem } from "../components/MemoryList";
+import { displayMediaValue, mediaKeyFromValue, mediaStorage } from "./mediaStorage";
 import { supabase } from "./supabaseClient";
 
 export type SyncStatus = "local" | "pending" | "synced" | "conflict";
@@ -77,6 +78,48 @@ const toItemRow = (ownerId: string, item: MemoryItem | StoredMemoryItem, existin
   };
 };
 
+const prepareItemRow = async (
+  ownerId: string,
+  item: MemoryItem | StoredMemoryItem,
+  existing?: ItemRow,
+  cache?: Map<string, Promise<string | null>>,
+): Promise<ItemRow> => {
+  const row = toItemRow(ownerId, item, existing);
+  const store = (value: string | null | undefined, profile: "sticker" | "location", itemId?: string) => {
+    if (!value) return Promise.resolve(null);
+    const cacheKey = `${profile}:${itemId || "shared"}:${value}`;
+    const pending = cache?.get(cacheKey) || mediaStorage.storeImage(ownerId, value, profile, itemId);
+    cache?.set(cacheKey, pending);
+    return pending;
+  };
+  const [stickerUrl, parentLocationImg, subLocationImg] = await Promise.all([
+    store(row.sticker_url, "sticker", row.id),
+    store(row.parent_location_img, "location"),
+    store(row.sub_location_img, "location"),
+  ]);
+  return {
+    ...row,
+    sticker_url: stickerUrl,
+    parent_location_img: parentLocationImg,
+    sub_location_img: subLocationImg,
+  };
+};
+
+const mapWithConcurrency = async <T, R>(
+  values: T[], worker: (value: T) => Promise<R>, concurrency = 3,
+): Promise<R[]> => {
+  const results = new Array<R>(values.length);
+  let nextIndex = 0;
+  const run = async () => {
+    while (nextIndex < values.length) {
+      const index = nextIndex++;
+      results[index] = await worker(values[index]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, values.length) }, run));
+  return results;
+};
+
 const fromItemRow = (row: ItemRow): StoredMemoryItem => ({
   id: row.id,
   name: row.name,
@@ -84,11 +127,11 @@ const fromItemRow = (row: ItemRow): StoredMemoryItem => ({
   price: row.price,
   date: row.date,
   emoji: row.emoji,
-  stickerUrl: row.sticker_url || undefined,
+  stickerUrl: displayMediaValue(row.sticker_url, row.updated_at),
   parentLocationName: row.parent_location_name,
   subLocationName: row.sub_location_name,
-  parentLocationImg: row.parent_location_img || undefined,
-  subLocationImg: row.sub_location_img || undefined,
+  parentLocationImg: displayMediaValue(row.parent_location_img, row.updated_at),
+  subLocationImg: displayMediaValue(row.sub_location_img, row.updated_at),
   subLocationHighlight: row.sub_location_highlight || undefined,
   ownerId: row.user_id,
   createdAt: row.created_at,
@@ -144,9 +187,11 @@ const toSpaceRows = (ownerId: string, items: ItemRow[]): SpaceRow[] => {
   return [...parents.values(), ...subs.values()];
 };
 
-const throwStorageError = (operation: string, error: { message?: string; details?: string; hint?: string } | null) => {
+const throwStorageError = (operation: string, error: { code?: string; message?: string; details?: string; hint?: string } | null) => {
   if (!error) return;
-  throw new Error(`[Cloud memory ${operation}] ${error.message || "Request failed"}${error.details ? `: ${error.details}` : ""}`);
+  const code = error.code ? ` [${error.code}]` : "";
+  const details = error.details || error.hint;
+  throw new Error(`[Cloud memory ${operation}]${code} ${error.message || "Request failed"}${details ? `: ${details}` : ""}`);
 };
 
 export const memoryStorage = {
@@ -167,14 +212,22 @@ export const memoryStorage = {
       .eq("user_id", ownerId)
       .order("updated_at", { ascending: false });
     throwStorageError("list items", error);
-    return ((data || []) as ItemRow[]).map(fromItemRow);
+    const rows = (data || []) as ItemRow[];
+    const hasPrivateImages = rows.some((row) =>
+      [row.sticker_url, row.parent_location_img, row.sub_location_img].some((value) => Boolean(mediaKeyFromValue(value)))
+    );
+    if (hasPrivateImages) await mediaStorage.ensureReadSession();
+    return rows.map(fromItemRow);
   },
 
   async saveItem(ownerId: string, item: MemoryItem | StoredMemoryItem): Promise<StoredMemoryItem> {
     requireOwner(ownerId);
-    const row = toItemRow(ownerId, item);
+    const row = await prepareItemRow(ownerId, item);
     const { error } = await supabase.from("items").upsert(row, { onConflict: "id" });
     throwStorageError("save item", error);
+    if ([row.sticker_url, row.parent_location_img, row.sub_location_img].some((value) => Boolean(mediaKeyFromValue(value)))) {
+      await mediaStorage.ensureReadSession();
+    }
     return fromItemRow(row);
   },
 
@@ -189,7 +242,11 @@ export const memoryStorage = {
 
     const existingRows = (existing || []) as ItemRow[];
     const existingById = new Map(existingRows.map((row) => [row.id, row]));
-    const rows = items.map((item) => toItemRow(ownerId, item, existingById.get(item.id)));
+    const uploadCache = new Map<string, Promise<string | null>>();
+    const rows = await mapWithConcurrency(
+      items,
+      (item) => prepareItemRow(ownerId, item, existingById.get(item.id), uploadCache),
+    );
     const itemIds = new Set(rows.map((row) => row.id));
     const staleIds = existingRows.filter((row) => !itemIds.has(row.id)).map((row) => row.id);
 
@@ -209,6 +266,19 @@ export const memoryStorage = {
       const { error } = await supabase.from("spaces").upsert(spaces, { onConflict: "id" });
       throwStorageError("upsert spaces", error);
     }
+
+    const existingMedia = existingRows.flatMap((row) => [row.sticker_url, row.parent_location_img, row.sub_location_img]);
+    const retainedKeys = new Set(
+      rows.flatMap((row) => [row.sticker_url, row.parent_location_img, row.sub_location_img])
+        .map(mediaKeyFromValue)
+        .filter((key): key is string => Boolean(key)),
+    );
+    await mediaStorage.deleteKeys(existingMedia.filter((value) => {
+      const key = mediaKeyFromValue(value);
+      return Boolean(key && !retainedKeys.has(key));
+    }));
+
+    if (retainedKeys.size) await mediaStorage.ensureReadSession();
 
     return rows.map(fromItemRow);
   },

@@ -3006,7 +3006,6 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
           ? `${priceCurrency}${priceInput.trim()}`
           : `${priceCurrency}25.00`;
         const finalCategory = customCategory.trim() || "其它";
-
         await onItemAdded({
           name: rawName,
           category: finalCategory,
@@ -3024,7 +3023,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       onClose();
     } catch (error) {
       console.error("[CaptureScanner] Failed to save memory:", error);
-      setSaveMemoryError(isChinese ? "云端保存失败，请检查网络后重试" : "Cloud save failed. Check your connection and try again.");
+      const detail = error instanceof Error ? error.message : String(error);
+      setSaveMemoryError(`${isChinese ? "云端保存失败" : "Cloud save failed"}: ${detail.slice(0, 180)}`);
     } finally {
       setIsSavingMemory(false);
     }

@@ -1,0 +1,11 @@
+/startup.jpg
+  Cache-Control: public, max-age=31536000, immutable
+
+/startup/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/icons/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/apple-touch-icon.png
+  Cache-Control: public, max-age=31536000, immutable

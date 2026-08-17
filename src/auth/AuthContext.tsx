@@ -1,5 +1,6 @@
 import React from "react";
 import type { User } from "@supabase/supabase-js";
+import { mediaStorage } from "../services/mediaStorage";
 import { supabase } from "../services/supabaseClient";
 
 export type AuthUser = {
@@ -117,6 +118,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
 
   const signOut = React.useCallback(async () => {
     pendingActionRef.current = null;
+    await mediaStorage.clearReadSession();
     if (!MOCK_AUTH_ENABLED) await supabase.auth.signOut();
     setUser(null);
   }, []);
