@@ -2,7 +2,7 @@ import React from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { CloseIcon } from "./CloseIcon";
-import { useAuth } from "../auth/AuthContext";
+import { USERNAME_CONFLICT_MESSAGE, useAuth } from "../auth/AuthContext";
 
 export const AuthDialog: React.FC = () => {
   const { user, isLoginOpen, closeLogin, requestOtp, verifyOtp, signOut } = useAuth();
@@ -14,6 +14,18 @@ export const AuthDialog: React.FC = () => {
   const [resending, setResending] = React.useState(false);
   const [resendSeconds, setResendSeconds] = React.useState(0);
   const [error, setError] = React.useState("");
+  const [toast, setToast] = React.useState("");
+  const toastTimerRef = React.useRef<number | null>(null);
+
+  const showToast = React.useCallback((message: string) => {
+    setToast(message);
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => setToast(""), 2200);
+  }, []);
+
+  React.useEffect(() => () => {
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+  }, []);
 
   React.useEffect(() => {
     if (!isLoginOpen) {
@@ -21,6 +33,7 @@ export const AuthDialog: React.FC = () => {
       setToken("");
       setResendSeconds(0);
       setError("");
+      setToast("");
     }
   }, [isLoginOpen]);
 
@@ -41,11 +54,17 @@ export const AuthDialog: React.FC = () => {
     setBusy(true);
     setError("");
     try {
-      await requestOtp(email);
+      await requestOtp(email, displayName);
       setStep("otp");
       setResendSeconds(60);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Unable to send the verification code.");
+      const message = nextError instanceof Error ? nextError.message : "Unable to send the verification code.";
+      if (message === USERNAME_CONFLICT_MESSAGE) {
+        setError("");
+        showToast(USERNAME_CONFLICT_MESSAGE);
+      } else {
+        setError(message);
+      }
     } finally {
       setBusy(false);
     }
@@ -56,10 +75,16 @@ export const AuthDialog: React.FC = () => {
     setResending(true);
     setError("");
     try {
-      await requestOtp(email);
+      await requestOtp(email, displayName);
       setResendSeconds(60);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Unable to resend the verification code.");
+      const message = nextError instanceof Error ? nextError.message : "Unable to resend the verification code.";
+      if (message === USERNAME_CONFLICT_MESSAGE) {
+        setError("");
+        showToast(USERNAME_CONFLICT_MESSAGE);
+      } else {
+        setError(message);
+      }
     } finally {
       setResending(false);
     }
@@ -76,7 +101,13 @@ export const AuthDialog: React.FC = () => {
     try {
       await verifyOtp(email, token, displayName);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "The verification code is invalid.");
+      const message = nextError instanceof Error ? nextError.message : "The verification code is invalid.";
+      if (message === USERNAME_CONFLICT_MESSAGE) {
+        setError("");
+        showToast(USERNAME_CONFLICT_MESSAGE);
+      } else {
+        setError(message);
+      }
     } finally {
       setBusy(false);
     }
@@ -85,6 +116,7 @@ export const AuthDialog: React.FC = () => {
   return createPortal(
     <AnimatePresence>
       {isLoginOpen && (
+        <>
         <motion.div
           className="pointer-events-auto fixed inset-0 z-[100000] isolate flex items-center justify-center bg-[#232121]/35 px-6 backdrop-blur-sm"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -143,6 +175,17 @@ export const AuthDialog: React.FC = () => {
             )}
           </motion.form>
         </motion.div>
+        {toast && (
+          <motion.div
+            className="pointer-events-none fixed bottom-[28px] left-1/2 z-[100001] -translate-x-1/2 rounded-full bg-[#232121]/82 px-4 py-2.5 text-[13px] font-medium text-white shadow-[0_8px_24px_rgba(0,0,0,0.18)]"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 4 }}
+          >
+            {toast}
+          </motion.div>
+        )}
+        </>
       )}
     </AnimatePresence>,
     document.body,
