@@ -23,26 +23,8 @@
     <meta property="og:image:width" content="512">
     <meta property="og:image:height" content="512">
     <title>Noma</title>
-    <link rel="preload" href="/startup/startup-1206x2622.png" as="image" type="image/png" fetchpriority="high">
-    <!-- Unconditional iPhone 17 Pro fallback for iOS versions that ignore media-qualified launch links. -->
-    <link rel="apple-touch-startup-image" href="/startup/startup-1206x2622.png">
-    <link rel="preload" href="/startup/startup-1290x2796.png" as="image" type="image/png" fetchpriority="high" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3)">
-    <link rel="preload" href="/startup/startup-1320x2868.png" as="image" type="image/png" fetchpriority="high" media="(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3)">
-    <!-- Keep a portrait launch image available when iOS reports a scaled CSS viewport. -->
-    <link rel="apple-touch-startup-image" href="/startup/startup-1206x2622.png" media="(orientation: portrait)">
-    <link rel="apple-touch-startup-image" href="/startup/startup-640x1136.png" media="(device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2)">
-    <link rel="apple-touch-startup-image" href="/startup/startup-750x1334.png" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2)">
-    <link rel="apple-touch-startup-image" href="/startup/startup-1242x2208.png" media="(device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3)">
-    <link rel="apple-touch-startup-image" href="/startup/startup-1080x2340.png" media="(device-width: 360px) and (device-height: 780px) and (-webkit-device-pixel-ratio: 3)">
-    <link rel="apple-touch-startup-image" href="/startup/startup-1125x2436.png" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3)">
-    <link rel="apple-touch-startup-image" href="/startup/startup-1170x2532.png" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3)">
-    <link rel="apple-touch-startup-image" href="/startup/startup-1179x2556.png" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3)">
-    <link rel="apple-touch-startup-image" href="/startup/startup-1284x2778.png" media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3)">
-    <link rel="apple-touch-startup-image" href="/startup/startup-828x1792.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2)">
-    <link rel="apple-touch-startup-image" href="/startup/startup-1242x2688.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3)">
-    <link rel="apple-touch-startup-image" href="/startup/startup-1290x2796.png" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3)">
-    <link rel="apple-touch-startup-image" href="/startup/startup-1206x2622.png" media="(device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3)">
-    <link rel="apple-touch-startup-image" href="/startup/startup-1320x2868.png" media="(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3)">
+    <link rel="preload" href="/startup.jpg" as="image" type="image/jpeg" fetchpriority="high">
+    <link rel="apple-touch-startup-image" href="/startup.jpg">
     <link rel="preload" href="/font/Alkatra-SemiBold.ttf" as="font" type="font/ttf" crossorigin="anonymous">
     <link rel="preload" href="/home-bg.jpg" as="image" type="image/jpeg">
     <link rel="preload" href="/home-logo.png" as="image" type="image/png">
@@ -66,25 +48,33 @@
         inset: 0;
         z-index: 2147483646;
         width: 100vw;
-        height: var(--app-height, 100dvh);
         overflow: hidden;
-        background: #E9E6E1 url('/startup/startup-1206x2622.png') center / cover no-repeat;
+        contain: strict;
+        isolation: isolate;
+        background: #E9E6E1;
         opacity: 1;
         transition: opacity 350ms ease-out;
+      }
+      #startup-splash::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        background: #E9E6E1 url('/startup.jpg') center / 100% auto no-repeat;
+        transform: translateZ(0);
+        backface-visibility: hidden;
       }
       #startup-splash.is-hidden { opacity: 0; pointer-events: none; }
       .startup-progress {
         position: absolute;
         left: 50%;
         bottom: max(42px, calc(env(safe-area-inset-bottom, 0px) + 18px));
+        z-index: 1;
         transform: translateX(-50%);
         display: flex;
         flex-direction: column;
         align-items: center;
-        opacity: 0;
-        transition: opacity 220ms ease-out;
       }
-      #startup-splash.is-image-ready .startup-progress { opacity: 1; }
       .startup-progress-track {
         width: 126px;
         height: 6px;
@@ -114,22 +104,6 @@
         <span id="startup-progress-label">0%</span>
       </div>
     </div>
-    <script>
-      (() => {
-        const splash = document.getElementById('startup-splash');
-        const image = new Image();
-        image.decoding = 'sync';
-        image.src = '/startup/startup-1206x2622.png';
-        const revealProgress = () => requestAnimationFrame(() => splash?.classList.add('is-image-ready'));
-        const revealAfterDecode = () => {
-          if (typeof image.decode === 'function') image.decode().catch(() => undefined).finally(revealProgress);
-          else revealProgress();
-        };
-        if (image.complete) revealAfterDecode();
-        else image.addEventListener('load', revealAfterDecode, { once: true });
-        image.addEventListener('error', revealProgress, { once: true });
-      })();
-    </script>
     <!-- 页面根容器，让背景色/图片和应用布局自适应自撑满整个视口 -->
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>

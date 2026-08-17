@@ -1,4 +1,4 @@
-const CACHE_NAME = "noma-app-v16";
+const CACHE_NAME = "noma-app-v17";
 const APP_SHELL = [
   "/",
   "/manifest.json",
@@ -11,7 +11,6 @@ const APP_SHELL = [
   "/home-logo.png",
   "/default-avatar.jpg",
   "/noma-fallback.png",
-  "/startup/startup-1206x2622.png",
   "/font/Alkatra-SemiBold.ttf",
   "/pag/noma.pag",
   "/pag/libpag.wasm",
@@ -63,6 +62,23 @@ self.addEventListener("fetch", (event) => {
     event.waitUntil(refresh.then(() => undefined).catch(() => undefined));
     event.respondWith(
       caches.match("/").then((cachedResponse) => cachedResponse || refresh)
+    );
+    return;
+  }
+
+  if (url.pathname === "/startup.jpg") {
+    const refresh = fetch(request).then((response) => {
+      if (!response.ok) return response;
+      const responseClone = response.clone();
+      return caches
+        .open(CACHE_NAME)
+        .then((cache) => cache.put(request, responseClone))
+        .catch(() => undefined)
+        .then(() => response);
+    });
+    event.waitUntil(refresh.then(() => undefined).catch(() => undefined));
+    event.respondWith(
+      caches.match(request).then((cachedResponse) => cachedResponse || refresh)
     );
     return;
   }

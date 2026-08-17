@@ -26,7 +26,39 @@ const preloadColorBlurImage = () => {
 
 preloadColorBlurImage();
 
-const decodedImageCache = new Set<string>();
+const DECODED_IMAGE_CACHE_KEY = "noma:decoded-image-urls:v1";
+const MAX_DECODED_IMAGE_URLS = 120;
+
+const readDecodedImageCache = () => {
+  if (typeof window === "undefined") return new Set<string>();
+  try {
+    const cached = JSON.parse(window.sessionStorage.getItem(DECODED_IMAGE_CACHE_KEY) || "[]");
+    return new Set<string>(Array.isArray(cached) ? cached.filter((value): value is string => typeof value === "string") : []);
+  } catch {
+    return new Set<string>();
+  }
+};
+
+const decodedImageCache = readDecodedImageCache();
+
+const rememberDecodedImage = (src: string) => {
+  if (!src) return;
+  decodedImageCache.delete(src);
+  decodedImageCache.add(src);
+  while (decodedImageCache.size > MAX_DECODED_IMAGE_URLS) {
+    const oldest = decodedImageCache.values().next().value;
+    if (typeof oldest !== "string") break;
+    decodedImageCache.delete(oldest);
+  }
+  if (src.startsWith("data:") || src.startsWith("blob:")) return;
+  try {
+    window.sessionStorage.setItem(DECODED_IMAGE_CACHE_KEY, JSON.stringify(
+      [...decodedImageCache].filter((value) => !value.startsWith("data:") && !value.startsWith("blob:")),
+    ));
+  } catch {
+    // The in-memory cache still prevents repeated skeletons when storage is unavailable.
+  }
+};
 
 const SkeletonImage: React.FC<React.ImgHTMLAttributes<HTMLImageElement>> = ({
   src,
@@ -36,6 +68,7 @@ const SkeletonImage: React.FC<React.ImgHTMLAttributes<HTMLImageElement>> = ({
   ...props
 }) => {
   const imageSrc = typeof src === "string" ? src : "";
+  const imageRef = React.useRef<HTMLImageElement | null>(null);
   const [status, setStatus] = React.useState<"loading" | "ready" | "error">(
     imageSrc && decodedImageCache.has(imageSrc) ? "ready" : "loading",
   );
@@ -44,16 +77,15 @@ const SkeletonImage: React.FC<React.ImgHTMLAttributes<HTMLImageElement>> = ({
     setStatus(imageSrc && decodedImageCache.has(imageSrc) ? "ready" : "loading");
   }, [imageSrc]);
 
-  const handleLoad = React.useCallback(async (event: React.SyntheticEvent<HTMLImageElement>) => {
-    const image = event.currentTarget;
-    const loadedSrc = image.currentSrc || image.src;
-    try {
-      await image.decode?.();
-    } catch {
-      // The load event still guarantees a usable frame when decode is unavailable.
-    }
-    if ((image.currentSrc || image.src) !== loadedSrc) return;
-    decodedImageCache.add(imageSrc);
+  React.useLayoutEffect(() => {
+    const image = imageRef.current;
+    if (!imageSrc || !image?.complete || image.naturalWidth === 0) return;
+    rememberDecodedImage(imageSrc);
+    setStatus("ready");
+  }, [imageSrc]);
+
+  const handleLoad = React.useCallback(() => {
+    rememberDecodedImage(imageSrc);
     setStatus("ready");
   }, [imageSrc]);
 
@@ -67,6 +99,7 @@ const SkeletonImage: React.FC<React.ImgHTMLAttributes<HTMLImageElement>> = ({
       )}
       {imageSrc && (
         <img
+          ref={imageRef}
           {...props}
           src={imageSrc}
           alt={alt}
