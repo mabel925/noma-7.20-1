@@ -3623,14 +3623,16 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                 referrerPolicy="no-referrer"
               />
 
-              {/* Upper static container for the sticker so it NEVER shifts under any circumstance */}
+              {/* Keep the generated result aligned with the controls while the native keyboard resizes the viewport. */}
               <div 
-                className="absolute left-1/2 flex items-center justify-center z-10"
+                className="capture-item-result-visual absolute left-1/2 flex items-center justify-center z-10"
                   style={{
                     top: `${targetCenterY}px`,
                     width: "300px",
                     height: "300px",
-                    transform: `translate(calc(-50% + ${RESULT_STICKER_CENTER_OFFSET_X}px), -50%)`
+                    transform: `translate(calc(-50% + ${RESULT_STICKER_CENTER_OFFSET_X}px), calc(-50% - var(--capture-keyboard-shift, 0px)))`,
+                    transition: "transform 180ms cubic-bezier(0.2, 0, 0, 1)",
+                    willChange: "transform",
                   }}
               >
 

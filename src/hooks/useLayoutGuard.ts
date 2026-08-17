@@ -24,6 +24,7 @@ export function useLayoutGuard(isOpen: boolean) {
     const originalSab = document.documentElement.style.getPropertyValue('--sab');
     const originalCaptureViewportTop = document.documentElement.style.getPropertyValue('--capture-viewport-top');
     const originalCaptureViewportHeight = document.documentElement.style.getPropertyValue('--capture-viewport-height');
+    const originalCaptureKeyboardShift = document.documentElement.style.getPropertyValue('--capture-keyboard-shift');
 
     // Store other container elements' styles
     const elements = [
@@ -97,6 +98,7 @@ export function useLayoutGuard(isOpen: boolean) {
       const coveredHeight = Math.max(0, window.innerHeight - height - top);
       const keyboardWasOpen = document.body.classList.contains('capture-native-keyboard-open');
       const keyboardOpen = coveredHeight > 100 && (hasFocusedEditor || keyboardWasOpen);
+      const keyboardShift = keyboardOpen ? coveredHeight : 0;
 
       document.documentElement.style.setProperty(
         '--capture-viewport-top',
@@ -105,6 +107,10 @@ export function useLayoutGuard(isOpen: boolean) {
       document.documentElement.style.setProperty(
         '--capture-viewport-height',
         keyboardOpen ? `${Math.round(height)}px` : 'var(--app-height)'
+      );
+      document.documentElement.style.setProperty(
+        '--capture-keyboard-shift',
+        `${Math.round(keyboardShift)}px`
       );
       document.documentElement.classList.toggle('capture-native-keyboard-open', keyboardOpen);
       document.body.classList.toggle('capture-native-keyboard-open', keyboardOpen);
@@ -190,6 +196,11 @@ export function useLayoutGuard(isOpen: boolean) {
         document.documentElement.style.setProperty('--capture-viewport-height', originalCaptureViewportHeight);
       } else {
         document.documentElement.style.removeProperty('--capture-viewport-height');
+      }
+      if (originalCaptureKeyboardShift) {
+        document.documentElement.style.setProperty('--capture-keyboard-shift', originalCaptureKeyboardShift);
+      } else {
+        document.documentElement.style.removeProperty('--capture-keyboard-shift');
       }
       document.documentElement.classList.remove('capture-native-keyboard-open');
       document.body.classList.remove('capture-native-keyboard-open');

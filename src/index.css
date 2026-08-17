@@ -60,6 +60,7 @@ body.capture-page-open::before {
   --app-height: 100dvh;
   --capture-viewport-top: 0px;
   --capture-viewport-height: var(--app-height);
+  --capture-keyboard-shift: 0px;
 }
 
 .pwa-standalone {
