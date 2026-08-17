@@ -10,7 +10,19 @@
     <meta name="theme-color" content="#E9E6E1">
     <title>Noma</title>
     <link rel="apple-touch-startup-image" href="/startup.jpg">
+    <link rel="apple-touch-startup-image" href="/startup/startup-640x1136.jpg" media="(device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2)">
+    <link rel="apple-touch-startup-image" href="/startup/startup-750x1334.jpg" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2)">
+    <link rel="apple-touch-startup-image" href="/startup/startup-1242x2208.jpg" media="(device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3)">
+    <link rel="apple-touch-startup-image" href="/startup/startup-1080x2340.jpg" media="(device-width: 360px) and (device-height: 780px) and (-webkit-device-pixel-ratio: 3)">
+    <link rel="apple-touch-startup-image" href="/startup/startup-1125x2436.jpg" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3)">
     <link rel="apple-touch-startup-image" href="/startup.jpg" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3)">
+    <link rel="apple-touch-startup-image" href="/startup/startup-1179x2556.jpg" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3)">
+    <link rel="apple-touch-startup-image" href="/startup/startup-1284x2778.jpg" media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3)">
+    <link rel="apple-touch-startup-image" href="/startup/startup-828x1792.jpg" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2)">
+    <link rel="apple-touch-startup-image" href="/startup/startup-1242x2688.jpg" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3)">
+    <link rel="apple-touch-startup-image" href="/startup/startup-1290x2796.jpg" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3)">
+    <link rel="apple-touch-startup-image" href="/startup/startup-1206x2622.jpg" media="(device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3)">
+    <link rel="apple-touch-startup-image" href="/startup/startup-1320x2868.jpg" media="(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3)">
     <link rel="preload" href="/font/Alkatra-SemiBold.ttf" as="font" type="font/ttf" crossorigin="anonymous">
     <link rel="preload" href="/icons/icon-192.png" as="image" type="image/png">
     <link rel="preload" href="/startup.jpg" as="image" type="image/jpeg">
@@ -38,7 +50,7 @@
         width: 100vw;
         height: var(--app-height, 100dvh);
         overflow: hidden;
-        background: #E9E6E1;
+        background: #E9E6E1 url('/startup.jpg') center / cover no-repeat;
         opacity: 1;
         transition: opacity 350ms ease-out;
       }
@@ -77,7 +89,7 @@
       #startup-progress-label {
         margin-top: 14px;
         color: rgba(35, 33, 33, 0.5);
-        font: 400 18px/1.2 system-ui, sans-serif;
+        font: 400 14px/1.2 system-ui, sans-serif;
       }
     </style>
   </head>

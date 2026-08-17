@@ -1,9 +1,21 @@
-const CACHE_NAME = "noma-app-v5";
+const CACHE_NAME = "noma-app-v6";
 const APP_SHELL = [
   "/",
   "/manifest.json",
   "/icons/icon-192.png",
   "/startup.jpg",
+  "/startup/startup-640x1136.jpg",
+  "/startup/startup-750x1334.jpg",
+  "/startup/startup-1242x2208.jpg",
+  "/startup/startup-1080x2340.jpg",
+  "/startup/startup-1125x2436.jpg",
+  "/startup/startup-1179x2556.jpg",
+  "/startup/startup-1284x2778.jpg",
+  "/startup/startup-828x1792.jpg",
+  "/startup/startup-1242x2688.jpg",
+  "/startup/startup-1290x2796.jpg",
+  "/startup/startup-1206x2622.jpg",
+  "/startup/startup-1320x2868.jpg",
   "/font/Alkatra-SemiBold.ttf",
   "/pag/noma.pag",
   "/pag/libpag.wasm",
