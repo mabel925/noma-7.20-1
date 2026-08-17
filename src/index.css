@@ -27,7 +27,7 @@
   width: 100vw;
   height: var(--app-height, 100dvh);
   overflow: hidden;
-  background: #E9E6E1;
+  background: #E9E6E1 url('/startup.jpg') center / cover no-repeat;
   pointer-events: auto;
   opacity: 1;
   transition: opacity 350ms ease-out;
