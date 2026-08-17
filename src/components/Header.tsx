@@ -31,7 +31,7 @@ export const Header: React.FC<HeaderProps> = ({
     >
       <div className="pointer-events-auto cursor-pointer transition-all duration-200">
         <img
-          src="https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/logo-noma.png"
+          src="/home-logo.png"
           alt="Noma"
           className="h-[28px] w-[139px] object-contain"
           referrerPolicy="no-referrer"

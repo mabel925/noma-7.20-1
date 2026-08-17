@@ -3,6 +3,7 @@ import { PAGInit } from "libpag";
 
 const PAG_FILE_URL = "/pag/noma.pag";
 const PAG_WASM_URL = "/pag/libpag.wasm";
+const PAG_FALLBACK_IMAGE_URL = "/noma-fallback.png";
 
 type PagFileHandle = {
   width: () => number;
@@ -57,9 +58,11 @@ export const PagNomaSprite: React.FC<PagNomaSpriteProps> = ({
   const pagViewRef = React.useRef<PagViewHandle | null>(null);
   const pagFileRef = React.useRef<PagFileHandle | null>(null);
   const [isReady, setIsReady] = React.useState(false);
+  const [hasFallback, setHasFallback] = React.useState(false);
 
   React.useEffect(() => {
     let cancelled = false;
+    setHasFallback(false);
 
     const loadAnimation = async () => {
       try {
@@ -82,12 +85,28 @@ export const PagNomaSprite: React.FC<PagNomaSpriteProps> = ({
 
         pagViewRef.current = pagView;
         pagView.setRepeatCount(0);
+        void pagView.play().catch((error) => {
+          if (!cancelled) console.error("[PAG] Failed to start Noma animation:", error);
+        });
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        });
+        if (cancelled) return;
         setIsReady(true);
         onReady?.();
-        await pagView.play();
       } catch (error) {
         if (!cancelled) {
           console.error("[PAG] Failed to load Noma animation:", error);
+          const fallbackImage = new Image();
+          const revealFallback = () => {
+            if (cancelled) return;
+            setHasFallback(true);
+            setIsReady(true);
+            requestAnimationFrame(() => onReady?.());
+          };
+          fallbackImage.onload = revealFallback;
+          fallbackImage.onerror = revealFallback;
+          fallbackImage.src = PAG_FALLBACK_IMAGE_URL;
         }
       }
     };
@@ -118,13 +137,22 @@ export const PagNomaSprite: React.FC<PagNomaSpriteProps> = ({
       data-pose={pose}
       aria-label="Noma Character"
     >
-      <canvas
-        ref={canvasRef}
-        width={600}
-        height={600}
-        className={`relative z-10 block h-auto w-full transition-opacity duration-150 ${isReady ? "opacity-100" : "opacity-0"}`}
-        aria-hidden="true"
-      />
+      {hasFallback ? (
+        <img
+          src={PAG_FALLBACK_IMAGE_URL}
+          alt="Noma Character"
+          className="relative z-10 block h-auto w-full"
+          draggable={false}
+        />
+      ) : (
+        <canvas
+          ref={canvasRef}
+          width={600}
+          height={600}
+          className={`relative z-10 block h-auto w-full transition-opacity duration-150 ${isReady ? "opacity-100" : "opacity-0"}`}
+          aria-hidden="true"
+        />
+      )}
     </div>
   );
 };

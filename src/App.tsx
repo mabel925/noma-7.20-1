@@ -23,8 +23,9 @@ import { CloseIcon } from "./components/CloseIcon";
 import { useAuth } from "./auth/AuthContext";
 import { isStandalonePwa, syncDisplayModeClasses } from "./utils/appViewport";
 
-const HOME_LOGO_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/logo-noma.png";
-const HOME_AVATAR_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/%E9%BB%98%E8%AE%A4%E5%A4%B4%E5%83%8F.jpg";
+const HOME_BACKGROUND_URL = "/home-bg.jpg";
+const HOME_LOGO_URL = "/home-logo.png";
+const HOME_AVATAR_URL = "/default-avatar.jpg";
 
 const DEFAULT_MEMORIES: MemoryItem[] = [
   {
@@ -251,16 +252,12 @@ export default function App() {
   }, [areHomeChromeAssetsReady, areStageAssetsReady]);
 
   useEffect(() => {
-    let finishTimer: number | null = null;
-    const safetyTimer = window.setTimeout(() => {
-      setStartupProgress(100);
-      finishTimer = window.setTimeout(() => setIsHomeReady(true), 240);
+    if (isHomeReady) return;
+    const warningTimer = window.setTimeout(() => {
+      console.warn("[Startup] Home resources are still loading after 12 seconds.");
     }, 12000);
-    return () => {
-      window.clearTimeout(safetyTimer);
-      if (finishTimer !== null) window.clearTimeout(finishTimer);
-    };
-  }, []);
+    return () => window.clearTimeout(warningTimer);
+  }, [isHomeReady]);
 
   useEffect(() => {
     if (!isHomeReady) return;
@@ -725,8 +722,8 @@ export default function App() {
         >
           <VirtualStage
             isChatActive={isChatActive && !isMemoryOpen && !isCaptureOpen}
-            bgRoomUrl="https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/bg-newroom.jpg"
-            bgChatUrl="https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/bg-newroom.jpg"
+            bgRoomUrl={HOME_BACKGROUND_URL}
+            bgChatUrl={HOME_BACKGROUND_URL}
             onReady={handleHomeReady}
           />
         </motion.div>

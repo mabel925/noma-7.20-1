@@ -10,7 +10,7 @@ export type AuthUser = {
   isMock?: boolean;
 };
 
-export const DEFAULT_AVATAR_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/%E9%BB%98%E8%AE%A4%E5%A4%B4%E5%83%8F.jpg";
+export const DEFAULT_AVATAR_URL = "/default-avatar.jpg";
 
 const MOCK_AUTH_ENABLED = import.meta.env.DEV && new URLSearchParams(window.location.search).get("mockAuth") === "1";
 const MOCK_AUTH_USER: AuthUser = {

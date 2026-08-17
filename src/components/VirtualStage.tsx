@@ -5,6 +5,7 @@ import { PagNomaSprite } from "./PagNomaSprite";
 const ROOM_NATIVE_WIDTH = 2064;
 const ROOM_NATIVE_HEIGHT = 2532;
 const NOMA_NATIVE_WIDTH = 600;
+const HOME_BACKGROUND_FALLBACK_URL = "/startup.jpg";
 
 interface VirtualStageProps {
   isChatActive: boolean;
@@ -25,6 +26,7 @@ export const VirtualStage: React.FC<VirtualStageProps> = ({
   const [aspectRatio, setAspectRatio] = useState<number>(ROOM_NATIVE_WIDTH / ROOM_NATIVE_HEIGHT);
   const [bgNaturalHeight, setBgNaturalHeight] = useState<number>(ROOM_NATIVE_HEIGHT);
   const [backgroundReady, setBackgroundReady] = useState(false);
+  const [backgroundFailed, setBackgroundFailed] = useState(false);
   const [nomaReady, setNomaReady] = useState(false);
   const hasReportedReadyRef = useRef(false);
 
@@ -35,11 +37,19 @@ export const VirtualStage: React.FC<VirtualStageProps> = ({
   useEffect(() => {
     let cancelled = false;
     setBackgroundReady(false);
+    setBackgroundFailed(false);
     const urls = Array.from(new Set([bgRoomUrl, bgChatUrl]));
     Promise.all(urls.map((url) => new Promise<void>((resolve) => {
       const image = new Image();
-      image.onload = () => resolve();
-      image.onerror = () => resolve();
+      image.onload = () => {
+        const decode = typeof image.decode === "function" ? image.decode() : Promise.resolve();
+        decode.catch(() => undefined).finally(resolve);
+      };
+      image.onerror = () => {
+        console.error(`[Home] Failed to load background: ${url}`);
+        if (!cancelled) setBackgroundFailed(true);
+        resolve();
+      };
       image.src = url;
     }))).then(() => {
       if (!cancelled) setBackgroundReady(true);
@@ -137,6 +147,7 @@ export const VirtualStage: React.FC<VirtualStageProps> = ({
   const T_x = isChatActive ? -60 : 0;
 
   const stageReady = backgroundReady && nomaReady;
+  const displayRoomUrl = backgroundFailed ? HOME_BACKGROUND_FALLBACK_URL : bgRoomUrl;
 
   return (
     <motion.div 
@@ -162,9 +173,10 @@ export const VirtualStage: React.FC<VirtualStageProps> = ({
       {/* 1. ROOM BACKGROUND: Highly atmospheric room illustration. Uses object-cover to prevent standard pixel distortion */}
       {bgRoomUrl === bgChatUrl ? (
         <motion.img
-          src={bgRoomUrl}
+          src={displayRoomUrl}
           alt="Room background"
           className="absolute inset-0 w-full h-full object-cover opacity-100"
+          onLoad={() => setBackgroundReady(true)}
           referrerPolicy="no-referrer"
         />
       ) : (
