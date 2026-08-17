@@ -2,6 +2,7 @@
 <html lang="en" style="background:#E9E6E1">
   <head>
     <meta charset="UTF-8" />
+    <style>html, body { background:#E9E6E1; }</style>
     <link rel="preload" href="/apple-touch-icon.png" as="image" type="image/png" fetchpriority="high" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="apple-touch-icon-precomposed" sizes="180x180" href="/apple-touch-icon.png" />
@@ -23,6 +24,8 @@
     <meta property="og:image:height" content="512">
     <title>Noma</title>
     <link rel="preload" href="/startup.jpg" as="image" type="image/jpeg" fetchpriority="high">
+    <!-- Unconditional iPhone 17 Pro fallback for iOS versions that ignore media-qualified launch links. -->
+    <link rel="apple-touch-startup-image" href="/startup/startup-1206x2622.jpg">
     <link rel="preload" href="/startup/startup-1206x2622.png" as="image" type="image/png" fetchpriority="high" media="(orientation: portrait)">
     <link rel="preload" href="/startup/startup-1290x2796.png" as="image" type="image/png" fetchpriority="high" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3)">
     <link rel="preload" href="/startup/startup-1320x2868.png" as="image" type="image/png" fetchpriority="high" media="(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3)">
