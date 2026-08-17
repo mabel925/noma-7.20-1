@@ -1289,7 +1289,10 @@ const SpaceDetailModal: React.FC<{
         }}
       >
         <div style={{ transform: `scale(${modalScale})`, transformOrigin: "center center" }}>
-          <div className="relative z-10 w-[307px] h-[586px]" style={{ perspective: "1200px" }}>
+          <div
+            className="relative z-10 w-[307px] h-[586px]"
+            style={{ perspective: "1200px", WebkitPerspective: "1200px" }}
+          >
             <DetailCardActionGroup
               isEditing={isEditingItems}
               onEditToggle={handleEdit}
@@ -1307,14 +1310,22 @@ const SpaceDetailModal: React.FC<{
               className="relative w-full h-[586px] cursor-pointer"
               animate={{ rotateY: isFlipped ? 180 : 0 }}
               transition={{ type: "spring", stiffness: 210, damping: 26 }}
-              style={{ transformStyle: "preserve-3d" }}
+              style={{ transformStyle: "preserve-3d", WebkitTransformStyle: "preserve-3d", willChange: "transform" }}
               onClick={() => {
                 setIsFlipped((current) => !current);
               }}
             >
           <div
             className="absolute inset-0 rounded-[24px] bg-[#E9E6E1] overflow-hidden px-[14px] pt-[14px] pb-[26px]"
-            style={{ backfaceVisibility: "hidden", pointerEvents: isFlipped ? "none" : "auto" }}
+            style={{
+              backfaceVisibility: "hidden",
+              WebkitBackfaceVisibility: "hidden",
+              transform: "translateZ(0.1px)",
+              WebkitTransform: "translateZ(0.1px)",
+              visibility: isFlipped ? "hidden" : "visible",
+              transition: "visibility 0s linear 180ms",
+              pointerEvents: isFlipped ? "none" : "auto",
+            }}
           >
             <MatrixDotBackground />
             <div className="relative z-10 w-full h-[444px] rounded-[20px] overflow-hidden bg-neutral-200">
@@ -1359,7 +1370,11 @@ const SpaceDetailModal: React.FC<{
             className="absolute inset-0 rounded-[24px] bg-[#E9E6E1] overflow-hidden px-[20px] pt-[30px] pb-[36px]"
             style={{
               backfaceVisibility: "hidden",
-              transform: "rotateY(180deg)",
+              WebkitBackfaceVisibility: "hidden",
+              transform: "rotateY(180deg) translateZ(0.1px)",
+              WebkitTransform: "rotateY(180deg) translateZ(0.1px)",
+              visibility: isFlipped ? "visible" : "hidden",
+              transition: "visibility 0s linear 180ms",
               pointerEvents: isFlipped ? "auto" : "none",
             }}
           >
@@ -1803,7 +1818,7 @@ const MemoryDetailModal: React.FC<{
         <div style={{ transform: `scale(${modalScale})`, transformOrigin: "center center" }}>
             <div
             className="relative z-10 w-[307px] h-[586px]"
-            style={{ perspective: "1200px" }}
+            style={{ perspective: "1200px", WebkitPerspective: "1200px" }}
           >
             <DetailCardActionGroup
               isEditing={isCardEditing}
@@ -1822,7 +1837,7 @@ const MemoryDetailModal: React.FC<{
           className="relative w-full h-[586px] cursor-pointer"
           animate={{ rotateY: isFlipped ? 180 : 0 }}
           transition={{ type: "spring", stiffness: 210, damping: 26 }}
-          style={{ transformStyle: "preserve-3d" }}
+          style={{ transformStyle: "preserve-3d", WebkitTransformStyle: "preserve-3d", willChange: "transform" }}
           onClick={(event) => {
             if (didDragHighlightRef.current) {
               event.preventDefault();
@@ -1835,7 +1850,15 @@ const MemoryDetailModal: React.FC<{
         >
           <div
             className="absolute inset-0 rounded-[24px] bg-[#E9E6E1] overflow-visible px-[22px] pt-[82px] pb-[34px] flex flex-col items-center"
-            style={{ backfaceVisibility: "hidden", pointerEvents: isFlipped ? "none" : "auto" }}
+            style={{
+              backfaceVisibility: "hidden",
+              WebkitBackfaceVisibility: "hidden",
+              transform: "translateZ(0.1px)",
+              WebkitTransform: "translateZ(0.1px)",
+              visibility: isFlipped ? "hidden" : "visible",
+              transition: "visibility 0s linear 180ms",
+              pointerEvents: isFlipped ? "none" : "auto",
+            }}
           >
             <MatrixDotBackground rounded />
             <div className="absolute inset-0 z-[1] overflow-hidden rounded-[24px] pointer-events-none">
@@ -1939,7 +1962,11 @@ const MemoryDetailModal: React.FC<{
             className="absolute inset-0 rounded-[24px] bg-[#E9E6E1] overflow-hidden px-[14px] pt-[14px] pb-[26px] flex flex-col"
             style={{
               backfaceVisibility: "hidden",
-              transform: "rotateY(180deg)",
+              WebkitBackfaceVisibility: "hidden",
+              transform: "rotateY(180deg) translateZ(0.1px)",
+              WebkitTransform: "rotateY(180deg) translateZ(0.1px)",
+              visibility: isFlipped ? "visible" : "hidden",
+              transition: "visibility 0s linear 180ms",
               pointerEvents: isFlipped ? "auto" : "none",
             }}
           >

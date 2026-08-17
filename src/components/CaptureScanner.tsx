@@ -34,7 +34,8 @@ interface CaptureScannerProps {
     subLocationName: string;
     parentLocationImg?: string;
     subLocationImg?: string;
-  }) => void;
+    subLocationHighlight?: { x: number; y: number };
+  }) => void | Promise<void>;
 }
 
 interface ExistingMemoryLocationSource {
@@ -42,6 +43,7 @@ interface ExistingMemoryLocationSource {
   subLocationName: string;
   parentLocationImg?: string;
   subLocationImg?: string;
+  subLocationHighlight?: { x: number; y: number };
 }
 
 type ExistingSubLocationOption = {
@@ -51,6 +53,7 @@ type ExistingSubLocationOption = {
   imgUrl: string;
   parentImgUrl?: string;
   itemCount: number;
+  subLocationHighlight?: { x: number; y: number };
 };
 
 type ExistingParentLocationOption = {
@@ -219,6 +222,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const [subLocationHighlight, setSubLocationHighlight] = useState<{ x: number; y: number } | null>(null);
   const [parentLocationImg, setParentLocationImg] = useState<string | null>(null);
   const [parentLocationName, setParentLocationName] = useState<string>("");
+  const [isSavingMemory, setIsSavingMemory] = useState(false);
+  const [saveMemoryError, setSaveMemoryError] = useState<string | null>(null);
   const [selectedExistingSubKey, setSelectedExistingSubKey] = useState<string | null>(null);
   const [selectedExistingParentKey, setSelectedExistingParentKey] = useState<string | null>(null);
   const [isUsingExistingSubLocation, setIsUsingExistingSubLocation] = useState<boolean>(false);
@@ -319,6 +324,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
   // Pre-defined list of categories for the interactive fan-out switcher
   const isChinese = false; // Temporarily forced to English as requested
+  const defaultSubLocationName = isChinese ? "收纳位置" : "Storage spot";
+  const defaultParentLocationName = isChinese ? "房间" : "Room";
 
   const CATEGORIES_CN = [
     "日用百货",
@@ -450,6 +457,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         imgUrl: subImg,
         parentImgUrl: parentImg,
         itemCount: 1,
+        subLocationHighlight: memory.subLocationHighlight,
       });
     });
     return Array.from(seen.values());
@@ -1550,6 +1558,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       setSubLocationHighlight(null);
       setParentLocationImg(null);
       setParentLocationName("");
+      setIsSavingMemory(false);
+      setSaveMemoryError(null);
       setSelectedExistingSubKey(null);
       setSelectedExistingParentKey(null);
       setIsUsingExistingSubLocation(false);
@@ -2352,7 +2362,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
     setSubLocationName(location.name);
     setSubLocationImg(location.imgUrl);
-    setSubLocationHighlight(null);
+    setSubLocationHighlight(location.subLocationHighlight || { x: 50, y: 50 });
     setIsUsingExistingSubLocation(true);
     setParentLocationName(location.parentName);
     if (location.parentImgUrl) {
@@ -2418,6 +2428,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       if (field === "sub") {
         setSubLocationName(option.draft.name);
         setSubLocationImg(option.draft.imgUrl);
+        setSubLocationHighlight({ x: 50, y: 50 });
         setIsUsingExistingSubLocation(false);
         setSelectedExistingSubKey(null);
       } else {
@@ -2434,7 +2445,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       const location = option.option as ExistingSubLocationOption;
       setSubLocationName(location.name);
       setSubLocationImg(location.imgUrl);
-      setSubLocationHighlight(null);
+      setSubLocationHighlight(location.subLocationHighlight || { x: 50, y: 50 });
       setIsUsingExistingSubLocation(true);
       setSelectedExistingSubKey(location.key);
       setParentLocationName(location.parentName);
@@ -2665,8 +2676,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       }
       setIsUsingExistingSubLocation(false);
       setSubLocationImg(frame);
-      setSubLocationName("");
-      setSubLocationHighlight(null);
+      setSubLocationName(defaultSubLocationName);
+      setSubLocationHighlight({ x: 50, y: 50 });
       setStorageFlowStep("sub_spot");
       return;
     }
@@ -2681,7 +2692,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       }
       setIsUsingExistingParentLocation(false);
       setParentLocationImg(frame);
-      setParentLocationName("");
+      setParentLocationName(defaultParentLocationName);
       setStorageFlowStep("parent_confirm");
       return;
     }
@@ -2849,8 +2860,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         const result = reader.result as string;
         setIsUsingExistingSubLocation(false);
         setSubLocationImg(result);
-        setSubLocationName("");
-        setSubLocationHighlight(null);
+        setSubLocationName(defaultSubLocationName);
+        setSubLocationHighlight({ x: 50, y: 50 });
         setStorageFlowStep("sub_spot");
       };
       reader.readAsDataURL(file);
@@ -2863,7 +2874,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         const result = reader.result as string;
         setIsUsingExistingParentLocation(false);
         setParentLocationImg(result);
-        setParentLocationName("");
+        setParentLocationName(defaultParentLocationName);
         setStorageFlowStep("parent_confirm");
       };
       reader.readAsDataURL(file);
@@ -2976,35 +2987,47 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   };
 
   // Add item save to Noma's searchable memory bank
-  const handleSaveMemory = () => {
-    if (!parentLocationName.trim() || !subLocationName.trim()) {
-      setEditingResultLocationField(!parentLocationName.trim() ? "parent" : "sub");
-      return;
-    }
+  const handleSaveMemory = async () => {
+    if (isSavingMemory) return;
+    const finalParentLocationName = parentLocationName.trim() || defaultParentLocationName;
+    const finalSubLocationName = subLocationName.trim() || defaultSubLocationName;
+    const finalSubLocationHighlight = subLocationHighlight || { x: 50, y: 50 };
+    setParentLocationName(finalParentLocationName);
+    setSubLocationName(finalSubLocationName);
+    setSubLocationHighlight(finalSubLocationHighlight);
+    setSaveMemoryError(null);
+    setIsSavingMemory(true);
 
-    if (onItemAdded) {
-      const rawName = uploadedImageUrl ? (customName.trim() || "Uploaded Item") : activeItem.name;
-      const priceCurrency = PRICE_CURRENCIES[priceCurrencyIndex];
-      const formattedPrice = priceInput.trim()
-        ? `${priceCurrency}${priceInput.trim()}`
-        : `${priceCurrency}25.00`;
-      const finalCategory = customCategory.trim() || "其它";
-      
-      onItemAdded({
-        name: rawName,
-        category: finalCategory,
-        price: formattedPrice,
-        date: customDate,
-        emoji: uploadedImageUrl ? "🖼️" : activeItem.emoji,
-        stickerUrl: generatedStickerUrl || transparentCutoutUrl || undefined,
-        parentLocationName: parentLocationName.trim(),
-        subLocationName: subLocationName.trim(),
-        parentLocationImg: parentLocationImg || undefined,
-        subLocationImg: subLocationImg || undefined,
-      });
+    try {
+      if (onItemAdded) {
+        const rawName = uploadedImageUrl ? (customName.trim() || "Uploaded Item") : activeItem.name;
+        const priceCurrency = PRICE_CURRENCIES[priceCurrencyIndex];
+        const formattedPrice = priceInput.trim()
+          ? `${priceCurrency}${priceInput.trim()}`
+          : `${priceCurrency}25.00`;
+        const finalCategory = customCategory.trim() || "其它";
+
+        await onItemAdded({
+          name: rawName,
+          category: finalCategory,
+          price: formattedPrice,
+          date: customDate,
+          emoji: uploadedImageUrl ? "🖼️" : activeItem.emoji,
+          stickerUrl: generatedStickerUrl || transparentCutoutUrl || undefined,
+          parentLocationName: finalParentLocationName,
+          subLocationName: finalSubLocationName,
+          parentLocationImg: parentLocationImg || undefined,
+          subLocationImg: subLocationImg || undefined,
+          subLocationHighlight: finalSubLocationHighlight,
+        });
+      }
+      onClose();
+    } catch (error) {
+      console.error("[CaptureScanner] Failed to save memory:", error);
+      setSaveMemoryError(isChinese ? "云端保存失败，请检查网络后重试" : "Cloud save failed. Check your connection and try again.");
+    } finally {
+      setIsSavingMemory(false);
     }
-    // Close & return
-    onClose();
   };
 
   const handleDiscardAllCaptureResults = () => {
@@ -4355,12 +4378,20 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
                     {/* Save / Complete Checkmark circular button */}
                     <button
+                      type="button"
                       onClick={handleSaveMemory}
-                      className="w-[72px] h-[72px] rounded-full bg-[#232121] flex items-center justify-center hover:bg-[#232121] hover:scale-105 active:scale-95 transition-all shadow-none cursor-pointer mt-10 flex-shrink-0 z-10 mx-auto"
-                      title="Confirm Save"
+                      disabled={isSavingMemory}
+                      className="w-[72px] h-[72px] rounded-full bg-[#232121] flex items-center justify-center hover:bg-[#232121] hover:scale-105 active:scale-95 disabled:opacity-70 transition-all shadow-none cursor-pointer mt-10 flex-shrink-0 z-10 mx-auto"
+                      title={isSavingMemory ? "Saving" : "Confirm Save"}
                     >
-                      <Check className="w-[22px] h-[22px] text-white stroke-[3]" />
+                      <Check className={`w-[22px] h-[22px] text-white stroke-[3] ${isSavingMemory ? "animate-pulse" : ""}`} />
                     </button>
+
+                    {saveMemoryError && (
+                      <p className="max-w-[280px] text-center text-[12px] leading-4 text-[#C62845]" role="alert">
+                        {saveMemoryError}
+                      </p>
+                    )}
 
                     {/* Helper text caption */}
                     <p className="text-[14px] font-sans text-[#232121]/45 font-normal mt-7 pb-2 tracking-tight select-none pointer-events-none text-center z-10">
@@ -4546,11 +4577,13 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                               if (!subLocationHighlight) {
                                 setSubLocationHighlight({ x: 50, y: 50 });
                               }
+                              if (!subLocationName.trim()) {
+                                setSubLocationName(defaultSubLocationName);
+                              }
                               setStorageFlowStep(isUsingExistingSubLocation ? "final_result" : "parent_capture");
                             }}
                             title={isUsingExistingSubLocation ? "Continue to Final Result" : "Continue to Parent Scene"}
                             variant="dark"
-                            disabled={!isUsingExistingSubLocation && !subLocationName.trim()}
                           >
                             <Check className="w-[22px] h-[22px] stroke-[3]" />
                           </StorageRoundButton>
@@ -4627,10 +4660,14 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                             <CloseIcon className="w-6 h-6 text-[#232121]" />
                           </StorageRoundButton>
                           <StorageRoundButton
-                            onClick={() => setStorageFlowStep("final_result")}
+                            onClick={() => {
+                              if (!parentLocationName.trim()) {
+                                setParentLocationName(defaultParentLocationName);
+                              }
+                              setStorageFlowStep("final_result");
+                            }}
                             title="Save Memory & Storage Spot"
                             variant="dark"
-                            disabled={!isUsingExistingParentLocation && !parentLocationName.trim()}
                           >
                             <Check className="w-[22px] h-[22px] stroke-[3]" />
                           </StorageRoundButton>

@@ -327,12 +327,16 @@ export default function App() {
       .listItems(user.id)
       .then((items) => {
         if (cancelled) return;
-        setCustomMemories(items);
+        setCustomMemories((currentItems) => {
+          if (currentItems.length === 0) return items;
+          const currentIds = new Set(currentItems.map((item) => item.id));
+          return [...currentItems, ...items.filter((item) => !currentIds.has(item.id))];
+        });
         setIsMemoryHydrated(true);
         setHydratedUserId(user.id);
       })
       .catch((error) => {
-        console.error("[App] Failed to load local memories:", error);
+        console.error("[App] Failed to load cloud memories:", error);
         if (!cancelled) {
           setIsMemoryHydrated(true);
         }
@@ -343,13 +347,13 @@ export default function App() {
     };
   }, [user?.id, user?.isMock]);
 
-  // Persist changes through IndexedDB without allowing the initial empty state
-  // to overwrite data before hydration completes.
+  // Persist edits and deletes only after the signed-in account has hydrated,
+  // so an initial empty render can never overwrite cloud data.
   useEffect(() => {
     if (!isMemoryHydrated || !user || user.isMock || hydratedUserId !== user.id) return;
 
     memoryStorage.saveItems(user.id, customMemories).catch((error) => {
-      console.error("[App] Failed to persist local memories:", error);
+      console.error("[App] Failed to persist cloud memories:", error);
     });
   }, [customMemories, isMemoryHydrated, hydratedUserId, user?.id, user?.isMock]);
   const [toast, setToast] = useState<string | null>(null);
@@ -660,24 +664,27 @@ export default function App() {
   };
 
   // Add item save to Noma's searchable memory bank
-  const handleItemAdded = (
+  const handleItemAdded = async (
     nameOrItem: string | Omit<MemoryItem, "id">,
     price?: string,
     date?: string,
     emoji?: string
-  ) => {
-    if (!userRef.current) {
-      requireAuth(() => handleItemAdded(nameOrItem, price, date, emoji));
+  ): Promise<void> => {
+    const currentUser = userRef.current;
+    if (!currentUser) {
+      requireAuth(() => {
+        void handleItemAdded(nameOrItem, price, date, emoji);
+      });
       return;
     }
     let newItem: MemoryItem;
 
     if (typeof nameOrItem === "object") {
-      newItem = memoryStorage.createItem(user.id, {
+      newItem = memoryStorage.createItem(currentUser.id, {
         ...nameOrItem,
       });
     } else {
-      newItem = memoryStorage.createItem(user.id, {
+      newItem = memoryStorage.createItem(currentUser.id, {
         name: nameOrItem,
         category: "其它",
         price: price || "$25.00",
@@ -688,7 +695,12 @@ export default function App() {
       });
     }
 
-    setCustomMemories((prev) => [newItem, ...prev]);
+    if (!currentUser.isMock) {
+      const savedItem = await memoryStorage.saveItem(currentUser.id, newItem);
+      newItem = savedItem;
+    }
+
+    setCustomMemories((prev) => [newItem, ...prev.filter((item) => item.id !== newItem.id)]);
     setToast("保存成功");
     
     // Smooth transition message from Noma

@@ -170,6 +170,14 @@ export const memoryStorage = {
     return ((data || []) as ItemRow[]).map(fromItemRow);
   },
 
+  async saveItem(ownerId: string, item: MemoryItem | StoredMemoryItem): Promise<StoredMemoryItem> {
+    requireOwner(ownerId);
+    const row = toItemRow(ownerId, item);
+    const { error } = await supabase.from("items").upsert(row, { onConflict: "id" });
+    throwStorageError("save item", error);
+    return fromItemRow(row);
+  },
+
   async saveItems(ownerId: string, items: Array<MemoryItem | StoredMemoryItem>): Promise<StoredMemoryItem[]> {
     requireOwner(ownerId);
 
