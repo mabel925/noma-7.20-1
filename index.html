@@ -72,13 +72,6 @@
         opacity: 1;
         transition: opacity 350ms ease-out;
       }
-      #startup-splash > img {
-        display: block;
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        object-position: center;
-      }
       #startup-splash.is-hidden { opacity: 0; pointer-events: none; }
       .startup-progress {
         position: absolute;
@@ -116,7 +109,6 @@
   </head>
   <body style="background:#E9E6E1">
     <div id="startup-splash" role="status" aria-label="Loading Noma">
-      <img id="startup-splash-image" src="/startup/startup-1206x2622.png" alt="" loading="eager" fetchpriority="high" decoding="sync" />
       <div class="startup-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
         <div class="startup-progress-track"><span id="startup-progress-fill"></span></div>
         <span id="startup-progress-label">0%</span>
@@ -125,13 +117,17 @@
     <script>
       (() => {
         const splash = document.getElementById('startup-splash');
-        const image = document.getElementById('startup-splash-image');
+        const image = new Image();
+        image.decoding = 'sync';
+        image.src = '/startup/startup-1206x2622.png';
         const revealProgress = () => requestAnimationFrame(() => splash?.classList.add('is-image-ready'));
-        if (image?.complete) revealProgress();
-        else {
-          image?.addEventListener('load', revealProgress, { once: true });
-          image?.addEventListener('error', revealProgress, { once: true });
-        }
+        const revealAfterDecode = () => {
+          if (typeof image.decode === 'function') image.decode().catch(() => undefined).finally(revealProgress);
+          else revealProgress();
+        };
+        if (image.complete) revealAfterDecode();
+        else image.addEventListener('load', revealAfterDecode, { once: true });
+        image.addEventListener('error', revealProgress, { once: true });
       })();
     </script>
     <!-- 页面根容器，让背景色/图片和应用布局自适应自撑满整个视口 -->
