@@ -1,10 +1,10 @@
-const CACHE_NAME = "noma-app-v8";
+const CACHE_NAME = "noma-app-v9";
 const APP_SHELL = [
   "/",
   "/manifest.json",
-  "/icons/apple-touch-icon.png?v=2",
-  "/icons/icon-192.png?v=2",
-  "/icons/icon-512.png?v=2",
+  "/icons/apple-touch-icon.png?v=3",
+  "/icons/icon-192.png?v=3",
+  "/icons/icon-512.png?v=3",
   "/startup.jpg",
   "/startup/startup-1170x2532.png",
   "/startup/startup-640x1136.png",
@@ -51,14 +51,19 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (request.mode === "navigate") {
+    const refresh = fetch(request).then((response) => {
+      if (!response.ok) return response;
+      const responseClone = response.clone();
+      return caches
+        .open(CACHE_NAME)
+        .then((cache) => cache.put("/", responseClone))
+        .catch(() => undefined)
+        .then(() => response);
+    });
+
+    event.waitUntil(refresh.then(() => undefined).catch(() => undefined));
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put("/", responseClone));
-          return response;
-        })
-        .catch(() => caches.match("/"))
+      caches.match("/").then((cachedResponse) => cachedResponse || refresh)
     );
     return;
   }
