@@ -157,7 +157,6 @@ const toSpaceRows = (ownerId: string, items: ItemRow[]): SpaceRow[] => {
         kind: "parent",
         image_url: item.parent_location_img || null,
         metadata: { item_count: 0 },
-        created_at: timestamp,
         updated_at: timestamp,
       });
     }
@@ -176,7 +175,6 @@ const toSpaceRows = (ownerId: string, items: ItemRow[]): SpaceRow[] => {
         parent_name: parentKey,
         image_url: item.sub_location_img || null,
         metadata: { item_count: 0 },
-        created_at: timestamp,
         updated_at: timestamp,
       });
     }
@@ -193,6 +191,66 @@ const throwStorageError = (operation: string, error: { code?: string; message?: 
   const code = error.code ? ` [${error.code}]` : "";
   const details = error.details || error.hint;
   throw new Error(`[Cloud memory ${operation}]${code} ${error.message || "Request failed"}${details ? `: ${details}` : ""}`);
+};
+
+const syncSpaces = async (ownerId: string, itemRows: ItemRow[]) => {
+  const { data: existing, error: existingError } = await supabase
+    .from("spaces")
+    .select("id")
+    .eq("user_id", ownerId);
+  throwStorageError("load spaces before sync", existingError);
+
+  const spaces = toSpaceRows(ownerId, itemRows);
+  if (spaces.length) {
+    const { error } = await supabase.from("spaces").upsert(spaces, { onConflict: "id" });
+    throwStorageError("upsert spaces", error);
+  }
+
+  const retainedIds = new Set(spaces.map((space) => space.id));
+  const staleIds = ((existing || []) as Array<{ id: string }>)
+    .map((space) => space.id)
+    .filter((id) => !retainedIds.has(id));
+  if (staleIds.length) {
+    const { error } = await supabase.from("spaces").delete().in("id", staleIds).eq("user_id", ownerId);
+    throwStorageError("delete stale spaces", error);
+  }
+};
+
+const cleanupReplacedMedia = async (existingRows: ItemRow[], nextRows: ItemRow[]) => {
+  const existingMedia = existingRows.flatMap((row) => [row.sticker_url, row.parent_location_img, row.sub_location_img]);
+  const nextMedia = nextRows.flatMap((row) => [row.sticker_url, row.parent_location_img, row.sub_location_img]);
+  const retainedKeys = new Set(
+    nextMedia.map(mediaKeyFromValue)
+      .filter((key): key is string => Boolean(key)),
+  );
+  await mediaStorage.deleteKeys(existingMedia.filter((value) => {
+    const key = mediaKeyFromValue(value);
+    return Boolean(key && !retainedKeys.has(key));
+  }));
+  await mediaStorage.reconcileKeys(nextMedia);
+  return retainedKeys;
+};
+
+const finalizeItemRows = async (ownerId: string, existingRows: ItemRow[], nextRows: ItemRow[]) => {
+  let spaceSyncError: unknown;
+  try {
+    await syncSpaces(ownerId, nextRows);
+  } catch (error) {
+    spaceSyncError = error;
+  }
+
+  let retainedKeys: Set<string>;
+  try {
+    retainedKeys = await cleanupReplacedMedia(existingRows, nextRows);
+  } catch (cleanupError) {
+    if (spaceSyncError) {
+      throw new AggregateError([spaceSyncError, cleanupError], "Space sync and R2 image cleanup both failed.");
+    }
+    throw cleanupError;
+  }
+
+  if (spaceSyncError) throw spaceSyncError;
+  return retainedKeys;
 };
 
 export const memoryStorage = {
@@ -223,10 +281,21 @@ export const memoryStorage = {
 
   async saveItem(ownerId: string, item: MemoryItem | StoredMemoryItem): Promise<StoredMemoryItem> {
     requireOwner(ownerId);
-    const row = await prepareItemRow(ownerId, item);
+    const { data: existing, error: existingError } = await supabase
+      .from("items")
+      .select("*")
+      .eq("user_id", ownerId);
+    throwStorageError("load items before save", existingError);
+
+    const existingRows = (existing || []) as ItemRow[];
+    const existingRow = existingRows.find((row) => row.id === item.id);
+    const row = await prepareItemRow(ownerId, item, existingRow);
     const { error } = await supabase.from("items").upsert(row, { onConflict: "id" });
     throwStorageError("save item", error);
-    if ([row.sticker_url, row.parent_location_img, row.sub_location_img].some((value) => Boolean(mediaKeyFromValue(value)))) {
+
+    const nextRows = [row, ...existingRows.filter((existingItem) => existingItem.id !== row.id)];
+    const retainedKeys = await finalizeItemRows(ownerId, existingRows, nextRows);
+    if (retainedKeys.size) {
       await mediaStorage.ensureReadSession();
     }
     return fromItemRow(row);
@@ -260,24 +329,9 @@ export const memoryStorage = {
       throwStorageError("delete items", error);
     }
 
-    const { error: spaceDeleteError } = await supabase.from("spaces").delete().eq("user_id", ownerId);
-    throwStorageError("replace spaces", spaceDeleteError);
-    const spaces = toSpaceRows(ownerId, rows);
-    if (spaces.length) {
-      const { error } = await supabase.from("spaces").upsert(spaces, { onConflict: "id" });
-      throwStorageError("upsert spaces", error);
-    }
-
-    const existingMedia = existingRows.flatMap((row) => [row.sticker_url, row.parent_location_img, row.sub_location_img]);
-    const retainedKeys = new Set(
-      rows.flatMap((row) => [row.sticker_url, row.parent_location_img, row.sub_location_img])
-        .map(mediaKeyFromValue)
-        .filter((key): key is string => Boolean(key)),
-    );
-    await mediaStorage.deleteKeys(existingMedia.filter((value) => {
-      const key = mediaKeyFromValue(value);
-      return Boolean(key && !retainedKeys.has(key));
-    }));
+    // Items are the source of truth. Space refresh and old-image cleanup are
+    // attempted independently so one failure cannot silently skip the other.
+    const retainedKeys = await finalizeItemRows(ownerId, existingRows, rows);
 
     if (retainedKeys.size) await mediaStorage.ensureReadSession();
 

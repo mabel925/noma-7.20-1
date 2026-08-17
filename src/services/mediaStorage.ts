@@ -3,6 +3,8 @@ import { SUPABASE_PUBLISHABLE_KEY, supabase } from "./supabaseClient";
 const R2_PREFIX = "r2:";
 const MEDIA_BASE = "/api/media";
 const MAX_UPLOAD_BYTES = 500 * 1024;
+const RECONCILE_INTERVAL_MS = 10 * 60 * 1000;
+let lastReconcileAt = 0;
 
 type ImageProfile = {
   maxDimension: number;
@@ -162,6 +164,25 @@ export const mediaStorage = {
       headers: authHeaders(token, { "Content-Type": "application/json" }),
       body: JSON.stringify({ keys }),
     });
-    if (!response.ok) console.warn("[MediaStorage] Failed to remove unused R2 images:", await response.text());
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new Error(`R2 image cleanup failed (${response.status}): ${detail.slice(0, 180)}`);
+    }
+  },
+
+  async reconcileKeys(values: Array<string | null | undefined>) {
+    if (Date.now() - lastReconcileAt < RECONCILE_INTERVAL_MS) return;
+    const keys = [...new Set(values.map(mediaKeyFromValue).filter((key): key is string => Boolean(key)))];
+    const token = await getAccessToken();
+    const response = await fetch(`${MEDIA_BASE}/reconcile`, {
+      method: "POST",
+      headers: authHeaders(token, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ keys }),
+    });
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new Error(`R2 image reconciliation failed (${response.status}): ${detail.slice(0, 180)}`);
+    }
+    lastReconcileAt = Date.now();
   },
 };

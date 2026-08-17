@@ -3,6 +3,7 @@ const DEFAULT_PUBLISHABLE_KEY = "sb_publishable_QBCoMyZvh6Px_3AFff_yTg_5BOpG8FY"
 const MEDIA_COOKIE = "noma_media_session";
 const MAX_UPLOAD_BYTES = 512 * 1024;
 const MAX_STICKER_BYTES = 100 * 1024;
+const RECONCILE_GRACE_MS = 10 * 60 * 1000;
 const ALLOWED_CONTENT_TYPES = new Set(["image/webp", "image/jpeg", "image/png"]);
 
 const json = (data, status = 200, headers = {}) =>
@@ -136,6 +137,40 @@ const handleDeleteMany = async (request, env) => {
   return json({ deleted: keys.length });
 };
 
+const handleReconcile = async (request, env) => {
+  if (request.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
+  const { user } = await authenticate(request, env, false);
+  const body = await request.json().catch(() => ({}));
+  const retainedKeys = Array.isArray(body.keys)
+    ? [...new Set(body.keys.map(normalizeKey))].slice(0, 5000)
+    : [];
+  retainedKeys.forEach((key) => assertOwnedKey(key, user.id));
+
+  const retained = new Set(retainedKeys);
+  const prefix = `users/${user.id}/`;
+  const cutoff = Date.now() - RECONCILE_GRACE_MS;
+  const staleKeys = [];
+  let cursor;
+
+  do {
+    const listed = await env.NOMA_MEMORY_IMAGES.list({ prefix, cursor, limit: 1000 });
+    for (const object of listed.objects) {
+      const uploadedAt = object.uploaded instanceof Date
+        ? object.uploaded.getTime()
+        : new Date(object.uploaded).getTime();
+      if (!retained.has(object.key) && Number.isFinite(uploadedAt) && uploadedAt <= cutoff) {
+        staleKeys.push(object.key);
+      }
+    }
+    cursor = listed.truncated ? listed.cursor : undefined;
+  } while (cursor);
+
+  for (let index = 0; index < staleKeys.length; index += 1000) {
+    await env.NOMA_MEMORY_IMAGES.delete(staleKeys.slice(index, index + 1000));
+  }
+  return json({ deleted: staleKeys.length });
+};
+
 export async function onRequest({ request, env }) {
   if (!env.NOMA_MEMORY_IMAGES) return json({ error: "NOMA_MEMORY_IMAGES R2 binding is missing" }, 500);
   if (request.method === "OPTIONS") return new Response(null, { status: 204 });
@@ -144,6 +179,7 @@ export async function onRequest({ request, env }) {
     const pathname = new URL(request.url).pathname;
     if (pathname === "/api/media/session") return await handleSession(request, env);
     if (pathname === "/api/media/delete") return await handleDeleteMany(request, env);
+    if (pathname === "/api/media/reconcile") return await handleReconcile(request, env);
 
     const key = objectKeyFromPath(pathname);
     if (key) return await handleObject(request, env, key);
