@@ -25,6 +25,64 @@ const preloadColorBlurImage = () => {
 };
 
 preloadColorBlurImage();
+
+const decodedImageCache = new Set<string>();
+
+const SkeletonImage: React.FC<React.ImgHTMLAttributes<HTMLImageElement>> = ({
+  src,
+  alt = "",
+  className = "",
+  loading = "lazy",
+  ...props
+}) => {
+  const imageSrc = typeof src === "string" ? src : "";
+  const [status, setStatus] = React.useState<"loading" | "ready" | "error">(
+    imageSrc && decodedImageCache.has(imageSrc) ? "ready" : "loading",
+  );
+
+  React.useEffect(() => {
+    setStatus(imageSrc && decodedImageCache.has(imageSrc) ? "ready" : "loading");
+  }, [imageSrc]);
+
+  const handleLoad = React.useCallback(async (event: React.SyntheticEvent<HTMLImageElement>) => {
+    const image = event.currentTarget;
+    const loadedSrc = image.currentSrc || image.src;
+    try {
+      await image.decode?.();
+    } catch {
+      // The load event still guarantees a usable frame when decode is unavailable.
+    }
+    if ((image.currentSrc || image.src) !== loadedSrc) return;
+    decodedImageCache.add(imageSrc);
+    setStatus("ready");
+  }, [imageSrc]);
+
+  return (
+    <>
+      {status === "loading" && <div className="noma-image-skeleton absolute inset-0 z-0" aria-hidden="true" />}
+      {status === "error" && (
+        <div className="absolute inset-0 z-0 flex items-center justify-center bg-[#DDDAD5] text-[#232121]/25" aria-hidden="true">
+          <ImageIcon className="h-5 w-5" strokeWidth={1.6} />
+        </div>
+      )}
+      {imageSrc && (
+        <img
+          {...props}
+          src={imageSrc}
+          alt={alt}
+          loading={loading}
+          decoding="async"
+          onLoad={handleLoad}
+          onError={() => setStatus("error")}
+          className={`${className} relative z-[1] transition-opacity duration-150 ease-out ${
+            status === "ready" ? "opacity-100" : "opacity-0"
+          }`}
+        />
+      )}
+    </>
+  );
+};
+
 export interface MemoryItem {
   id: string;
   name: string;
@@ -352,12 +410,13 @@ const ParentSpaceResultCard: React.FC<{ space: SpaceSummary; onClick?: () => voi
     className="w-full h-[160px] rounded-[24px] bg-white overflow-hidden px-[14px] py-[18px] select-none cursor-pointer active:scale-[0.98] transition-transform"
   >
     <div className="flex items-center gap-[12px]">
-      <div className="w-[56px] h-[56px] rounded-[8px] bg-neutral-100 overflow-hidden shrink-0">
-        <img
+      <div className="relative w-[56px] h-[56px] rounded-[8px] bg-neutral-100 overflow-hidden shrink-0">
+        <SkeletonImage
           src={space.imgUrl}
           alt={space.name}
           className="w-full h-full object-cover"
           referrerPolicy="no-referrer"
+          loading="eager"
         />
       </div>
       <div className="min-w-0 pt-[1px] pl-[21px]">
@@ -396,9 +455,9 @@ const ChildSpaceResultCard: React.FC<{ space: SubLocationSummary; onClick?: () =
       className="w-full h-[160px] rounded-[24px] bg-white overflow-hidden px-[14px] py-[18px] select-none cursor-pointer active:scale-[0.98] transition-transform"
     >
       <div className="flex items-start gap-[12px]">
-        <div className="w-[56px] h-[56px] rounded-[8px] bg-neutral-100 overflow-hidden shrink-0">
+        <div className="relative w-[56px] h-[56px] rounded-[8px] bg-neutral-100 overflow-hidden shrink-0">
           {space.imgUrl ? (
-            <img
+            <SkeletonImage
               src={space.imgUrl}
               alt={space.name}
               className="w-full h-full object-cover"
@@ -1086,9 +1145,9 @@ const SubLocationListCard: React.FC<{
       className="w-full h-[160px] rounded-[28px] bg-white px-[14px] py-[18px] text-left select-none active:scale-[0.98] transition-transform"
     >
       <div className="flex items-center gap-[14px]">
-        <div className="h-[56px] w-[56px] rounded-[9px] overflow-hidden bg-neutral-100 shrink-0">
+        <div className="relative h-[56px] w-[56px] rounded-[9px] overflow-hidden bg-neutral-100 shrink-0">
           {space.imgUrl ? (
-            <img
+            <SkeletonImage
               src={space.imgUrl}
               alt={space.name}
               className="w-full h-full object-cover"
@@ -1330,11 +1389,12 @@ const SpaceDetailModal: React.FC<{
             <MatrixDotBackground />
             <div className="relative z-10 w-full h-[444px] rounded-[20px] overflow-hidden bg-neutral-200">
               {locationImage ? (
-                <img
+                <SkeletonImage
                   src={locationImage}
                   alt={subName}
                   className="w-full h-full object-cover"
                   referrerPolicy="no-referrer"
+                  loading="eager"
                 />
               ) : (
                 <div className="w-full h-full bg-[#DDDAD5]" aria-label="Sub-location photo unavailable" />
@@ -1977,11 +2037,12 @@ const MemoryDetailModal: React.FC<{
               onTouchStart={handleTouchStart}
               onTouchMove={handleTouchMove}
             >
-              <img
+              <SkeletonImage
                 src={locationImage || fallbackLocationImage}
                 alt={locationLabel || "Location"}
                 className="w-full h-full object-cover"
                 referrerPolicy="no-referrer"
+                loading="eager"
               />
               {locationView === "sub" && (
                 <div
@@ -2950,8 +3011,8 @@ export const MemoryList: React.FC<MemoryListProps> = ({
                   className="bg-white rounded-[12px] p-[8px] pb-3 hover:shadow-[0_4px_12px_rgba(35,33,33,0.08)] active:scale-[0.98] transition-[transform,box-shadow] flex flex-col overflow-hidden select-none"
                 >
                   {/* Space Parent Image with exact 4:5 aspect */}
-                  <div className="rounded-[8px] overflow-hidden aspect-[4/5] w-full bg-neutral-100 flex-shrink-0">
-                    <img
+                  <div className="relative rounded-[8px] overflow-hidden aspect-[4/5] w-full bg-neutral-100 flex-shrink-0">
+                    <SkeletonImage
                       src={space.imgUrl}
                       alt={space.name}
                       className="w-full h-full object-cover"
@@ -3005,8 +3066,8 @@ export const MemoryList: React.FC<MemoryListProps> = ({
                   className="bg-white rounded-[12px] p-[8px] pb-3 hover:shadow-[0_4px_12px_rgba(35,33,33,0.08)] active:scale-[0.98] transition-[transform,box-shadow] flex flex-col overflow-hidden select-none"
                 >
                   {/* Space Parent Image with exact 4:5 aspect */}
-                  <div className="rounded-[8px] overflow-hidden aspect-[4/5] w-full bg-neutral-100 flex-shrink-0">
-                    <img
+                  <div className="relative rounded-[8px] overflow-hidden aspect-[4/5] w-full bg-neutral-100 flex-shrink-0">
+                    <SkeletonImage
                       src={space.imgUrl}
                       alt={space.name}
                       className="w-full h-full object-cover"
