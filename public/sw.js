@@ -1,4 +1,4 @@
-const CACHE_NAME = "noma-app-v14";
+const CACHE_NAME = "noma-app-v15";
 const APP_SHELL = [
   "/",
   "/manifest.json",
@@ -23,7 +23,6 @@ const APP_SHELL = [
   "/startup/startup-1242x2688.png",
   "/startup/startup-1290x2796.png",
   "/startup/startup-1206x2622.png",
-  "/startup/startup-1206x2622.jpg",
   "/startup/startup-1320x2868.png",
   "/font/Alkatra-SemiBold.ttf",
   "/pag/noma.pag",

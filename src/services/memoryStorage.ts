@@ -130,8 +130,9 @@ const fromItemRow = (row: ItemRow): StoredMemoryItem => ({
   stickerUrl: displayMediaValue(row.sticker_url, row.updated_at),
   parentLocationName: row.parent_location_name,
   subLocationName: row.sub_location_name,
-  parentLocationImg: displayMediaValue(row.parent_location_img, row.updated_at),
-  subLocationImg: displayMediaValue(row.sub_location_img, row.updated_at),
+  // Location files use content-hashed R2 keys, so the path itself is the cache version.
+  parentLocationImg: displayMediaValue(row.parent_location_img),
+  subLocationImg: displayMediaValue(row.sub_location_img),
   subLocationHighlight: row.sub_location_highlight || undefined,
   ownerId: row.user_id,
   createdAt: row.created_at,

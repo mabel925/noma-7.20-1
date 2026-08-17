@@ -23,10 +23,9 @@
     <meta property="og:image:width" content="512">
     <meta property="og:image:height" content="512">
     <title>Noma</title>
-    <link rel="preload" href="/startup.jpg" as="image" type="image/jpeg" fetchpriority="high">
+    <link rel="preload" href="/startup/startup-1206x2622.png" as="image" type="image/png" fetchpriority="high">
     <!-- Unconditional iPhone 17 Pro fallback for iOS versions that ignore media-qualified launch links. -->
-    <link rel="apple-touch-startup-image" href="/startup/startup-1206x2622.jpg">
-    <link rel="preload" href="/startup/startup-1206x2622.png" as="image" type="image/png" fetchpriority="high" media="(orientation: portrait)">
+    <link rel="apple-touch-startup-image" href="/startup/startup-1206x2622.png">
     <link rel="preload" href="/startup/startup-1290x2796.png" as="image" type="image/png" fetchpriority="high" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3)">
     <link rel="preload" href="/startup/startup-1320x2868.png" as="image" type="image/png" fetchpriority="high" media="(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3)">
     <!-- Keep a portrait launch image available when iOS reports a scaled CSS viewport. -->
@@ -69,7 +68,7 @@
         width: 100vw;
         height: var(--app-height, 100dvh);
         overflow: hidden;
-        background: #E9E6E1 url('/startup.jpg') center / cover no-repeat;
+        background: #E9E6E1 url('/startup/startup-1206x2622.png') center / cover no-repeat;
         opacity: 1;
         transition: opacity 350ms ease-out;
       }
@@ -89,7 +88,10 @@
         display: flex;
         flex-direction: column;
         align-items: center;
+        opacity: 0;
+        transition: opacity 220ms ease-out;
       }
+      #startup-splash.is-image-ready .startup-progress { opacity: 1; }
       .startup-progress-track {
         width: 126px;
         height: 6px;
@@ -114,12 +116,24 @@
   </head>
   <body style="background:#E9E6E1">
     <div id="startup-splash" role="status" aria-label="Loading Noma">
-      <img src="/startup.jpg" alt="" loading="eager" fetchpriority="high" decoding="sync" />
+      <img id="startup-splash-image" src="/startup/startup-1206x2622.png" alt="" loading="eager" fetchpriority="high" decoding="sync" />
       <div class="startup-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
         <div class="startup-progress-track"><span id="startup-progress-fill"></span></div>
         <span id="startup-progress-label">0%</span>
       </div>
     </div>
+    <script>
+      (() => {
+        const splash = document.getElementById('startup-splash');
+        const image = document.getElementById('startup-splash-image');
+        const revealProgress = () => requestAnimationFrame(() => splash?.classList.add('is-image-ready'));
+        if (image?.complete) revealProgress();
+        else {
+          image?.addEventListener('load', revealProgress, { once: true });
+          image?.addEventListener('error', revealProgress, { once: true });
+        }
+      })();
+    </script>
     <!-- 页面根容器，让背景色/图片和应用布局自适应自撑满整个视口 -->
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
