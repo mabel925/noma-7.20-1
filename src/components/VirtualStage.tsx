@@ -1,25 +1,58 @@
-import React, { useRef, useState, useEffect, useLayoutEffect } from "react";
+import React, { useRef, useState, useEffect, useLayoutEffect, useCallback } from "react";
 import { motion } from "motion/react";
 import { PagNomaSprite } from "./PagNomaSprite";
+
+const ROOM_NATIVE_WIDTH = 2064;
+const ROOM_NATIVE_HEIGHT = 2532;
+const NOMA_NATIVE_WIDTH = 600;
 
 interface VirtualStageProps {
   isChatActive: boolean;
   bgRoomUrl: string;
   bgChatUrl: string;
+  onReady?: () => void;
 }
 
 export const VirtualStage: React.FC<VirtualStageProps> = ({
   isChatActive,
   bgRoomUrl,
   bgChatUrl,
+  onReady,
 }) => {
   const stageRef = useRef<HTMLDivElement>(null);
   const [parentDimensions, setParentDimensions] = useState({ width: 400, height: 844 });
-  // Initialize with exact native background resolution (768x1376) to prevent temporary layout stretch
-  const [aspectRatio, setAspectRatio] = useState<number>(768 / 1376);
+  // Start from the real asset dimensions so the first hidden frame already has final geometry.
+  const [aspectRatio, setAspectRatio] = useState<number>(ROOM_NATIVE_WIDTH / ROOM_NATIVE_HEIGHT);
+  const [bgNaturalHeight, setBgNaturalHeight] = useState<number>(ROOM_NATIVE_HEIGHT);
+  const [backgroundReady, setBackgroundReady] = useState(false);
+  const [nomaReady, setNomaReady] = useState(false);
+  const hasReportedReadyRef = useRef(false);
 
-  const [bgNaturalHeight, setBgNaturalHeight] = useState<number>(1376);
-  const [nomaNaturalWidth, setNomaNaturalWidth] = useState<number>(422);
+  const handleNomaReady = useCallback(() => {
+    setNomaReady(true);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setBackgroundReady(false);
+    const urls = Array.from(new Set([bgRoomUrl, bgChatUrl]));
+    Promise.all(urls.map((url) => new Promise<void>((resolve) => {
+      const image = new Image();
+      image.onload = () => resolve();
+      image.onerror = () => resolve();
+      image.src = url;
+    }))).then(() => {
+      if (!cancelled) setBackgroundReady(true);
+    });
+    return () => { cancelled = true; };
+  }, [bgRoomUrl, bgChatUrl]);
+
+  useEffect(() => {
+    if (backgroundReady && nomaReady && !hasReportedReadyRef.current) {
+      hasReportedReadyRef.current = true;
+      onReady?.();
+    }
+  }, [backgroundReady, nomaReady, onReady]);
 
   useLayoutEffect(() => {
     if (!stageRef.current) return;
@@ -64,17 +97,6 @@ export const VirtualStage: React.FC<VirtualStageProps> = ({
     };
   }, [bgRoomUrl]);
 
-  // Load Noma's natural dimensions to perfectly scale lock-step with background
-  useEffect(() => {
-    const img = new Image();
-    img.src = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/noma.png";
-    img.onload = () => {
-      if (img.naturalWidth > 0) {
-        setNomaNaturalWidth(img.naturalWidth);
-      }
-    };
-  }, []);
-
   // The base-state width of virtual stage relative to screen frame height
   const H_frame = parentDimensions.height;
   const W_frame = parentDimensions.width;
@@ -82,7 +104,7 @@ export const VirtualStage: React.FC<VirtualStageProps> = ({
 
   // Calculate Noma's scaled width so its scaling factor exactly matches the background image's scale (H_frame / bgNaturalHeight)
   const scaleMultiplier = bgNaturalHeight > 0 ? H_frame / bgNaturalHeight : 1;
-  const nomaWidth = nomaNaturalWidth * scaleMultiplier;
+  const nomaWidth = NOMA_NATIVE_WIDTH * scaleMultiplier;
 
   // State 1: Default status. Left edge is aligned at 0, scale is 1.0, top is 0.
   // State 2: Chat active status. Height is scaled by 0.84. Right edge is aligned with W_frame.
@@ -114,15 +136,18 @@ export const VirtualStage: React.FC<VirtualStageProps> = ({
   // 当 Chat 激活时，水平平移量设定为 -60px，保证在屏幕左侧优雅展现角色，不会因为过大的位移被移出屏幕。
   const T_x = isChatActive ? -60 : 0;
 
+  const stageReady = backgroundReady && nomaReady;
+
   return (
     <motion.div 
       ref={stageRef}
-      className="virtual-stage absolute top-0 overflow-hidden"
+      className="virtual-stage absolute top-0 overflow-hidden transition-opacity duration-300"
       style={{
         width: `${W_stage}px`,
         height: `${H_frame}px`,
         left: "0px",
         transformOrigin: "left top",
+        opacity: stageReady ? 1 : 0,
       }}
       animate={{
         x: T_x,
@@ -188,7 +213,10 @@ export const VirtualStage: React.FC<VirtualStageProps> = ({
           transformOrigin: "left bottom",
         }}
       >
-        <PagNomaSprite pose={isChatActive ? "chatting" : "reading"} />
+        <PagNomaSprite
+          pose={isChatActive ? "chatting" : "reading"}
+          onReady={handleNomaReady}
+        />
       </div>
     </motion.div>
   );

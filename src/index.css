@@ -20,9 +20,37 @@
   font-family: "Alkatra", cursive, sans-serif !important;
 }
 
+#startup-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483646;
+  width: 100vw;
+  height: var(--app-height, 100dvh);
+  overflow: hidden;
+  background: #E9E6E1;
+  pointer-events: auto;
+  opacity: 1;
+  transition: opacity 350ms ease-out;
+}
+
+#startup-splash img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
+#startup-splash.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
 :root {
   --noma-statusbar-height: env(safe-area-inset-top, 0px);
   --app-height: 100dvh;
+  --capture-viewport-top: 0px;
+  --capture-viewport-height: var(--app-height);
 }
 
 .pwa-standalone {
@@ -624,13 +652,14 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 .camera-page-container,
 .camera-wrapper {
   position: fixed !important;
-  inset: 0 !important;
+  top: var(--capture-viewport-top) !important;
+  bottom: auto !important;
   z-index: 9999 !important;
   left: 0 !important;
   right: 0 !important;
   width: auto !important;
   max-width: none !important;
-  height: var(--app-height) !important;
+  height: var(--capture-viewport-height) !important;
   display: flex !important;
   flex-direction: column !important;
   justify-content: flex-end !important; /* 让内容在底部对齐 */
@@ -638,7 +667,21 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
   margin-bottom: 0 !important;
   box-sizing: border-box !important;
   overflow-x: hidden !important;
+  overflow-y: hidden !important;
+  overscroll-behavior: none !important;
+  touch-action: none;
   background: #161616 !important; /* 确保背景色填补 */
+}
+
+.camera-page-container input,
+.camera-page-container textarea {
+  font-size: 16px !important;
+  -webkit-text-size-adjust: 100%;
+}
+
+.camera-page-container [data-capture-scrollable="true"] {
+  touch-action: pan-y;
+  overscroll-behavior: contain;
 }
 
 .camera-page-container > .absolute.inset-0,

@@ -18,6 +18,7 @@ type PagViewHandle = {
 };
 
 let pagRuntimePromise: ReturnType<typeof PAGInit> | null = null;
+let pagAssetPromise: Promise<{ PAG: any; bytes: ArrayBuffer }> | null = null;
 
 const getPagRuntime = () => {
   if (!pagRuntimePromise) {
@@ -26,14 +27,31 @@ const getPagRuntime = () => {
   return pagRuntimePromise;
 };
 
+const getPagAsset = () => {
+  if (!pagAssetPromise) {
+    pagAssetPromise = Promise.all([
+      getPagRuntime(),
+      fetch(PAG_FILE_URL).then(async (response) => {
+        if (!response.ok) throw new Error(`Unable to load PAG asset: ${response.status}`);
+        return response.arrayBuffer();
+      }),
+    ]).then(([PAG, bytes]) => ({ PAG, bytes }));
+  }
+  return pagAssetPromise;
+};
+
+export const preloadPagNoma = () => getPagAsset();
+
 interface PagNomaSpriteProps {
   pose?: "reading" | "chatting";
   className?: string;
+  onReady?: () => void;
 }
 
 export const PagNomaSprite: React.FC<PagNomaSpriteProps> = ({
   pose = "reading",
   className = "",
+  onReady,
 }) => {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const pagViewRef = React.useRef<PagViewHandle | null>(null);
@@ -45,16 +63,8 @@ export const PagNomaSprite: React.FC<PagNomaSpriteProps> = ({
 
     const loadAnimation = async () => {
       try {
-        const [PAG, response] = await Promise.all([
-          getPagRuntime(),
-          fetch(PAG_FILE_URL),
-        ]);
-
-        if (!response.ok) {
-          throw new Error(`Unable to load PAG asset: ${response.status}`);
-        }
-
-        const pagFile = await PAG.PAGFile.load(await response.arrayBuffer());
+        const { PAG, bytes } = await getPagAsset();
+        const pagFile = await PAG.PAGFile.load(bytes.slice(0));
         pagFileRef.current = pagFile;
 
         const canvas = canvasRef.current;
@@ -73,6 +83,7 @@ export const PagNomaSprite: React.FC<PagNomaSpriteProps> = ({
         pagViewRef.current = pagView;
         pagView.setRepeatCount(0);
         setIsReady(true);
+        onReady?.();
         await pagView.play();
       } catch (error) {
         if (!cancelled) {
@@ -98,19 +109,19 @@ export const PagNomaSprite: React.FC<PagNomaSpriteProps> = ({
       pagFileRef.current = null;
       pagFile?.destroy();
     };
-  }, []);
+  }, [onReady]);
 
   return (
     <div
-      className={`relative select-none pointer-events-none w-full ${className}`}
+      className={`relative select-none pointer-events-none w-full aspect-square overflow-hidden ${className}`}
       style={{ transformOrigin: "left bottom" }}
       data-pose={pose}
       aria-label="Noma Character"
     >
       <canvas
         ref={canvasRef}
-        width={1}
-        height={1}
+        width={600}
+        height={600}
         className={`relative z-10 block h-auto w-full transition-opacity duration-150 ${isReady ? "opacity-100" : "opacity-0"}`}
         aria-hidden="true"
       />

@@ -9,7 +9,14 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Noma</title>
     <link rel="preload" href="/font/Alkatra-SemiBold.ttf" as="font" type="font/ttf" crossorigin="anonymous">
+    <link rel="preload" href="/icons/icon-192.png" as="image" type="image/png">
+    <link rel="preload" href="/startup.jpg" as="image" type="image/jpeg">
     <link rel="preload" href="https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/yellowblur.png" as="image" type="image/png">
+    <link rel="preload" href="https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/bg-newroom.jpg" as="image" type="image/jpeg">
+    <link rel="preload" href="https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/logo-noma.png" as="image" type="image/png">
+    <link rel="preload" href="https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/%E9%BB%98%E8%AE%A4%E5%A4%B4%E5%83%8F.jpg" as="image" type="image/jpeg">
+    <link rel="preload" href="/pag/noma.pag" as="fetch" type="application/octet-stream" crossorigin="anonymous">
+    <link rel="preload" href="/pag/libpag.wasm" as="fetch" type="application/wasm" crossorigin="anonymous">
     <link rel="manifest" href="/manifest.json">
     <style>
       html, body, #root, .pwa-shell, .iframe-wrap, .home-container {
@@ -24,6 +31,9 @@
     </style>
   </head>
   <body>
+    <div id="startup-splash" role="status" aria-label="Loading Noma">
+      <img src="/startup.jpg" alt="" />
+    </div>
     <!-- 页面根容器，让背景色/图片和应用布局自适应自撑满整个视口 -->
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>

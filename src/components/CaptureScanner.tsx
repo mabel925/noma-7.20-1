@@ -4072,7 +4072,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                 {/* 5. Final Result Summary Page */}
                 {storageFlowStep === "final_result" && (
                   <div 
-                    className="absolute inset-0 isolate w-full h-full overflow-y-auto px-0 pt-[88px] pb-8"
+                    data-capture-scrollable="true"
+                    className="absolute inset-0 isolate w-full h-full overflow-y-auto px-0 pt-[88px] pb-8 overscroll-contain"
                     style={{
                       maxHeight: "100%",
                       WebkitOverflowScrolling: "touch"

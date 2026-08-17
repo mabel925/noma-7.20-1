@@ -47,7 +47,7 @@ export const ActionButtons: React.FC<ActionButtonsProps> = ({
           viewBox="0 0 32 32"
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
-          className="w-8 h-8 transition-transform duration-500 group-hover:scale-110"
+          className="w-8 h-8 -translate-y-[6px] transition-transform duration-500 group-hover:scale-110"
         >
           <circle cx="19.5427" cy="14.5865" r="1.86255" fill="white" />
           <path

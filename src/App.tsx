@@ -23,6 +23,9 @@ import { CloseIcon } from "./components/CloseIcon";
 import { useAuth } from "./auth/AuthContext";
 import { isStandalonePwa, syncDisplayModeClasses } from "./utils/appViewport";
 
+const HOME_LOGO_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/logo-noma.png";
+const HOME_AVATAR_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/%E9%BB%98%E8%AE%A4%E5%A4%B4%E5%83%8F.jpg";
+
 const DEFAULT_MEMORIES: MemoryItem[] = [
   {
     id: "seed-laptop",
@@ -190,6 +193,50 @@ export default function App() {
   const [isCaptureOpen, setIsCaptureOpen] = useState<boolean>(false);
   const [isMemoryOpen, setIsMemoryOpen] = useState<boolean>(false);
   const [isStandaloneMode, setIsStandaloneMode] = useState<boolean>(false);
+  const launchStartedAtRef = React.useRef(performance.now());
+  const [areStageAssetsReady, setAreStageAssetsReady] = useState(false);
+  const [areHomeChromeAssetsReady, setAreHomeChromeAssetsReady] = useState(false);
+  const [isHomeReady, setIsHomeReady] = useState(false);
+  const handleHomeReady = React.useCallback(() => setAreStageAssetsReady(true), []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const preloadImage = (url: string) => new Promise<void>((resolve) => {
+      const image = new Image();
+      image.onload = () => {
+        const decode = typeof image.decode === "function" ? image.decode() : Promise.resolve();
+        decode.catch(() => undefined).finally(resolve);
+      };
+      image.onerror = () => resolve();
+      image.src = url;
+    });
+
+    Promise.all([HOME_LOGO_URL, HOME_AVATAR_URL].map(preloadImage)).then(() => {
+      if (!cancelled) setAreHomeChromeAssetsReady(true);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!areStageAssetsReady || !areHomeChromeAssetsReady) return;
+    const elapsed = performance.now() - launchStartedAtRef.current;
+    const timer = window.setTimeout(() => setIsHomeReady(true), Math.max(0, 650 - elapsed));
+    return () => window.clearTimeout(timer);
+  }, [areHomeChromeAssetsReady, areStageAssetsReady]);
+
+  useEffect(() => {
+    const safetyTimer = window.setTimeout(() => setIsHomeReady(true), 12000);
+    return () => window.clearTimeout(safetyTimer);
+  }, []);
+
+  useEffect(() => {
+    if (!isHomeReady) return;
+    const splash = document.getElementById("startup-splash");
+    if (!splash) return;
+    splash.classList.add("is-hidden");
+    const removeTimer = window.setTimeout(() => splash.remove(), 380);
+    return () => window.clearTimeout(removeTimer);
+  }, [isHomeReady]);
 
   const controls = useAnimation();
   const isCustomKeyboardVisible = isChatActive && !isMemoryOpen && !isCaptureOpen;
@@ -647,6 +694,7 @@ export default function App() {
             isChatActive={isChatActive && !isMemoryOpen && !isCaptureOpen}
             bgRoomUrl="https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/bg-newroom.jpg"
             bgChatUrl="https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/bg-newroom.jpg"
+            onReady={handleHomeReady}
           />
         </motion.div>
 

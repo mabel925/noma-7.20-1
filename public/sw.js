@@ -1,5 +1,13 @@
-const CACHE_NAME = "noma-app-v3";
-const APP_SHELL = ["/", "/manifest.json"];
+const CACHE_NAME = "noma-app-v4";
+const APP_SHELL = [
+  "/",
+  "/manifest.json",
+  "/icons/icon-192.png",
+  "/startup.jpg",
+  "/font/Alkatra-SemiBold.ttf",
+  "/pag/noma.pag",
+  "/pag/libpag.wasm",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
