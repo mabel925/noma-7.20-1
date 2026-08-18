@@ -222,143 +222,9 @@ async function getBase64FromImageSrc(imageSrc: string): Promise<string> {
 }
 
 /**
- * Local high-performance client-side Chroma Keying Background Extraction fallback.
- * Used automatically when local rembg server is unreachable or when API credentials are omitted.
- */
-async function localChromaKeyFallback(
-  imageSrc: string,
-  onProgress?: (progress: string | null) => void
-): Promise<string> {
-  try {
-    console.log("[RemoveBgService] [ChromaKey] Activating local high-speed client-side Chroma Keying engine.");
-    if (onProgress) onProgress("Initializing Chroma Scan...");
-    await new Promise(r => setTimeout(r, 30));
-
-    if (onProgress) onProgress("Reading image parameters...");
-    const origImg = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const img = new Image();
-      if (!imageSrc.startsWith("data:") && !imageSrc.startsWith("blob:")) {
-        img.crossOrigin = "anonymous";
-      }
-      img.onload = () => resolve(img);
-      img.onerror = (e) => reject(new Error("Failed to load original image for background subtraction: " + e));
-      img.src = imageSrc;
-    });
-
-    const origWidth = origImg.naturalWidth || origImg.width || 500;
-    const origHeight = origImg.naturalHeight || origImg.height || 500;
-
-    // Downsample to safe 800px boundary to eliminate processing lag completely
-    const MAX_ENG_SIZE = 800;
-    let width = origWidth;
-    let height = origHeight;
-    if (origWidth > MAX_ENG_SIZE || origHeight > MAX_ENG_SIZE) {
-      if (origWidth > origHeight) {
-        width = MAX_ENG_SIZE;
-        height = Math.round((origHeight * MAX_ENG_SIZE) / origWidth);
-      } else {
-        height = MAX_ENG_SIZE;
-        width = Math.round((origWidth * MAX_ENG_SIZE) / origHeight);
-      }
-    }
-
-    if (onProgress) onProgress("Analyzing background hue...");
-    await new Promise(r => setTimeout(r, 40));
-
-    // Build canvas and pull pixel data
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      throw new Error("Could not obtain 2D canvas context.");
-    }
-
-    ctx.drawImage(origImg, 0, 0, width, height);
-    const imgData = ctx.getImageData(0, 0, width, height);
-    const pixels = imgData.data;
-
-    // Sample coordinates for corners (inset slightly)
-    const offsetX = Math.max(1, Math.min(6, Math.floor(width * 0.02)));
-    const offsetY = Math.max(1, Math.min(6, Math.floor(height * 0.02)));
-
-    const getPixel = (x: number, y: number) => {
-      const idx = (y * width + x) * 4;
-      return {
-        r: pixels[idx],
-        g: pixels[idx + 1],
-        b: pixels[idx + 2]
-      };
-    };
-
-    // Sample 4 corners to detect uneven background / shadows perfectly
-    const corners = [
-      getPixel(offsetX, offsetY),
-      getPixel(width - offsetX - 1, offsetY),
-      getPixel(offsetX, height - offsetY - 1),
-      getPixel(width - offsetX - 1, height - offsetY - 1)
-    ];
-
-    console.log("[RemoveBgService] [ChromaKey] Sampled Corner Background Colors:", corners);
-    if (onProgress) onProgress("Meticulously peeling background...");
-    await new Promise(r => setTimeout(r, 50));
-
-    const tolerance = 35; // Standard high fidelity color difference tolerance
-
-    // Traverse pixels and clear colors matching any corner background
-    const len = pixels.length;
-    for (let i = 0; i < len; i += 4) {
-       const r = pixels[i];
-       const g = pixels[i + 1];
-       const b = pixels[i + 2];
-
-       // Find closest corner color (Euclidean distance in RGB color space)
-       let minDiff = Infinity;
-       for (const corner of corners) {
-         const diff = Math.sqrt(
-           Math.pow(r - corner.r, 2) +
-           Math.pow(g - corner.g, 2) +
-           Math.pow(b - corner.b, 2)
-         );
-         if (diff < minDiff) {
-           minDiff = diff;
-         }
-       }
-
-       if (minDiff < tolerance) {
-         pixels[i + 3] = 0; // Absolute transparency
-       } else if (minDiff < tolerance + 15) {
-         // Micro feathering transitional region for anti-aliasing curve borders
-         const ratio = (minDiff - tolerance) / 15;
-         pixels[i + 3] = Math.round(pixels[i + 3] * ratio);
-       }
-    }
-
-    if (onProgress) onProgress("Perfecting mask edges...");
-    await new Promise(r => setTimeout(r, 30));
-
-    ctx.putImageData(imgData, 0, 0);
-    const trueTransparentPngUrl = canvas.toDataURL("image/png");
-    
-    console.log("[RemoveBgService] [ChromaKey] Completed color keying backdrop removal! Transparent output URL size:", trueTransparentPngUrl.length);
-    if (onProgress) onProgress(null);
-    return trueTransparentPngUrl;
-  } catch (err) {
-    console.error("[RemoveBgService] Chroma Key computation failed, falling back to original image:", err);
-    if (onProgress) onProgress("Cropping circular...");
-    return new Promise<string>((resolve) => {
-      setTimeout(() => {
-        if (onProgress) onProgress(null);
-        resolve(imageSrc);
-      }, 50);
-    });
-  }
-}
-
-/**
  * Unified decoupled Background Removal API.
  * Dispatches to local python rembg or custom APIs depending on active configuration mode.
- * Provides client-side automatic safety fallback (Chroma Key) if connections fail or credentials are omitted.
+ * Throws when cloud matting is unavailable so the caller can use the original photo thumbnail.
  *
  * @param imageSrc Base64 URL or binary Blob URL of the image to process.
  * @param onProgress Optional callback to receive status updates for the UI.
@@ -373,8 +239,7 @@ export async function remove_background(
 
   try {
     if (REMOVE_BG_CONFIG.mode === "local") {
-      console.log("[RemoveBgService] Local mode selected. Running Chroma Key fallback directly.");
-      return await localChromaKeyFallback(imageSrc, onProgress);
+      throw new Error("Local background removal is no longer supported");
     }
 
     // 统一 API 拦截
@@ -385,8 +250,7 @@ export async function remove_background(
       console.warn("[RemoveBgService] Failed to read IS_API_ENABLED from localStorage:", e);
     }
     if (!isApiEnabled) {
-      console.log("[API Intercept] remove_background API is disabled. Running local Chroma Key fallback.");
-      return await localChromaKeyFallback(imageSrc, onProgress);
+      throw new Error("Cloud background removal is disabled");
     }
 
     const totalStartedAt = performance.now();
@@ -481,8 +345,9 @@ export async function remove_background(
     const workerCode = result?.code !== undefined ? ` (code ${result.code})` : "";
     throw new Error(`Worker matting failed${workerCode}: ${workerMessage}`);
   } catch (err: any) {
+    if (onProgress) onProgress(null);
     if (err instanceof AiAccessError) throw err;
-    console.error(`[RemoveBgService] Matting failed: ${err.message || err}. Triggering local Chroma Key fallback.`);
-    return await localChromaKeyFallback(imageSrc, onProgress);
+    console.warn(`[RemoveBgService] Matting failed: ${err.message || err}. Using the caller's photo thumbnail fallback.`);
+    throw err;
   }
 }

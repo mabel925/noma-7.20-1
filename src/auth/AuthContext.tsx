@@ -1,6 +1,7 @@
 import React from "react";
 import type { User } from "@supabase/supabase-js";
 import { mediaStorage } from "../services/mediaStorage";
+import { readAiAccess, type AiAccessSnapshot } from "../services/aiAuth";
 import { supabase } from "../services/supabaseClient";
 
 export type AuthUser = {
@@ -21,11 +22,25 @@ const MOCK_AUTH_USER: AuthUser = {
   avatarUrl: DEFAULT_AVATAR_URL,
   isMock: true,
 };
+const MOCK_AI_ACCESS: AiAccessSnapshot = {
+  planCode: "preview",
+  planName: "Preview",
+  aiScanLimit: null,
+  aiScansUsed: 0,
+  aiScansRemaining: null,
+  itemLimit: null,
+  itemCount: 0,
+  itemsRemaining: null,
+};
 
 type AuthContextValue = {
   user: AuthUser | null;
   authLoading: boolean;
+  aiAccess: AiAccessSnapshot | null;
+  aiAccessLoading: boolean;
+  aiAccessUnavailable: boolean;
   isLoginOpen: boolean;
+  reserveAiScan: () => "available" | "quota" | "unavailable";
   requireAuth: (action?: () => void) => boolean;
   openLogin: () => void;
   closeLogin: () => void;
@@ -79,6 +94,9 @@ const mapUser = (user: User | null): AuthUser | null => {
 export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
   const [user, setUser] = React.useState<AuthUser | null>(MOCK_AUTH_ENABLED ? MOCK_AUTH_USER : null);
   const [authLoading, setAuthLoading] = React.useState(!MOCK_AUTH_ENABLED);
+  const [aiAccess, setAiAccess] = React.useState<AiAccessSnapshot | null>(MOCK_AUTH_ENABLED ? MOCK_AI_ACCESS : null);
+  const [aiAccessLoading, setAiAccessLoading] = React.useState(false);
+  const [aiAccessUnavailable, setAiAccessUnavailable] = React.useState(false);
   const [isLoginOpen, setIsLoginOpen] = React.useState(false);
   const pendingActionRef = React.useRef<(() => void) | null>(null);
 
@@ -102,6 +120,59 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       listener.subscription.unsubscribe();
     };
   }, []);
+
+  React.useEffect(() => {
+    if (!user) {
+      setAiAccess(null);
+      setAiAccessLoading(false);
+      setAiAccessUnavailable(false);
+      return;
+    }
+    if (user.isMock) {
+      setAiAccess(MOCK_AI_ACCESS);
+      setAiAccessLoading(false);
+      setAiAccessUnavailable(false);
+      return;
+    }
+
+    let cancelled = false;
+    setAiAccess(null);
+    setAiAccessLoading(true);
+    setAiAccessUnavailable(false);
+    readAiAccess()
+      .then((access) => {
+        if (cancelled) return;
+        setAiAccess(access);
+        setAiAccessUnavailable(false);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.warn("[Auth] Unable to load AI access during app startup:", error);
+        setAiAccess(null);
+        setAiAccessUnavailable(true);
+      })
+      .finally(() => {
+        if (!cancelled) setAiAccessLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, user?.isMock]);
+
+  const reserveAiScan = React.useCallback((): "available" | "quota" | "unavailable" => {
+    if (!user || aiAccessLoading || aiAccessUnavailable || !aiAccess) return "unavailable";
+    if (aiAccess.aiScansRemaining !== null && aiAccess.aiScansRemaining <= 0) return "quota";
+
+    if (aiAccess.aiScansRemaining !== null) {
+      setAiAccess((current) => current ? {
+        ...current,
+        aiScansRemaining: Math.max(0, (current.aiScansRemaining ?? 1) - 1),
+        aiScansUsed: current.aiScansUsed + 1,
+      } : current);
+    }
+    return "available";
+  }, [aiAccess, aiAccessLoading, aiAccessUnavailable, user]);
 
   const openLogin = React.useCallback(() => setIsLoginOpen(true), []);
   const closeLogin = React.useCallback(() => {
@@ -170,8 +241,36 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
   }, []);
 
   const value = React.useMemo(
-    () => ({ user, authLoading, isLoginOpen, requireAuth, openLogin, closeLogin, requestOtp, verifyOtp, signOut }),
-    [user, authLoading, isLoginOpen, requireAuth, openLogin, closeLogin, requestOtp, verifyOtp, signOut],
+    () => ({
+      user,
+      authLoading,
+      aiAccess,
+      aiAccessLoading,
+      aiAccessUnavailable,
+      isLoginOpen,
+      reserveAiScan,
+      requireAuth,
+      openLogin,
+      closeLogin,
+      requestOtp,
+      verifyOtp,
+      signOut,
+    }),
+    [
+      user,
+      authLoading,
+      aiAccess,
+      aiAccessLoading,
+      aiAccessUnavailable,
+      isLoginOpen,
+      reserveAiScan,
+      requireAuth,
+      openLogin,
+      closeLogin,
+      requestOtp,
+      verifyOtp,
+      signOut,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

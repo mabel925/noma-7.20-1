@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Camera, Check, Image as ImageIcon, RotateCcw } from "lucide-react";
-import { recognizeImage, prepareImage } from "../services/aiService";
-import { remove_background, REMOVE_BG_CONFIG } from "../services/removeBackgroundService";
+import { isApiEnabled, recognizeImage, prepareImage } from "../services/aiService";
+import { remove_background } from "../services/removeBackgroundService";
 import { AiAccessError, createAiScanId } from "../services/aiAuth";
 import { MemoryItemLimitError } from "../services/memoryStorage";
+import { useAuth } from "../auth/AuthContext";
 import { motion, AnimatePresence } from "motion/react";
 import { useKeyboardReset } from "../hooks/useKeyboardReset";
 import { useLayoutGuard } from "../hooks/useLayoutGuard";
@@ -212,6 +213,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 }) => {
   // Call keyboard reset aggressively when capture page is open to guarantee layout restoration
   useKeyboardReset(false, isOpen);
+  const { reserveAiScan } = useAuth();
 
   const [selectedItemIndex, setSelectedItemIndex] = useState<number>(0);
   const [isCapturing, setIsCapturing] = useState<boolean>(false);
@@ -252,6 +254,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const OUTLINE_TRACE_DURATION = 300;
   const OUTLINE_TRACE_COMMIT_LEAD = 1000 / 60;
   const OUTLINE_TRACE_MANUAL_LEAD = 60;
+  const DIRECT_THUMBNAIL_FLIGHT_DURATION = 680;
   const OUTLINE_TRACE_START_OFFSET = Math.max(
     0,
     CUTOUT_FLIGHT_DURATION - OUTLINE_TRACE_DURATION - OUTLINE_TRACE_COMMIT_LEAD - OUTLINE_TRACE_MANUAL_LEAD
@@ -382,11 +385,11 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const reportAiAccessError = (error: unknown) => {
     if (!(error instanceof AiAccessError)) return;
     if (error.code === "AI_QUOTA_EXHAUSTED") {
-      setAiAccessNotice(isChinese ? "AI 免费额度已用完，已切换为基础处理" : "Free AI credits used up. Continuing with basic processing.");
+      setAiAccessNotice(isChinese ? "AI 免费额度已用完，已使用照片缩略图" : "Free AI credits used up. Using the photo thumbnail.");
     } else if (error.code === "AI_AUTH_REQUIRED") {
-      setAiAccessNotice(isChinese ? "登录状态已失效，请重新登录" : "Your session expired. Please sign in again.");
+      setAiAccessNotice(isChinese ? "登录状态已失效，已使用照片缩略图" : "Your session expired. Using the photo thumbnail.");
     } else {
-      setAiAccessNotice(isChinese ? "暂时无法核验 AI 额度，已使用基础处理" : "AI access could not be checked. Using basic processing.");
+      setAiAccessNotice(isChinese ? "暂时无法核验 AI 额度，已使用照片缩略图" : "AI access could not be checked. Using the photo thumbnail.");
     }
   };
 
@@ -395,6 +398,19 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     const timer = window.setTimeout(() => setAiAccessNotice(null), 4500);
     return () => window.clearTimeout(timer);
   }, [aiAccessNotice]);
+
+  const reserveAiCapture = (): "available" | "quota" | "unavailable" => {
+    if (!isApiEnabled()) return "unavailable";
+    return reserveAiScan();
+  };
+
+  const showPhotoThumbnailNotice = (reason: "quota" | "unavailable") => {
+    setAiAccessNotice(
+      reason === "quota"
+        ? (isChinese ? "AI 免费额度已用完，已使用照片缩略图" : "Free AI credits used up. Using the photo thumbnail.")
+        : (isChinese ? "AI 暂时不可用，已使用照片缩略图" : "AI is unavailable. Using the photo thumbnail."),
+    );
+  };
 
   // Modern camera shutter screen flash overlay state
   const [shutterFlash, setShutterFlash] = useState<boolean>(false);
@@ -435,6 +451,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const [isTracingContour, setIsTracingContour] = useState<boolean>(false);
   const [traceProgress, setTraceProgress] = useState<number>(0);
   const [traceCompleted, setTraceCompleted] = useState<boolean>(false);
+  const [skipScanEffects, setSkipScanEffects] = useState<boolean>(false);
   const [disintegrateStart, setDisintegrateStart] = useState<boolean>(false);
   const [cutoutFlightStartRect, setCutoutFlightStartRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
   const [stickerSizeSettled, setStickerSizeSettled] = useState<boolean>(false);
@@ -686,7 +703,12 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     return { ...layout, left, top, width, height };
   };
 
-  const beginCutoutTransition = async (sourceWidth?: number, sourceHeight?: number, cutoutBounds?: CutoutBounds | null) => {
+  const beginCutoutTransition = async (
+    sourceWidth?: number,
+    sourceHeight?: number,
+    cutoutBounds?: CutoutBounds | null,
+    directThumbnail: boolean = false,
+  ) => {
     await waitForPreparedTitle();
     const sourceLayout = getCoverLayoutFromDimensions(sourceWidth, sourceHeight);
     const boundsSourceWidth = cutoutBounds?.sourceWidth || sourceWidth || sourceLayout.width;
@@ -712,8 +734,9 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       width: normalizedFlightSize,
       height: normalizedFlightSize,
     });
+    setSkipScanEffects(directThumbnail);
     setStickerSizeSettled(false);
-    setTraceCompleted(false);
+    setTraceCompleted(directThumbnail);
     setIsResultDecorationVisible(false);
     setIsResultTitleRevealReady(false);
     setIsOutlineTraceReady(false);
@@ -745,6 +768,79 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     const x = (targetSize - drawWidth) / 2;
     const y = (targetSize - drawHeight) / 2;
     ctx.drawImage(source, x, y, drawWidth, drawHeight);
+  };
+
+  const generatePhotoThumbnailSticker = (imageSrc: string): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      if (!imageSrc.startsWith("data:") && !imageSrc.startsWith("blob:")) {
+        img.crossOrigin = "anonymous";
+      }
+
+      img.onload = () => {
+        const renderScale = 3;
+        const canvas = document.createElement("canvas");
+        canvas.width = STICKER_BASE_SIZE * renderScale;
+        canvas.height = STICKER_BASE_SIZE * renderScale;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(imageSrc);
+          return;
+        }
+
+        const thumbnailSize = 196;
+        const borderWidth = 6;
+        const outerRadius = 32;
+        const outerOffset = (STICKER_BASE_SIZE - thumbnailSize) / 2;
+        const innerOffset = outerOffset + borderWidth;
+        const innerSize = thumbnailSize - borderWidth * 2;
+        const innerRadius = outerRadius - borderWidth;
+        const sourceWidth = img.naturalWidth || img.width || 1;
+        const sourceHeight = img.naturalHeight || img.height || 1;
+        const coverScale = Math.max(innerSize / sourceWidth, innerSize / sourceHeight);
+        const drawWidth = sourceWidth * coverScale;
+        const drawHeight = sourceHeight * coverScale;
+
+        ctx.scale(renderScale, renderScale);
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.clearRect(0, 0, STICKER_BASE_SIZE, STICKER_BASE_SIZE);
+
+        ctx.fillStyle = "#FFFFFF";
+        ctx.beginPath();
+        ctx.roundRect(outerOffset, outerOffset, thumbnailSize, thumbnailSize, outerRadius);
+        ctx.fill();
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.roundRect(innerOffset, innerOffset, innerSize, innerSize, innerRadius);
+        ctx.clip();
+        ctx.drawImage(
+          img,
+          innerOffset + (innerSize - drawWidth) / 2,
+          innerOffset + (innerSize - drawHeight) / 2,
+          drawWidth,
+          drawHeight,
+        );
+        ctx.restore();
+
+        resolve(canvas.toDataURL("image/png"));
+      };
+      img.onerror = () => resolve(imageSrc);
+      img.src = imageSrc;
+    });
+  };
+
+  const completeWithPhotoThumbnail = async (imageSrc: string, width: number, height: number) => {
+    const thumbnailSticker = await generatePhotoThumbnailSticker(imageSrc);
+    setAlignedCutoutUrl(thumbnailSticker);
+    setFlightCutoutUrl(thumbnailSticker);
+    setTransparentCutoutUrl(thumbnailSticker);
+    setPaddedCutoutUrl(thumbnailSticker);
+    setGeneratedStickerUrl(thumbnailSticker);
+    setTraceCompleted(false);
+    await beginCutoutTransition(width, height, null, true);
+    setAiProgress("Done");
   };
 
   type CutoutBounds = {
@@ -1297,9 +1393,12 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       // If client-side AI succeeds, it returns a new Base64 png. If it fails or is bypassed, it returns the original sourceUrl.
       const isPreset = !uploadedImageUrl && !cameraActive;
       const pipelineBypassed = (transparentCutout === sourceUrl);
-      const useFallbackMock = pipelineBypassed && !isPreset;
+      if (pipelineBypassed && !isPreset) {
+        await completeWithPhotoThumbnail(sourceUrl, width || 500, height || 500);
+        return;
+      }
       
-      console.log(`[Pipeline] Pipeline classification -> isPreset: ${isPreset}, pipelineBypassed: ${pipelineBypassed}, useFallbackMock: ${useFallbackMock}`);
+      console.log(`[Pipeline] Pipeline classification -> isPreset: ${isPreset}, pipelineBypassed: ${pipelineBypassed}`);
 
       // Determine dimensions synchronously to eliminate image-loading lag completely
       let iw = width || 500;
@@ -1318,10 +1417,10 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       calculateTargetScaleFromDimensions(iw, ih);
 
       const [alignedCutout, flightCutout, paddedCutout, finalSticker] = await Promise.all([
-        generateViewportAlignedCutout(transparentCutout, iw, ih, useFallbackMock),
-        generateFlightCutout(transparentCutout, iw, ih, useFallbackMock),
-        generateTransparentCutoutWithPadding(transparentCutout, STICKER_BORDER_SIZE, useFallbackMock),
-        generatePhysicalSticker(transparentCutout, STICKER_BORDER_SIZE, "#FFFFFF", useFallbackMock),
+        generateViewportAlignedCutout(transparentCutout, iw, ih, false),
+        generateFlightCutout(transparentCutout, iw, ih, false),
+        generateTransparentCutoutWithPadding(transparentCutout, STICKER_BORDER_SIZE, false),
+        generatePhysicalSticker(transparentCutout, STICKER_BORDER_SIZE, "#FFFFFF", false),
       ]);
       setAlignedCutoutUrl(alignedCutout);
       setFlightCutoutUrl(paddedCutout);
@@ -1334,26 +1433,12 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
     } catch (e) {
       reportAiAccessError(e);
-      console.error("[Pipeline] Pipeline broken, falling back directly to original source image:", e);
+      console.warn("[Pipeline] Cloud matting unavailable, using the photo thumbnail:", e);
       
       let iw = width || 500;
       let ih = height || 500;
       calculateTargetScaleFromDimensions(iw, ih);
-
-      const [flightCutout, alignedCutout, paddedCutout, finalSticker] = await Promise.all([
-        generateFlightCutout(sourceUrl, iw, ih, false),
-        generateViewportAlignedCutout(sourceUrl, iw, ih, false),
-        generateTransparentCutoutWithPadding(sourceUrl, STICKER_BORDER_SIZE, false),
-        generatePhysicalSticker(sourceUrl, STICKER_BORDER_SIZE, "#FFFFFF", false),
-      ]);
-      setAlignedCutoutUrl(alignedCutout);
-      setFlightCutoutUrl(paddedCutout);
-      setTransparentCutoutUrl(sourceUrl);
-      setPaddedCutoutUrl(paddedCutout);
-      setGeneratedStickerUrl(finalSticker);
-      setTraceCompleted(false);
-      await beginCutoutTransition(iw, ih, flightCutout.bounds);
-      setAiProgress("Done");
+      await completeWithPhotoThumbnail(sourceUrl, iw, ih);
     }
   };
 
@@ -1567,6 +1652,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       setGeneratedStickerUrl(null);
       setAiProgress(null);
       setTraceCompleted(false);
+      setSkipScanEffects(false);
       setDisintegrateStart(false);
       setStickerSizeSettled(false);
       setIsResultDecorationVisible(false);
@@ -1680,19 +1766,24 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     let firstFrame = 0;
     let secondFrame = 0;
     let outlineTraceTimer: number | undefined;
+    const flightDelay = skipScanEffects ? 0 : CUTOUT_FLIGHT_DELAY;
+    const flightDuration = skipScanEffects ? DIRECT_THUMBNAIL_FLIGHT_DURATION : CUTOUT_FLIGHT_DURATION;
+    const titleRevealDelay = skipScanEffects ? 120 : RESULT_TITLE_REVEAL_DELAY;
     const titleRevealTimer = setTimeout(() => {
       setIsResultTitleRevealReady(true);
-    }, RESULT_TITLE_REVEAL_DELAY);
+    }, titleRevealDelay);
     const flightDelayTimer = setTimeout(() => {
       firstFrame = requestAnimationFrame(() => {
         setIsResultDecorationVisible(true);
         secondFrame = requestAnimationFrame(() => {
           const flightEl = cutoutFlightRef.current;
-          outlineTraceDeadlineRef.current =
-            performance.now() + CUTOUT_FLIGHT_DURATION - OUTLINE_TRACE_COMMIT_LEAD - OUTLINE_TRACE_MANUAL_LEAD;
-          outlineTraceTimer = window.setTimeout(() => {
-            setIsOutlineTraceReady(true);
-          }, OUTLINE_TRACE_START_OFFSET);
+          if (!skipScanEffects) {
+            outlineTraceDeadlineRef.current =
+              performance.now() + flightDuration - OUTLINE_TRACE_COMMIT_LEAD - OUTLINE_TRACE_MANUAL_LEAD;
+            outlineTraceTimer = window.setTimeout(() => {
+              setIsOutlineTraceReady(true);
+            }, OUTLINE_TRACE_START_OFFSET);
+          }
           if (flightEl?.animate) {
             cutoutFlightAnimationRef.current?.cancel();
             cutoutFlightAnimationRef.current = flightEl.animate(
@@ -1707,7 +1798,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                 },
               ],
               {
-                duration: CUTOUT_FLIGHT_DURATION,
+                duration: flightDuration,
                 easing: "cubic-bezier(0.2, 0.9, 0.18, 1)",
                 fill: "both",
               }
@@ -1715,7 +1806,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
           }
         });
       });
-    }, CUTOUT_FLIGHT_DELAY);
+    }, flightDelay);
 
     return () => {
       clearTimeout(flightDelayTimer);
@@ -1732,8 +1823,10 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     cutoutFlightTranslateX,
     cutoutFlightTranslateY,
     cutoutFlightTargetScale,
+    skipScanEffects,
     CUTOUT_FLIGHT_DELAY,
     CUTOUT_FLIGHT_DURATION,
+    DIRECT_THUMBNAIL_FLIGHT_DURATION,
     RESULT_TITLE_REVEAL_DELAY,
     OUTLINE_TRACE_START_OFFSET,
     OUTLINE_TRACE_COMMIT_LEAD,
@@ -1967,6 +2060,15 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   // Step 3-2 PixiJS dynamic quantum pixelate background disintegrating simulator with continuous organic particle physics flight
   useEffect(() => {
     if (scanStep !== "disintegrating") return;
+
+    if (skipScanEffects) {
+      const settleTimer = window.setTimeout(() => {
+        setScanStep("sticker");
+        setAiProgress(null);
+        setStickerSizeSettled(true);
+      }, DIRECT_THUMBNAIL_FLIGHT_DURATION + 34);
+      return () => window.clearTimeout(settleTimer);
+    }
 
     const canvas = pixelateCanvasRef.current;
     if (!canvas) return;
@@ -2219,7 +2321,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
     frameId = requestAnimationFrame(drawPixelate);
     return () => cancelAnimationFrame(frameId);
-  }, [scanStep, activeItem, uploadedImageUrl]);
+  }, [scanStep, activeItem, uploadedImageUrl, skipScanEffects, DIRECT_THUMBNAIL_FLIGHT_DURATION]);
 
   // Helper function to render dilated borders & original subject graphic over canvas
   const renderBorders = (offscreen: HTMLCanvasElement, ctx: CanvasRenderingContext2D, size: number) => {
@@ -2337,6 +2439,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
   // Unified Cinematic Scanner timeline driving non-blocking UI states
   const startCinematicScanner = (sourceBaseUrl: string, width?: number, height?: number, scanId?: string) => {
+    setSkipScanEffects(false);
     setIsCapturing(true);
     setScanStep("scanning");
     setShutterFlash(true);
@@ -2354,6 +2457,21 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     setTimeout(() => {
       setShutterFlash(false);
     }, 180);
+  };
+
+  const startPhotoThumbnailTransition = async (sourceBaseUrl: string, width: number, height: number) => {
+    setSkipScanEffects(true);
+    setIsCapturing(true);
+    setShutterFlash(true);
+    setAiProgress(null);
+    setAlignedCutoutUrl(null);
+    setFlightCutoutUrl(null);
+    setTransparentCutoutUrl(null);
+    setPaddedCutoutUrl(null);
+    setGeneratedStickerUrl(null);
+    calculateTargetScaleFromDimensions(width, height);
+    window.setTimeout(() => setShutterFlash(false), 180);
+    await completeWithPhotoThumbnail(sourceBaseUrl, width, height);
   };
 
   // Watcher: Monitor when both local AI cutout calculation resides, stage enters 'sticker', and white border trace is completed!
@@ -2743,18 +2861,28 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       isPreset = true;
     }
     const scanId = isPreset ? undefined : createAiScanId();
+    const aiCaptureAccess = isPreset ? "available" : reserveAiCapture();
 
     if (isPreset) {
       classificationRequestIdRef.current += 1;
       classificationPromiseRef.current = null;
       commitPreparedTitle(activeItem.name);
       setTempIdentifiedCategory("");
-    } else {
+    } else if (aiCaptureAccess === "available") {
       setCustomName("");
       setCustomCategory(isChinese ? "其它" : "Others");
       setTempIdentifiedCategory("");
       // Start classification immediately on capture!
       startImageClassification(sourceBaseUrl, "camera_capture.png", scanId!);
+    } else {
+      classificationRequestIdRef.current += 1;
+      classificationPromiseRef.current = null;
+      commitPreparedTitle("Scanned Item");
+      setCustomCategory(isChinese ? "其它" : "Others");
+      setTempIdentifiedCategory("");
+      showPhotoThumbnailNotice(aiCaptureAccess);
+      await startPhotoThumbnailTransition(sourceBaseUrl, width, height);
+      return;
     }
 
     startCinematicScanner(sourceBaseUrl, width, height, scanId);
@@ -2878,7 +3006,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     classificationPromiseRef.current = task;
   };
 
-  // Live real file uploaded event with Aoscdn API and high-fidelity Chroma Keying fallback
+  // Live image upload with cloud matting and a clean photo-thumbnail fallback.
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -2910,10 +3038,13 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       return;
     }
 
-    const scanId = createAiScanId();
-    setScanStep("scanning");
+    const aiCaptureAccess = reserveAiCapture();
+    const shouldUseAi = aiCaptureAccess === "available";
+    const scanId = shouldUseAi ? createAiScanId() : undefined;
+    setSkipScanEffects(!shouldUseAi);
+    setScanStep(shouldUseAi ? "scanning" : "viewport");
     setIsCapturing(true);
-    setAiProgress("Compressing image for high-speed routing...");
+    setAiProgress(shouldUseAi ? "Compressing image for high-speed routing..." : null);
     setAlignedCutoutUrl(null);
     setFlightCutoutUrl(null);
     setTransparentCutoutUrl(null);
@@ -2921,10 +3052,17 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     setGeneratedStickerUrl(null);
 
     // Synchronously clean state and start async classification immediately on raw File in parallel!
-    setCustomName("");
     setCustomCategory(isChinese ? "其它" : "Others");
     setTempIdentifiedCategory("");
-    startImageClassification(file, file.name, scanId);
+    if (shouldUseAi) {
+      setCustomName("");
+      startImageClassification(file, file.name, scanId!);
+    } else {
+      classificationRequestIdRef.current += 1;
+      classificationPromiseRef.current = null;
+      commitPreparedTitle("Scanned Item");
+      showPhotoThumbnailNotice(aiCaptureAccess);
+    }
 
     // 1. 同步进行本地预览
     const localReader = new FileReader();
@@ -2954,9 +3092,14 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         const ih = img.naturalHeight || img.height || 500;
         calculateTargetScaleFromDimensions(iw, ih);
 
+        if (!shouldUseAi) {
+          await startPhotoThumbnailTransition(b64, iw, ih);
+          return;
+        }
+
         setAiProgress(isChinese ? "正在剥离图片背景..." : "Extracting subject silhouette...");
         try {
-          const transparentBase64 = await processImageForSticker(b64, scanId);
+          const transparentBase64 = await processImageForSticker(b64, scanId!);
           const [alignedCutout, flightCutout, paddedCutout, finalSticker] = await Promise.all([
             generateViewportAlignedCutout(transparentBase64, iw, ih, false),
             generateFlightCutout(transparentBase64, iw, ih, false),
@@ -2974,40 +3117,13 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
           setAiProgress("Done");
         } catch (err: any) {
           reportAiAccessError(err);
-          console.error("[Background Removal] Processing failed:", err);
-          // Complete fallback: use original image as transparent url
-          const [flightCutout, alignedCutout, paddedCutout, finalSticker] = await Promise.all([
-            generateFlightCutout(b64, iw, ih, false),
-            generateViewportAlignedCutout(b64, iw, ih, false),
-            generateTransparentCutoutWithPadding(b64, STICKER_BORDER_SIZE, false),
-            generatePhysicalSticker(b64, STICKER_BORDER_SIZE, "#FFFFFF", false),
-          ]);
-          setAlignedCutoutUrl(alignedCutout);
-          setFlightCutoutUrl(paddedCutout);
-          setTransparentCutoutUrl(b64);
-          setPaddedCutoutUrl(paddedCutout);
-          setGeneratedStickerUrl(finalSticker);
-          setTraceCompleted(false);
-          await beginCutoutTransition(iw, ih, flightCutout.bounds);
-          setAiProgress("Done");
+          console.warn("[Background Removal] Cloud matting unavailable, using the photo thumbnail:", err);
+          await completeWithPhotoThumbnail(b64, iw, ih);
         }
       };
       img.onerror = async () => {
         calculateTargetScaleFromDimensions(500, 500);
-        const [flightCutout, alignedCutout, paddedCutout, finalSticker] = await Promise.all([
-          generateFlightCutout(b64, 500, 500, false),
-          generateViewportAlignedCutout(b64, 500, 500, false),
-          generateTransparentCutoutWithPadding(b64, STICKER_BORDER_SIZE, false),
-          generatePhysicalSticker(b64, STICKER_BORDER_SIZE, "#FFFFFF", false),
-        ]);
-        setAlignedCutoutUrl(alignedCutout);
-        setFlightCutoutUrl(paddedCutout);
-        setTransparentCutoutUrl(b64);
-        setPaddedCutoutUrl(paddedCutout);
-        setGeneratedStickerUrl(finalSticker);
-        setTraceCompleted(false);
-        await beginCutoutTransition(500, 500, flightCutout.bounds);
-        setAiProgress("Done");
+        await completeWithPhotoThumbnail(b64, 500, 500);
       };
       img.src = b64;
     };
@@ -3577,10 +3693,12 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
             <div 
               className="absolute inset-0 z-10 w-full h-full overflow-hidden bg-[#E9E6E1]"
             >
-              <canvas 
-                ref={pixelateCanvasRef} 
-                className="absolute inset-0 w-full h-full pointer-events-none" 
-              />
+              {!skipScanEffects && (
+                <canvas
+                  ref={pixelateCanvasRef}
+                  className="absolute inset-0 w-full h-full pointer-events-none"
+                />
+              )}
 
               {/* The result decoration fades in exactly when the cutout begins its return. */}
               <div
@@ -3958,6 +4076,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                       setTransparentCutoutUrl(null);
                       setPaddedCutoutUrl(null);
                       setGeneratedStickerUrl(null);
+                      setSkipScanEffects(false);
                     }}
                     className="w-[62px] h-[62px] rounded-full bg-white flex items-center justify-center border-0 hover:bg-neutral-100 hover:scale-105 active:scale-95 transition-all outline-none cursor-pointer animate-pop-in-3 shadow-none"
                     title="Reset / Retake"

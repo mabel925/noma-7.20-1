@@ -3,10 +3,9 @@ import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { CloseIcon } from "./CloseIcon";
 import { USERNAME_CONFLICT_MESSAGE, useAuth } from "../auth/AuthContext";
-import { readAiAccess, type AiAccessSnapshot } from "../services/aiAuth";
 
 export const AuthDialog: React.FC = () => {
-  const { user, isLoginOpen, closeLogin, requestOtp, verifyOtp, signOut } = useAuth();
+  const { user, aiAccess: access, isLoginOpen, closeLogin, requestOtp, verifyOtp, signOut } = useAuth();
   const [displayName, setDisplayName] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [token, setToken] = React.useState("");
@@ -16,7 +15,6 @@ export const AuthDialog: React.FC = () => {
   const [resendSeconds, setResendSeconds] = React.useState(0);
   const [error, setError] = React.useState("");
   const [toast, setToast] = React.useState("");
-  const [access, setAccess] = React.useState<AiAccessSnapshot | null>(null);
   const toastTimerRef = React.useRef<number | null>(null);
 
   const showToast = React.useCallback((message: string) => {
@@ -38,18 +36,6 @@ export const AuthDialog: React.FC = () => {
       setToast("");
     }
   }, [isLoginOpen]);
-
-  React.useEffect(() => {
-    if (!isLoginOpen || !user || user.isMock) {
-      setAccess(null);
-      return;
-    }
-    let cancelled = false;
-    readAiAccess()
-      .then((nextAccess) => { if (!cancelled) setAccess(nextAccess); })
-      .catch(() => { if (!cancelled) setAccess(null); });
-    return () => { cancelled = true; };
-  }, [isLoginOpen, user?.id, user?.isMock]);
 
   React.useEffect(() => {
     if (!isLoginOpen || step !== "otp" || resendSeconds <= 0) return;
