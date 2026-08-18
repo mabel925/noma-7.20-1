@@ -4,6 +4,7 @@
  */
 
 import { NOMA_AI_URL } from "./backendUrls";
+import { AiAccessError, getAiAuthHeaders } from "./aiAuth";
 
 export type CutoutMode = "api" | "local";
 
@@ -365,7 +366,8 @@ async function localChromaKeyFallback(
  */
 export async function remove_background(
   imageSrc: string,
-  onProgress?: (progress: string | null) => void
+  onProgress?: (progress: string | null) => void,
+  scanId?: string,
 ): Promise<string> {
   console.log("[RemoveBgService] Entering remove_background with unified worker.");
 
@@ -409,6 +411,7 @@ export async function remove_background(
     const requestBody = JSON.stringify({
       type: "matting",
       image_base64: preparedInput.base64,
+      ...(scanId ? { scan_id: scanId } : {}),
     });
     const controller = new AbortController();
     const requestTimeout = window.setTimeout(() => controller.abort(), MATTING_REQUEST_TIMEOUT_MS);
@@ -419,6 +422,7 @@ export async function remove_background(
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...(await getAiAuthHeaders(scanId)),
         },
         body: requestBody,
         signal: controller.signal,
@@ -448,6 +452,18 @@ export async function remove_background(
       } catch {
         // Keep the plain-text Worker response as the diagnostic detail.
       }
+      let code: string | undefined;
+      let remaining: number | null | undefined;
+      try {
+        const parsed = JSON.parse(responseText);
+        code = typeof parsed?.code === "string" ? parsed.code : undefined;
+        remaining = parsed?.remaining === undefined ? undefined : parsed.remaining;
+      } catch {
+        // Keep the plain-text response detail.
+      }
+      if (code === "AI_AUTH_REQUIRED" || code === "AI_QUOTA_EXHAUSTED" || code === "AI_ACCESS_CHECK_FAILED") {
+        throw new AiAccessError(code, detail, response.status, remaining);
+      }
       throw new Error(`Worker proxy returned status ${response.status}: ${detail || "(empty response body)"}`);
     }
 
@@ -465,6 +481,7 @@ export async function remove_background(
     const workerCode = result?.code !== undefined ? ` (code ${result.code})` : "";
     throw new Error(`Worker matting failed${workerCode}: ${workerMessage}`);
   } catch (err: any) {
+    if (err instanceof AiAccessError) throw err;
     console.error(`[RemoveBgService] Matting failed: ${err.message || err}. Triggering local Chroma Key fallback.`);
     return await localChromaKeyFallback(imageSrc, onProgress);
   }

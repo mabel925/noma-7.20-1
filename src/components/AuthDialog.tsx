@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { CloseIcon } from "./CloseIcon";
 import { USERNAME_CONFLICT_MESSAGE, useAuth } from "../auth/AuthContext";
+import { readAiAccess, type AiAccessSnapshot } from "../services/aiAuth";
 
 export const AuthDialog: React.FC = () => {
   const { user, isLoginOpen, closeLogin, requestOtp, verifyOtp, signOut } = useAuth();
@@ -15,6 +16,7 @@ export const AuthDialog: React.FC = () => {
   const [resendSeconds, setResendSeconds] = React.useState(0);
   const [error, setError] = React.useState("");
   const [toast, setToast] = React.useState("");
+  const [access, setAccess] = React.useState<AiAccessSnapshot | null>(null);
   const toastTimerRef = React.useRef<number | null>(null);
 
   const showToast = React.useCallback((message: string) => {
@@ -36,6 +38,18 @@ export const AuthDialog: React.FC = () => {
       setToast("");
     }
   }, [isLoginOpen]);
+
+  React.useEffect(() => {
+    if (!isLoginOpen || !user || user.isMock) {
+      setAccess(null);
+      return;
+    }
+    let cancelled = false;
+    readAiAccess()
+      .then((nextAccess) => { if (!cancelled) setAccess(nextAccess); })
+      .catch(() => { if (!cancelled) setAccess(null); });
+    return () => { cancelled = true; };
+  }, [isLoginOpen, user?.id, user?.isMock]);
 
   React.useEffect(() => {
     if (!isLoginOpen || step !== "otp" || resendSeconds <= 0) return;
@@ -136,6 +150,22 @@ export const AuthDialog: React.FC = () => {
                 <p className="text-[13px] font-semibold text-[#232121]/50">Noma account</p>
                 <h2 className="mt-2 text-[28px] font-bold leading-tight">{user.displayName}</h2>
                 <p className="mt-3 text-[14px] leading-5 text-[#232121]/60">{user.email}</p>
+                {access && (
+                  <div className="mt-5 rounded-[16px] bg-white/60 px-4 py-3 text-[13px] leading-5 text-[#232121]/65">
+                    <div className="flex items-center justify-between">
+                      <span>Plan</span>
+                      <strong className="text-[#232121]">{access.planName || access.planCode}</strong>
+                    </div>
+                    <div className="mt-1 flex items-center justify-between">
+                      <span>AI scans remaining</span>
+                      <strong className="text-[#232121]">{access.aiScansRemaining === null ? "Unlimited" : access.aiScansRemaining}</strong>
+                    </div>
+                    <div className="mt-1 flex items-center justify-between">
+                      <span>Items</span>
+                      <strong className="text-[#232121]">{access.itemCount}{access.itemLimit === null ? "" : " / " + access.itemLimit}</strong>
+                    </div>
+                  </div>
+                )}
                 <p className="mt-7 rounded-[16px] bg-white/60 px-4 py-3 text-[13px] leading-5 text-[#232121]/60">Your Memory data is stored in your private cloud account.</p>
                 <button type="button" onClick={() => { void signOut(); closeLogin(); }} className="mt-7 flex h-[50px] w-full items-center justify-center rounded-full border border-[#232121]/20 text-[15px] font-semibold text-[#232121] active:scale-[0.98]">Sign out</button>
               </>

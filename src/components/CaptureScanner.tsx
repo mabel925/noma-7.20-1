@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { Camera, Check, Image as ImageIcon, RotateCcw } from "lucide-react";
 import { recognizeImage, prepareImage } from "../services/aiService";
 import { remove_background, REMOVE_BG_CONFIG } from "../services/removeBackgroundService";
+import { AiAccessError, createAiScanId } from "../services/aiAuth";
+import { MemoryItemLimitError } from "../services/memoryStorage";
 import { motion, AnimatePresence } from "motion/react";
 import { useKeyboardReset } from "../hooks/useKeyboardReset";
 import { useLayoutGuard } from "../hooks/useLayoutGuard";
@@ -375,6 +377,24 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   
   // Local AI segmentation and load state tracker
   const [aiProgress, setAiProgress] = useState<string | null>(null);
+  const [aiAccessNotice, setAiAccessNotice] = useState<string | null>(null);
+
+  const reportAiAccessError = (error: unknown) => {
+    if (!(error instanceof AiAccessError)) return;
+    if (error.code === "AI_QUOTA_EXHAUSTED") {
+      setAiAccessNotice(isChinese ? "AI 免费额度已用完，已切换为基础处理" : "Free AI credits used up. Continuing with basic processing.");
+    } else if (error.code === "AI_AUTH_REQUIRED") {
+      setAiAccessNotice(isChinese ? "登录状态已失效，请重新登录" : "Your session expired. Please sign in again.");
+    } else {
+      setAiAccessNotice(isChinese ? "暂时无法核验 AI 额度，已使用基础处理" : "AI access could not be checked. Using basic processing.");
+    }
+  };
+
+  useEffect(() => {
+    if (!aiAccessNotice) return;
+    const timer = window.setTimeout(() => setAiAccessNotice(null), 4500);
+    return () => window.clearTimeout(timer);
+  }, [aiAccessNotice]);
 
   // Modern camera shutter screen flash overlay state
   const [shutterFlash, setShutterFlash] = useState<boolean>(false);
@@ -705,8 +725,9 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
    * Core cutout interface definition with deep logging.
    * Dispatched cleanly to our unified, decoupled background removal service.
    */
-  const processImageForSticker = async (imageSrc: string): Promise<string> => {
-    return remove_background(imageSrc, setAiProgress);
+  const processImageForSticker = async (imageSrc: string, scanId?: string): Promise<string> => {
+    if (!scanId) return imageSrc;
+    return remove_background(imageSrc, setAiProgress, scanId);
   };
 
   const drawContainCentered = (
@@ -1267,10 +1288,10 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   };
 
   // Pipeline execution orchestrator
-  const runStickerPipeline = async (sourceUrl: string, width?: number, height?: number) => {
+  const runStickerPipeline = async (sourceUrl: string, width?: number, height?: number, scanId?: string) => {
     try {
       console.log("[Pipeline] Starting runStickerPipeline for source URL of length:", sourceUrl.length);
-      const transparentCutout = await processImageForSticker(sourceUrl);
+      const transparentCutout = await processImageForSticker(sourceUrl, scanId);
       
       // If we are using standard preset SVGs, they are already transparent vectors, so we don't need fallback circular crop.
       // If client-side AI succeeds, it returns a new Base64 png. If it fails or is bypassed, it returns the original sourceUrl.
@@ -1312,6 +1333,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       setAiProgress("Done");
 
     } catch (e) {
+      reportAiAccessError(e);
       console.error("[Pipeline] Pipeline broken, falling back directly to original source image:", e);
       
       let iw = width || 500;
@@ -2314,7 +2336,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   }, [scanStep, selectedItemIndex, uploadedImageUrl]);
 
   // Unified Cinematic Scanner timeline driving non-blocking UI states
-  const startCinematicScanner = (sourceBaseUrl: string, width?: number, height?: number) => {
+  const startCinematicScanner = (sourceBaseUrl: string, width?: number, height?: number, scanId?: string) => {
     setIsCapturing(true);
     setScanStep("scanning");
     setShutterFlash(true);
@@ -2326,7 +2348,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
     // Warm up the AI pipeline in a parallel background worker promise
     console.log("[CinematicScanner] Submitting image content to the background segmenter thread...");
-    runStickerPipeline(sourceBaseUrl, width, height);
+    runStickerPipeline(sourceBaseUrl, width, height, scanId);
 
     // Fade out white screen shutter flash over 180ms
     setTimeout(() => {
@@ -2720,6 +2742,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       height = 180;
       isPreset = true;
     }
+    const scanId = isPreset ? undefined : createAiScanId();
 
     if (isPreset) {
       classificationRequestIdRef.current += 1;
@@ -2731,10 +2754,10 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       setCustomCategory(isChinese ? "其它" : "Others");
       setTempIdentifiedCategory("");
       // Start classification immediately on capture!
-      startImageClassification(sourceBaseUrl, "camera_capture.png");
+      startImageClassification(sourceBaseUrl, "camera_capture.png", scanId!);
     }
 
-    startCinematicScanner(sourceBaseUrl, width, height);
+    startCinematicScanner(sourceBaseUrl, width, height, scanId);
   };
 
   // 🌟 重新编写一个高性能、绝不爆栈的白边绘制辅助函数
@@ -2793,7 +2816,12 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   };
 
   // Upload classification is routed exclusively through the Cloudflare Worker.
-  const classifyUploadedImage = async (imageInput: string | File, originalFileName: string, requestId: number) => {
+  const classifyUploadedImage = async (
+    imageInput: string | File,
+    originalFileName: string,
+    requestId: number,
+    scanId: string,
+  ) => {
     try {
       console.log("[Classifier] Starting image compression to maximum width 800 for optimal token economy...");
       
@@ -2821,7 +2849,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       };
 
       // Run image recognition using secure smart AI dispatcher
-      const result = await recognizeImage(cleanedBase64, mimeType);
+      const result = await recognizeImage(cleanedBase64, mimeType, scanId);
       if (requestId !== classificationRequestIdRef.current) return;
       console.log("[Classifier] Auto-recognition result:", result);
 
@@ -2836,16 +2864,17 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         setCustomCategory(getLocalizedCategory(result.category));
       }
     } catch (err: any) {
+      reportAiAccessError(err);
       console.warn("[Classifier] Handled exception or rate-limit in auto-recognize item:", err.message || err);
       if (requestId === classificationRequestIdRef.current) commitPreparedTitle("Scanned Item");
     }
   };
 
-  const startImageClassification = (imageInput: string | File, originalFileName: string) => {
+  const startImageClassification = (imageInput: string | File, originalFileName: string, scanId: string) => {
     const requestId = classificationRequestIdRef.current + 1;
     classificationRequestIdRef.current = requestId;
     preparedTitleRef.current = "";
-    const task = classifyUploadedImage(imageInput, originalFileName, requestId);
+    const task = classifyUploadedImage(imageInput, originalFileName, requestId, scanId);
     classificationPromiseRef.current = task;
   };
 
@@ -2881,6 +2910,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       return;
     }
 
+    const scanId = createAiScanId();
     setScanStep("scanning");
     setIsCapturing(true);
     setAiProgress("Compressing image for high-speed routing...");
@@ -2894,7 +2924,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     setCustomName("");
     setCustomCategory(isChinese ? "其它" : "Others");
     setTempIdentifiedCategory("");
-    startImageClassification(file, file.name);
+    startImageClassification(file, file.name, scanId);
 
     // 1. 同步进行本地预览
     const localReader = new FileReader();
@@ -2926,7 +2956,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
         setAiProgress(isChinese ? "正在剥离图片背景..." : "Extracting subject silhouette...");
         try {
-          const transparentBase64 = await processImageForSticker(b64);
+          const transparentBase64 = await processImageForSticker(b64, scanId);
           const [alignedCutout, flightCutout, paddedCutout, finalSticker] = await Promise.all([
             generateViewportAlignedCutout(transparentBase64, iw, ih, false),
             generateFlightCutout(transparentBase64, iw, ih, false),
@@ -2943,6 +2973,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
           await beginCutoutTransition(iw, ih, flightCutout.bounds);
           setAiProgress("Done");
         } catch (err: any) {
+          reportAiAccessError(err);
           console.error("[Background Removal] Processing failed:", err);
           // Complete fallback: use original image as transparent url
           const [flightCutout, alignedCutout, paddedCutout, finalSticker] = await Promise.all([
@@ -3023,6 +3054,14 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       onClose();
     } catch (error) {
       console.error("[CaptureScanner] Failed to save memory:", error);
+      if (error instanceof MemoryItemLimitError) {
+        setSaveMemoryError(
+          isChinese
+            ? `当前等级最多保存 ${error.limit} 个物品。已有物品仍可查看、编辑或删除。`
+            : `Your current plan supports up to ${error.limit} items. Existing items remain available.`,
+        );
+        return;
+      }
       const detail = error instanceof Error ? error.message : String(error);
       setSaveMemoryError(`${isChinese ? "云端保存失败" : "Cloud save failed"}: ${detail.slice(0, 180)}`);
     } finally {
@@ -3386,6 +3425,19 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     >
 	      {/* Hidden element to force immediate pre-loading and browser initialization of the Alkatra font */}
 	      <span className="font-alkatra opacity-0 absolute pointer-events-none select-none w-1 h-1 overflow-hidden" aria-hidden="true">AI</span>
+
+      <AnimatePresence>
+        {aiAccessNotice && (
+          <motion.div
+            className="absolute left-1/2 top-[calc(max(20px,env(safe-area-inset-top))+14px)] z-[120] max-w-[calc(100%-40px)] -translate-x-1/2 rounded-full bg-black/80 px-5 py-3 text-center text-[13px] font-sans font-medium text-white backdrop-blur-md"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+          >
+            {aiAccessNotice}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
 	      {/* 1. FULL VIEWPORT CAMERA FEED AND AR CANVASES (Paddings removed to allow full upper stretch) */}
       <div className="absolute inset-0 bg-[#161616] flex flex-col items-center justify-center text-center w-full">

@@ -1,6 +1,7 @@
 import type { MemoryItem } from "../components/MemoryList";
 import { displayMediaValue, mediaKeyFromValue, mediaStorage } from "./mediaStorage";
 import { supabase } from "./supabaseClient";
+import { readAiAccess } from "./aiAuth";
 
 export type SyncStatus = "local" | "pending" | "synced" | "conflict";
 
@@ -63,6 +64,16 @@ const spaceIdsForLocation = (ownerId: string, parentName: string, subName: strin
 const requireOwner = (ownerId: string) => {
   if (!ownerId) throw new Error("A signed-in user is required for cloud memory storage.");
 };
+
+export class MemoryItemLimitError extends Error {
+  readonly limit: number;
+
+  constructor(limit: number) {
+    super(`Noma item limit reached (${limit})`);
+    this.name = "MemoryItemLimitError";
+    this.limit = limit;
+  }
+}
 
 const toItemRow = (ownerId: string, item: MemoryItem | StoredMemoryItem, existing?: ItemRow): ItemRow => {
   const id = item.id || createId();
@@ -205,6 +216,8 @@ const toSpaceRows = (ownerId: string, items: ItemRow[]): SpaceRow[] => {
 
 const throwStorageError = (operation: string, error: { code?: string; message?: string; details?: string; hint?: string } | null) => {
   if (!error) return;
+  const limitMatch = error.message?.match(/NOMA_ITEM_LIMIT_REACHED:(\d+)/i);
+  if (limitMatch) throw new MemoryItemLimitError(Number(limitMatch[1]));
   const code = error.code ? ` [${error.code}]` : "";
   const details = error.details || error.hint;
   throw new Error(`[Cloud memory ${operation}]${code} ${error.message || "Request failed"}${details ? `: ${details}` : ""}`);
@@ -306,6 +319,12 @@ export const memoryStorage = {
 
     const existingRows = (existing || []) as ItemRow[];
     const existingRow = existingRows.find((row) => row.id === item.id);
+    if (!existingRow) {
+      const access = await readAiAccess();
+      if (access.itemLimit !== null && access.itemCount >= access.itemLimit) {
+        throw new MemoryItemLimitError(access.itemLimit);
+      }
+    }
     const row = await prepareItemRow(ownerId, item, existingRow);
     const { error } = await supabase.from("items").upsert(row, { onConflict: "id" });
     throwStorageError("save item", error);
@@ -329,6 +348,14 @@ export const memoryStorage = {
 
     const existingRows = (existing || []) as ItemRow[];
     const existingById = new Map(existingRows.map((row) => [row.id, row]));
+    const hasNewItems = items.some((item) => !existingById.has(item.id));
+    if (hasNewItems) {
+      const access = await readAiAccess();
+      const nextCount = existingRows.length + items.filter((item) => !existingById.has(item.id)).length;
+      if (access.itemLimit !== null && nextCount > access.itemLimit) {
+        throw new MemoryItemLimitError(access.itemLimit);
+      }
+    }
     const uploadCache = new Map<string, Promise<string | null>>();
     const rows = await mapWithConcurrency(
       items,

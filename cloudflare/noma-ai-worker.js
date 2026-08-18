@@ -4,17 +4,107 @@ const DEFAULT_QWEN_ENDPOINT = "https://dashscope.aliyuncs.com/compatible-mode/v1
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Client-Info",
+  "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Client-Info, X-Noma-Scan-Id",
+  "Access-Control-Expose-Headers": "X-Noma-AI-Limit, X-Noma-AI-Remaining, X-Noma-Plan",
   "Access-Control-Max-Age": "86400",
 };
 
-const json = (data, status = 200) =>
+const json = (data, status = 200, extraHeaders = {}) =>
   new Response(JSON.stringify(data), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json; charset=UTF-8" },
+    headers: { ...corsHeaders, ...extraHeaders, "Content-Type": "application/json; charset=UTF-8" },
   });
 
 const errorMessage = (value) => (value instanceof Error ? value.message : String(value));
+
+function getSupabaseConfig(env) {
+  const url = String(env.SUPABASE_URL || "").trim().replace(/\/+$/, "");
+  const key = String(env.SUPABASE_PUBLISHABLE_KEY || env.SUPABASE_ANON_KEY || "").trim();
+  if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(url) || !key) {
+    throw new Error("SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY must be configured");
+  }
+  return { url, key };
+}
+
+function bearerToken(request) {
+  const authorization = request.headers.get("authorization") || "";
+  return authorization.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() || "";
+}
+
+async function readSupabaseResponse(response) {
+  const text = await response.text();
+  let data;
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = {};
+  }
+  if (!response.ok) {
+    const detail = data?.message || data?.msg || data?.error_description || data?.error || text;
+    const error = new Error(String(detail || `Supabase HTTP ${response.status}`));
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
+async function authenticate(request, env) {
+  const token = bearerToken(request);
+  if (!token) {
+    const error = new Error("Please sign in before using Noma AI");
+    error.status = 401;
+    throw error;
+  }
+  const { url, key } = getSupabaseConfig(env);
+  const response = await fetchWithTimeout(`${url}/auth/v1/user`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      apikey: key,
+    },
+  }, 15000);
+  return readSupabaseResponse(response);
+}
+
+async function authorizeAiScan(request, env, scanId, feature) {
+  const token = bearerToken(request);
+  if (!token) {
+    const error = new Error("Please sign in before using Noma AI");
+    error.status = 401;
+    throw error;
+  }
+  const { url, key } = getSupabaseConfig(env);
+  const response = await fetchWithTimeout(`${url}/rest/v1/rpc/authorize_ai_scan`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      apikey: key,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      p_scan_id: scanId,
+      p_feature: feature,
+    }),
+  }, 15000);
+  return readSupabaseResponse(response);
+}
+
+function quotaHeaders(access) {
+  return {
+    "X-Noma-Plan": String(access?.planCode || "free"),
+    ...(access?.limit === null || access?.limit === undefined ? {} : { "X-Noma-AI-Limit": String(access.limit) }),
+    ...(access?.remaining === null || access?.remaining === undefined ? {} : { "X-Noma-AI-Remaining": String(access.remaining) }),
+  };
+}
+
+function withQuota(response, access) {
+  const headers = new Headers(response.headers);
+  Object.entries(quotaHeaders(access)).forEach(([name, value]) => headers.set(name, value));
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
 
 async function fetchWithTimeout(url, init, timeoutMs = 45000) {
   const controller = new AbortController();
@@ -176,7 +266,7 @@ async function generateImage(env, body) {
 export default {
   async fetch(request, env) {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
-    if (request.method === "GET") return json({ ok: true, service: "noma-ai", version: "2" });
+    if (request.method === "GET") return json({ ok: true, service: "noma-ai", version: "3" });
     if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
     const contentLength = Number(request.headers.get("content-length") || 0);
     if (contentLength > 8 * 1024 * 1024) return json({ error: "Request body is too large" }, 413);
@@ -186,10 +276,60 @@ export default {
     } catch {
       return json({ error: "Invalid JSON body" }, 400);
     }
-    if (body.type === "vision") return vision(env, body);
-    if (body.type === "title") return title(env, body);
-    if (body.type === "matting") return matting(env, body);
-    if (body.type === "generate-image") return generateImage(env, body);
+
+    if (body.type === "vision" || body.type === "matting") {
+      if (!body.image_base64) return json({ error: "image_base64 is required" }, 400);
+      const scanId = String(body.scan_id || request.headers.get("x-noma-scan-id") || "").trim();
+      if (!scanId) return json({ error: "scan_id is required", code: "AI_SCAN_ID_REQUIRED" }, 400);
+
+      let access;
+      try {
+        access = await authorizeAiScan(request, env, scanId, body.type);
+      } catch (error) {
+        const status = Number(error?.status) || 500;
+        const isAuthError = status === 401 || status === 403;
+        return json({
+          error: isAuthError ? "Please sign in again before using Noma AI" : errorMessage(error),
+          code: isAuthError ? "AI_AUTH_REQUIRED" : "AI_ACCESS_CHECK_FAILED",
+        }, isAuthError ? 401 : 503);
+      }
+
+      if (!access?.allowed) {
+        if (access?.reason === "retry_limit") {
+          return json({
+            error: "This AI step has already been retried",
+            code: "AI_SCAN_RETRY_LIMIT",
+            planCode: access?.planCode || "free",
+            remaining: access?.remaining ?? null,
+          }, 409, quotaHeaders(access));
+        }
+        return json({
+          error: "Your free AI processing credits have been used up",
+          code: "AI_QUOTA_EXHAUSTED",
+          planCode: access?.planCode || "free",
+          limit: access?.limit ?? null,
+          used: access?.used ?? null,
+          remaining: 0,
+        }, 429, quotaHeaders(access));
+      }
+
+      const response = body.type === "vision" ? await vision(env, body) : await matting(env, body);
+      return withQuota(response, access);
+    }
+
+    if (body.type === "title" || body.type === "generate-image") {
+      try {
+        await authenticate(request, env);
+      } catch {
+        return json({
+          error: "Please sign in again before using Noma AI",
+          code: "AI_AUTH_REQUIRED",
+        }, 401);
+      }
+      if (body.type === "title") return title(env, body);
+      return generateImage(env, body);
+    }
+
     return json({ error: "Unsupported request type" }, 400);
   },
 };

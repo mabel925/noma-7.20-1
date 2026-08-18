@@ -1,4 +1,5 @@
 import { NOMA_AI_URL } from "./backendUrls";
+import { AiAccessError, getAiAuthHeaders } from "./aiAuth";
 
 export interface RecognitionResult {
   title: string;
@@ -101,7 +102,7 @@ function getRequestOrigin(): string {
 /**
  * Unified request sender function to Noma Cloudflare Workers Backend
  */
-export async function callNomaBackend(type: "matting" | "vision" | "title", payload: any): Promise<any> {
+export async function callNomaBackend(type: "matting" | "vision" | "title", payload: any, scanId?: string): Promise<any> {
   if (!isApiEnabled()) {
     console.log(`[API Intercept] IS_API_ENABLED is false. Returning high-fidelity mock data for type "${type}". origin=${getRequestOrigin()}`);
     // Add artificial delay for realistic simulation
@@ -145,17 +146,21 @@ export async function callNomaBackend(type: "matting" | "vision" | "title", payl
 
   let response: Response;
   try {
+    const authHeaders = await getAiAuthHeaders(scanId);
     response = await fetch(NOMA_BACKEND_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        ...authHeaders,
       },
       body: JSON.stringify({
         type,
+        ...(scanId ? { scan_id: scanId } : {}),
         ...payload
       }),
     });
   } catch (error: any) {
+    if (error instanceof AiAccessError) throw error;
     throw new Error(`Worker request could not be sent from ${getRequestOrigin()}: ${error?.message || "network/CORS failure"}`);
   }
 
@@ -167,6 +172,18 @@ export async function callNomaBackend(type: "matting" | "vision" | "title", payl
       detail = typeof parsed?.error === "string" ? parsed.error : JSON.stringify(parsed);
     } catch {
       // Keep the plain-text Worker response as the diagnostic detail.
+    }
+    let code: string | undefined;
+    let remaining: number | null | undefined;
+    try {
+      const parsed = JSON.parse(responseText);
+      code = typeof parsed?.code === "string" ? parsed.code : undefined;
+      remaining = parsed?.remaining === undefined ? undefined : parsed.remaining;
+    } catch {
+      // Keep the plain-text response detail.
+    }
+    if (code === "AI_AUTH_REQUIRED" || code === "AI_QUOTA_EXHAUSTED" || code === "AI_ACCESS_CHECK_FAILED") {
+      throw new AiAccessError(code, detail, response.status, remaining);
     }
     throw new Error(`Worker proxy returned status ${response.status}: ${detail || "(empty response body)"} [origin: ${getRequestOrigin()}]`);
   }
@@ -292,7 +309,8 @@ export function parseVisionContent(content: string): { title: string; category: 
  */
 export async function recognizeImage(
   base64Data: string,
-  mimeType: string = "image/png"
+  mimeType: string = "image/png",
+  scanId?: string,
 ): Promise<RecognitionResult> {
   console.log("[AI Dispatcher] Initializing image recognition...");
   
@@ -300,7 +318,7 @@ export async function recognizeImage(
     // Compress the image before sending to save tokens as requested!
     const compressedBase64WithPrefix = await prepareImage(base64Data, 800);
     const pureBase64 = stripBase64Prefix(compressedBase64WithPrefix);
-    const result = await callNomaBackend("vision", { image_base64: pureBase64 });
+    const result = await callNomaBackend("vision", { image_base64: pureBase64 }, scanId);
     console.log("[AI Dispatcher] Worker raw response:", result);
 
     let content = "";
@@ -326,6 +344,7 @@ export async function recognizeImage(
     console.log("[AI Dispatcher] Final parsed result:", parsed);
     return parsed;
   } catch (err: any) {
+    if (err instanceof AiAccessError) throw err;
     console.error("[AI Dispatcher] Failed to recognize image via unified worker:", err.message || err);
     return {
       title: "Scanned Item",
