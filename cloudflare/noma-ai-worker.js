@@ -176,17 +176,8 @@ async function vision(env, body) {
   const mimeType = body.mime_type || "image/jpeg";
   const prompt = "Identify the main object or storage location. Return only JSON: {\"title\":\"short English name\",\"category\":\"category\",\"labels\":[\"tag\"]}.";
   const failures = [];
-  try {
-    const data = await callGemini(env, [
-      { inlineData: { mimeType, data: body.image_base64 } },
-      { text: prompt },
-    ], { jsonMode: true });
-    const content = extractText(data);
-    if (!content) throw new Error("Gemini returned empty vision content");
-    return json({ choices: [{ message: { content } }] });
-  } catch (error) {
-    failures.push(errorMessage(error));
-  }
+  // Prefer Qwen for users in China. Gemini remains a fallback when Qwen is
+  // unavailable or returns an invalid response.
   try {
     const dataUrl = `data:${mimeType};base64,${body.image_base64}`;
     const data = await callQwen(env, [
@@ -195,6 +186,17 @@ async function vision(env, body) {
     ], true);
     const content = extractText(data);
     if (!content) throw new Error("Qwen returned empty vision content");
+    return json({ choices: [{ message: { content } }] });
+  } catch (error) {
+    failures.push(errorMessage(error));
+  }
+  try {
+    const data = await callGemini(env, [
+      { inlineData: { mimeType, data: body.image_base64 } },
+      { text: prompt },
+    ], { jsonMode: true });
+    const content = extractText(data);
+    if (!content) throw new Error("Gemini returned empty vision content");
     return json({ choices: [{ message: { content } }] });
   } catch (error) {
     failures.push(errorMessage(error));

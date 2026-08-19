@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Camera, Check, Image as ImageIcon, RotateCcw } from "lucide-react";
-import { isApiEnabled, recognizeImage, prepareImage } from "../services/aiService";
+import { isApiEnabled, recognizeImage } from "../services/aiService";
 import { remove_background } from "../services/removeBackgroundService";
 import { AiAccessError, createAiScanId } from "../services/aiAuth";
 import { MemoryItemLimitError } from "../services/memoryStorage";
@@ -21,6 +21,58 @@ import {
 const LIGHTSPOT_IMAGE_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/lightspot.png";
 const PRICE_CURRENCIES = ["$", "€", "£", "¥", "₩"] as const;
 const COLOR_BLUR_SIZE = "min(100vw, 512px)";
+
+const CaptureDefaultInput = ({
+  value,
+  onChange,
+  placeholder,
+  ariaLabel,
+  onUserInput,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  ariaLabel?: string;
+  onUserInput?: () => void;
+}) => {
+  const [isFocused, setIsFocused] = useState(false);
+  const [hasTyped, setHasTyped] = useState(false);
+  const isShowingFocusedDefault = isFocused && !hasTyped && Boolean(value);
+
+  return (
+    <div className="relative h-[56px] w-[316px] flex-shrink-0">
+      <input
+        type="text"
+        autoComplete="off"
+        autoCorrect="off"
+        aria-label={ariaLabel}
+        className={`h-full w-full rounded-full border-0 bg-[#232121]/[0.05] pl-8 pr-12 text-center text-[13px] font-semibold tracking-tight outline-none transition-colors placeholder:text-[#232121]/50 focus:ring-2 focus:ring-[#232121]/10 ${
+          isShowingFocusedDefault ? "text-[#232121]/35" : "text-[#232121]"
+        }`}
+        placeholder={placeholder}
+        value={value}
+        onFocus={(event) => {
+          const input = event.currentTarget;
+          setIsFocused(true);
+          setHasTyped(false);
+          window.requestAnimationFrame(() => input.select());
+        }}
+        onBlur={() => {
+          setIsFocused(false);
+          setHasTyped(false);
+        }}
+        onChange={(event) => {
+          setHasTyped(true);
+          onUserInput?.();
+          onChange(event.target.value);
+        }}
+      />
+      <div className="pointer-events-none absolute right-5 top-1/2 -translate-y-1/2 text-[#232121]/35">
+        <EditPencilIcon />
+      </div>
+    </div>
+  );
+};
 
 interface CaptureScannerProps {
   isOpen: boolean;
@@ -326,6 +378,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const preparedTitleRef = useRef("");
   const classificationPromiseRef = useRef<Promise<void> | null>(null);
   const classificationRequestIdRef = useRef(0);
+  const itemNameEditedRef = useRef(false);
 
   // Pre-defined list of categories for the interactive fan-out switcher
   const isChinese = false; // Temporarily forced to English as requested
@@ -676,8 +729,6 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     }
 
     if (!preparedTitleRef.current) {
-      classificationRequestIdRef.current += 1;
-      classificationPromiseRef.current = null;
       commitPreparedTitle("Scanned Item");
     }
   };
@@ -1646,6 +1697,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       setCustomName("");
       setCustomCategory("");
       preparedTitleRef.current = "";
+      itemNameEditedRef.current = false;
       classificationPromiseRef.current = null;
       classificationRequestIdRef.current += 1;
       setTempIdentifiedCategory("");
@@ -2951,17 +3003,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     scanId: string,
   ) => {
     try {
-      console.log("[Classifier] Starting image compression to maximum width 800 for optimal token economy...");
-      
-      const compressedWithPrefix = await prepareImage(imageInput, 800);
-      let cleanedBase64 = compressedWithPrefix.includes(",") ? compressedWithPrefix.split(",")[1] : compressedWithPrefix;
-      let mimeType = "image/jpeg";
-
-      if (!cleanedBase64) {
-        console.warn("[Classifier] Image compression returned empty string.");
-        if (requestId === classificationRequestIdRef.current) commitPreparedTitle("Scanned Item");
-        return;
-      }
+      console.log("[Classifier] Sending one optimized image to the vision pipeline...");
+      const mimeType = "image/jpeg";
 
       // Helper to trim and limit title to strictly 1 or 2 words, while preserving Chinese/multilingual text
       const cleanAndShortenTitle = (title: string): string => {
@@ -2977,14 +3020,14 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       };
 
       // Run image recognition using secure smart AI dispatcher
-      const result = await recognizeImage(cleanedBase64, mimeType, scanId);
+      const result = await recognizeImage(imageInput, mimeType, scanId);
       if (requestId !== classificationRequestIdRef.current) return;
       console.log("[Classifier] Auto-recognition result:", result);
 
-      if (result.title) {
+      if (result.title && !itemNameEditedRef.current) {
         const cleanTitle = cleanAndShortenTitle(result.title);
         commitPreparedTitle(cleanTitle);
-      } else {
+      } else if (!itemNameEditedRef.current) {
         commitPreparedTitle("Scanned Item");
       }
       if (result.category) {
@@ -2994,7 +3037,9 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     } catch (err: any) {
       reportAiAccessError(err);
       console.warn("[Classifier] Handled exception or rate-limit in auto-recognize item:", err.message || err);
-      if (requestId === classificationRequestIdRef.current) commitPreparedTitle("Scanned Item");
+      if (requestId === classificationRequestIdRef.current && !itemNameEditedRef.current) {
+        commitPreparedTitle("Scanned Item");
+      }
     }
   };
 
@@ -3002,6 +3047,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     const requestId = classificationRequestIdRef.current + 1;
     classificationRequestIdRef.current = requestId;
     preparedTitleRef.current = "";
+    itemNameEditedRef.current = false;
     const task = classifyUploadedImage(imageInput, originalFileName, requestId, scanId);
     classificationPromiseRef.current = task;
   };
@@ -3258,29 +3304,6 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         <div className="w-7 h-7 rounded-full bg-[#181817] border border-black/10" />
       </div>
     </button>
-  );
-
-  const StorageDrawerInput = ({
-    value,
-    onChange,
-    placeholder,
-  }: {
-    value: string;
-    onChange: (value: string) => void;
-    placeholder: string;
-  }) => (
-    <div className="relative flex-shrink-0" style={{ width: "316px", height: "56px" }}>
-      <input
-        type="text"
-        className="w-full h-full rounded-full bg-[#232121]/[0.05] border-0 pl-8 pr-12 text-[#232121]/50 text-[13px] font-sans placeholder-[#232121]/50 font-semibold tracking-tight text-center focus:outline-none focus:ring-2 focus:ring-[#232121]/10"
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-      />
-      <div className="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none text-[#232121]/35">
-        <EditPencilIcon />
-      </div>
-    </div>
   );
 
   const renderExistingLocationPickerBubble = ({
@@ -4091,16 +4114,17 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                 className="absolute left-1/2 z-30 animate-fade-in flex-shrink-0 -translate-x-1/2"
                 style={{ width: "316px", height: "56px", bottom: `${resultInputBottomGap}px` }}
               >
-                <input
-                  type="text"
-                  className="w-full h-full rounded-full bg-[#232121]/[0.05] border-0 pl-8 pr-12 text-[#232121]/50 text-[13px] font-sans placeholder-[#232121]/50 font-semibold tracking-tight text-center focus:outline-none focus:ring-2 focus:ring-[#232121]/10"
+                <CaptureDefaultInput
                   placeholder="Not what you expected？ Tap to adjust"
                   value={customName}
-                  onChange={(e) => setCustomName(e.target.value)}
+                  onChange={setCustomName}
+                  ariaLabel="Item name"
+                  onUserInput={() => {
+                    itemNameEditedRef.current = true;
+                    classificationRequestIdRef.current += 1;
+                    classificationPromiseRef.current = null;
+                  }}
                 />
-                <div className="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none text-[#232121]/35">
-                  <EditPencilIcon />
-                </div>
               </div>
             </div>
           )}
@@ -4369,7 +4393,12 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                           <div
                             contentEditable
                             suppressContentEditableWarning
-                            onBlur={(e) => setCustomName(e.currentTarget.textContent || "")}
+                            onBlur={(e) => {
+                              itemNameEditedRef.current = true;
+                              classificationRequestIdRef.current += 1;
+                              classificationPromiseRef.current = null;
+                              setCustomName(e.currentTarget.textContent || "");
+                            }}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') {
                                 e.preventDefault();
@@ -4771,10 +4800,11 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                         </StorageActionRow>
 
                         {!isUsingExistingSubLocation && (
-                          <StorageDrawerInput
+                          <CaptureDefaultInput
                             placeholder={isChinese ? "例如：床头柜、衣柜" : "e.g. Bedside table, wardrobe"}
                             value={subLocationName}
                             onChange={setSubLocationName}
+                            ariaLabel="Sub location name"
                           />
                         )}
                       </div>
@@ -4855,10 +4885,11 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                         </StorageActionRow>
 
                         {!isUsingExistingParentLocation && (
-                          <StorageDrawerInput
+                          <CaptureDefaultInput
                             placeholder={isChinese ? "例如：客厅、卧室" : "e.g. Living room, bedroom"}
                             value={parentLocationName}
                             onChange={setParentLocationName}
+                            ariaLabel="Parent location name"
                           />
                         )}
                       </div>

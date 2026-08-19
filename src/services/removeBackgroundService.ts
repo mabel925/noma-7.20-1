@@ -50,8 +50,8 @@ const DEFAULT_CONFIG: RemoveBgConfig = {
   }
 };
 
-const MATTING_MAX_DIMENSION = 1280;
-const MATTING_JPEG_QUALITY = 0.86;
+const MATTING_MAX_DIMENSION = 768;
+const MATTING_JPEG_QUALITY = 0.72;
 const MATTING_REQUEST_TIMEOUT_MS = 20_000;
 
 type PreparedMattingInput = {

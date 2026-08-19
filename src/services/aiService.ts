@@ -308,17 +308,22 @@ export function parseVisionContent(content: string): { title: string; category: 
  * Fully migrated to Cloudflare Worker backend.
  */
 export async function recognizeImage(
-  base64Data: string,
+  imageInput: File | Blob | string,
   mimeType: string = "image/png",
   scanId?: string,
 ): Promise<RecognitionResult> {
   console.log("[AI Dispatcher] Initializing image recognition...");
   
   try {
-    // Compress the image before sending to save tokens as requested!
-    const compressedBase64WithPrefix = await prepareImage(base64Data, 800);
+    // Object recognition does not need the larger matting input. Keep this
+    // request small so it can finish while the cutout is still processing.
+    const compressedBase64WithPrefix = await prepareImage(imageInput, 640);
     const pureBase64 = stripBase64Prefix(compressedBase64WithPrefix);
-    const result = await callNomaBackend("vision", { image_base64: pureBase64 }, scanId);
+    if (!pureBase64) throw new Error("Vision image preparation returned no data");
+    const result = await callNomaBackend("vision", {
+      image_base64: pureBase64,
+      mime_type: "image/jpeg",
+    }, scanId);
     console.log("[AI Dispatcher] Worker raw response:", result);
 
     let content = "";
@@ -333,10 +338,11 @@ export async function recognizeImage(
       console.log("[AI Dispatcher] Extracted vision content from string response:", content);
     } else {
       console.log("[AI Dispatcher] No standard content/choices found, mapping result directly if possible:", result);
+      const directResult = result?.result || result?.data || result || {};
       return {
-        title: result.title || result.name || "Scanned Item",
-        category: result.category || "Daily Goods",
-        labels: result.labels || ["item"]
+        title: directResult.title || directResult.name || "Scanned Item",
+        category: directResult.category || "Daily Goods",
+        labels: directResult.labels || directResult.tags || ["item"]
       };
     }
 
