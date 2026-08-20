@@ -193,6 +193,7 @@ export default function App() {
   const [isScanning, setIsScanning] = useState<boolean>(false);
   const [isCaptureOpen, setIsCaptureOpen] = useState<boolean>(false);
   const [isMemoryOpen, setIsMemoryOpen] = useState<boolean>(false);
+  const [hasOpenedMemory, setHasOpenedMemory] = useState<boolean>(false);
   const [isStandaloneMode, setIsStandaloneMode] = useState<boolean>(false);
   const launchStartedAtRef = React.useRef(performance.now());
   const [areStageAssetsReady, setAreStageAssetsReady] = useState(false);
@@ -200,6 +201,10 @@ export default function App() {
   const [startupProgress, setStartupProgress] = useState(4);
   const [isHomeReady, setIsHomeReady] = useState(false);
   const handleHomeReady = React.useCallback(() => setAreStageAssetsReady(true), []);
+  const openMemory = React.useCallback(() => {
+    setHasOpenedMemory(true);
+    setIsMemoryOpen(true);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -793,7 +798,7 @@ export default function App() {
         )}
 
         {/* Memory List Overlay: mount/unmount directly so Back returns home immediately. */}
-        {isMemoryOpen && (
+        {hasOpenedMemory && (
           <MemoryList
             isOpen={isMemoryOpen}
             onClose={() => setIsMemoryOpen(false)}
@@ -950,7 +955,7 @@ export default function App() {
             onTriggerCamera={() => {
               if (requireAuth(() => setIsCaptureOpen(true))) setIsCaptureOpen(true);
             }}
-            onMemoryCoreClick={() => setIsMemoryOpen(true)}
+            onMemoryCoreClick={openMemory}
             isChatActive={isChatActive}
             isCaptureOpen={isCaptureOpen}
             onPresetSearch={handlePresetSearch}
@@ -989,7 +994,7 @@ export default function App() {
             onCaptureClick={() => {
               if (requireAuth(() => setIsCaptureOpen(true))) setIsCaptureOpen(true);
             }}
-            onMemoryClick={() => setIsMemoryOpen(true)}
+            onMemoryClick={openMemory}
             isChatActive={isChatActive || isCaptureOpen}
           />,
           document.body

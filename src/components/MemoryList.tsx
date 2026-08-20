@@ -26,95 +26,182 @@ const preloadColorBlurImage = () => {
 
 preloadColorBlurImage();
 
-const DECODED_IMAGE_CACHE_KEY = "noma:decoded-image-urls:v1";
-const MAX_DECODED_IMAGE_URLS = 120;
+type PersistentImageResource = {
+  displaySrc: string;
+  image: HTMLImageElement;
+  isObjectUrl: boolean;
+};
 
-const readDecodedImageCache = () => {
-  if (typeof window === "undefined") return new Set<string>();
+const persistentImageCache = new Map<string, PersistentImageResource>();
+const persistentImageRequests = new Map<string, Promise<PersistentImageResource>>();
+
+const decodeImage = (src: string) => new Promise<HTMLImageElement>((resolve, reject) => {
+  const image = new Image();
+  let settled = false;
+  image.decoding = "async";
+  image.referrerPolicy = "no-referrer";
+
+  const finish = async () => {
+    if (settled) return;
+    settled = true;
+    try {
+      await image.decode?.();
+    } catch {
+      // A completed load still provides a drawable image on browsers with flaky decode().
+    }
+    resolve(image);
+  };
+
+  image.onload = () => { void finish(); };
+  image.onerror = () => {
+    if (settled) return;
+    settled = true;
+    reject(new Error(`Unable to load image: ${src}`));
+  };
+  image.src = src;
+  if (image.complete && image.naturalWidth > 0) void finish();
+});
+
+const isPrivateMediaUrl = (src: string) => {
+  if (typeof window === "undefined" || src.startsWith("data:") || src.startsWith("blob:")) return false;
   try {
-    const cached = JSON.parse(window.sessionStorage.getItem(DECODED_IMAGE_CACHE_KEY) || "[]");
-    return new Set<string>(Array.isArray(cached) ? cached.filter((value): value is string => typeof value === "string") : []);
+    const url = new URL(src, window.location.origin);
+    return url.origin === window.location.origin && url.pathname.startsWith("/api/media/object/");
   } catch {
-    return new Set<string>();
+    return false;
   }
 };
 
-const decodedImageCache = readDecodedImageCache();
+const createPersistentImageResource = async (src: string): Promise<PersistentImageResource> => {
+  let displaySrc = src;
+  let isObjectUrl = false;
 
-const rememberDecodedImage = (src: string) => {
-  if (!src) return;
-  decodedImageCache.delete(src);
-  decodedImageCache.add(src);
-  while (decodedImageCache.size > MAX_DECODED_IMAGE_URLS) {
-    const oldest = decodedImageCache.values().next().value;
-    if (typeof oldest !== "string") break;
-    decodedImageCache.delete(oldest);
+  if (isPrivateMediaUrl(src)) {
+    try {
+      const response = await fetch(src, { credentials: "same-origin", cache: "force-cache" });
+      if (!response.ok) throw new Error(`Image request failed (${response.status})`);
+      displaySrc = URL.createObjectURL(await response.blob());
+      isObjectUrl = true;
+    } catch {
+      displaySrc = src;
+    }
   }
-  if (src.startsWith("data:") || src.startsWith("blob:")) return;
+
   try {
-    window.sessionStorage.setItem(DECODED_IMAGE_CACHE_KEY, JSON.stringify(
-      [...decodedImageCache].filter((value) => !value.startsWith("data:") && !value.startsWith("blob:")),
-    ));
-  } catch {
-    // The in-memory cache still prevents repeated skeletons when storage is unavailable.
+    const image = await decodeImage(displaySrc);
+    return { displaySrc, image, isObjectUrl };
+  } catch (error) {
+    if (!isObjectUrl) throw error;
+    URL.revokeObjectURL(displaySrc);
+    const image = await decodeImage(src);
+    return { displaySrc: src, image, isObjectUrl: false };
   }
 };
 
-const SkeletonImage: React.FC<React.ImgHTMLAttributes<HTMLImageElement>> = ({
+const getPersistentImageResource = (src: string) => {
+  const cached = persistentImageCache.get(src);
+  if (cached) return Promise.resolve(cached);
+
+  const pending = persistentImageRequests.get(src);
+  if (pending) return pending;
+
+  const request = createPersistentImageResource(src)
+    .then((resource) => {
+      persistentImageCache.set(src, resource);
+      return resource;
+    })
+    .finally(() => persistentImageRequests.delete(src));
+  persistentImageRequests.set(src, request);
+  return request;
+};
+
+const cachedDisplaySource = (src: string) => persistentImageCache.get(src)?.displaySrc || src;
+
+type PersistentImageProps = React.ImgHTMLAttributes<HTMLImageElement> & {
+  showSkeleton?: boolean;
+};
+
+const PersistentImage: React.FC<PersistentImageProps> = ({
   src,
   alt = "",
   className = "",
-  loading = "lazy",
+  loading = "eager",
+  showSkeleton = false,
+  onLoad,
+  onError,
   ...props
 }) => {
   const imageSrc = typeof src === "string" ? src : "";
-  const imageRef = React.useRef<HTMLImageElement | null>(null);
-  const [status, setStatus] = React.useState<"loading" | "ready" | "error">(
-    imageSrc && decodedImageCache.has(imageSrc) ? "ready" : "loading",
-  );
+  const initialResource = imageSrc ? persistentImageCache.get(imageSrc) : undefined;
+  const [state, setState] = React.useState<{
+    source: string;
+    displaySrc: string;
+    status: "loading" | "ready" | "error";
+  }>(() => ({
+    source: imageSrc,
+    displaySrc: initialResource?.displaySrc || "",
+    status: initialResource ? "ready" : "loading",
+  }));
 
   React.useEffect(() => {
-    setStatus(imageSrc && decodedImageCache.has(imageSrc) ? "ready" : "loading");
+    let cancelled = false;
+    if (!imageSrc) {
+      setState({ source: "", displaySrc: "", status: "error" });
+      return () => { cancelled = true; };
+    }
+
+    const cached = persistentImageCache.get(imageSrc);
+    if (cached) {
+      setState({ source: imageSrc, displaySrc: cached.displaySrc, status: "ready" });
+      return () => { cancelled = true; };
+    }
+
+    setState({ source: imageSrc, displaySrc: "", status: "loading" });
+    getPersistentImageResource(imageSrc)
+      .then((resource) => {
+        if (!cancelled) setState({ source: imageSrc, displaySrc: resource.displaySrc, status: "ready" });
+      })
+      .catch(() => {
+        if (!cancelled) setState({ source: imageSrc, displaySrc: "", status: "error" });
+      });
+    return () => { cancelled = true; };
   }, [imageSrc]);
 
-  React.useLayoutEffect(() => {
-    const image = imageRef.current;
-    if (!imageSrc || !image?.complete || image.naturalWidth === 0) return;
-    rememberDecodedImage(imageSrc);
-    setStatus("ready");
-  }, [imageSrc]);
-
-  const handleLoad = React.useCallback(() => {
-    rememberDecodedImage(imageSrc);
-    setStatus("ready");
-  }, [imageSrc]);
+  const cached = imageSrc ? persistentImageCache.get(imageSrc) : undefined;
+  const stateMatches = state.source === imageSrc;
+  const status = cached ? "ready" : stateMatches ? state.status : "loading";
+  const displaySrc = cached?.displaySrc || (stateMatches ? state.displaySrc : "");
 
   return (
     <>
-      {status === "loading" && <div className="noma-image-skeleton absolute inset-0 z-0" aria-hidden="true" />}
-      {status === "error" && (
+      {showSkeleton && status === "loading" && <div className="noma-image-skeleton absolute inset-0 z-0" aria-hidden="true" />}
+      {showSkeleton && status === "error" && (
         <div className="absolute inset-0 z-0 flex items-center justify-center bg-[#DDDAD5] text-[#232121]/25" aria-hidden="true">
           <ImageIcon className="h-5 w-5" strokeWidth={1.6} />
         </div>
       )}
-      {imageSrc && (
+      {status === "ready" && displaySrc && (
         <img
-          ref={imageRef}
           {...props}
-          src={imageSrc}
+          src={displaySrc}
           alt={alt}
           loading={loading}
-          decoding="async"
-          onLoad={handleLoad}
-          onError={() => setStatus("error")}
-          className={`${className} relative z-[1] transition-opacity duration-150 ease-out ${
-            status === "ready" ? "opacity-100" : "opacity-0"
-          }`}
+          decoding="sync"
+          onLoad={onLoad}
+          onError={(event) => {
+            setState({ source: imageSrc, displaySrc: "", status: "error" });
+            onError?.(event);
+          }}
+          className={`${className} relative z-[1]`}
         />
       )}
     </>
   );
 };
+
+const SkeletonImage: React.FC<React.ImgHTMLAttributes<HTMLImageElement>> = (props) => (
+  <PersistentImage {...props} showSkeleton />
+);
 
 export interface MemoryItem {
   id: string;
@@ -293,7 +380,7 @@ const MemorySearchItem: React.FC<{ item: MemoryItem; compact?: boolean; size?: n
         style={{ width: boxSize, height: boxSize }}
       >
         {item.stickerUrl ? (
-          <img
+          <PersistentImage
             src={item.stickerUrl}
             alt={item.name}
             className="w-full h-full object-contain block select-none"
@@ -323,7 +410,7 @@ const SubLocationItemPreview: React.FC<{ item: MemoryItem }> = ({ item }) => (
   <div className="relative flex h-[56px] w-[72px] min-w-[72px] shrink-0 flex-col items-center overflow-visible select-none">
     <div className="flex h-[48px] w-[48px] shrink-0 items-center justify-center overflow-hidden rotate-[-1.5deg]">
       {item.stickerUrl ? (
-        <img
+        <PersistentImage
           src={item.stickerUrl}
           alt={item.name}
           className="block h-full w-full select-none object-contain"
@@ -400,7 +487,7 @@ const ItemSticker: React.FC<{
       style={{ width: size, height: size }}
     >
       {item.stickerUrl ? (
-        <img
+        <PersistentImage
           src={item.stickerUrl}
           alt={item.name}
           className="w-full h-full object-contain block select-none"
@@ -1085,12 +1172,14 @@ const MemoryLocationPicker: React.FC<{
                         isSelected ? "bg-white" : "bg-white/50"
                       }`}
                     >
-                      <img
-                        src={option.imgUrl}
-                        alt={option.name}
-                        className="h-[60px] w-[60px] shrink-0 rounded-[12px] border-[3px] border-white object-cover"
-                        referrerPolicy="no-referrer"
-                      />
+                      <span className="relative h-[60px] w-[60px] shrink-0 overflow-hidden rounded-[12px] border-[3px] border-white bg-neutral-100">
+                        <SkeletonImage
+                          src={option.imgUrl}
+                          alt={option.name}
+                          className="h-full w-full object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                      </span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[16px] font-sans font-semibold text-[#232121]">
                           {option.name}
@@ -2247,8 +2336,6 @@ export const MemoryList: React.FC<MemoryListProps> = ({
   const itemsLongPressTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const didItemsLongPressRef = React.useRef(false);
 
-  if (!isOpen) return null;
-
   // Grouping by Spaces (Parent Locations)
   const spacesMap: { [key: string]: MemoryItem[] } = {};
   memories.forEach((item) => {
@@ -2649,6 +2736,8 @@ export const MemoryList: React.FC<MemoryListProps> = ({
         ease: [0.16, 1, 0.3, 1],
       }}
       className="absolute inset-0 bg-[#E9E6E1] z-[120] flex flex-col overflow-hidden select-none"
+      style={{ display: isOpen ? "flex" : "none" }}
+      aria-hidden={!isOpen}
     >
       {!selectedParentSpace ? (
         <img
@@ -2851,7 +2940,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
                   transition={{ type: "spring", stiffness: 220, damping: 24 }}
                 />
                 <motion.img
-                  src={parentHeroImage}
+                  src={cachedDisplaySource(parentHeroImage)}
                   alt={selectedParentSpace.name}
                   className={`relative z-10 rounded-[26px] border-[3px] border-white object-cover ${
                     isEditingParentName ? "shadow-none" : "shadow-[0_16px_32px_rgba(35,33,33,0.12)]"
