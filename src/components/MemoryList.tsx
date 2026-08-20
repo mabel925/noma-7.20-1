@@ -2335,6 +2335,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
   const [pendingDeleteItemIds, setPendingDeleteItemIds] = useState<string[] | null>(null);
   const itemsLongPressTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const didItemsLongPressRef = React.useRef(false);
+  const didCompleteInitialOpenRef = React.useRef(false);
 
   // Grouping by Spaces (Parent Locations)
   const spacesMap: { [key: string]: MemoryItem[] } = {};
@@ -2724,19 +2725,20 @@ export const MemoryList: React.FC<MemoryListProps> = ({
   return (
     <motion.div
       initial={{ opacity: 0, y: 15 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{
-        opacity: 0,
-        y: 0,
-        transition: { duration: 0.12, ease: "linear" },
-      }}
+      animate={{ opacity: isOpen ? 1 : 0.001, y: 0 }}
       transition={{
         type: "tween",
-        duration: 0.45,
+        duration: didCompleteInitialOpenRef.current ? 0 : 0.45,
         ease: [0.16, 1, 0.3, 1],
       }}
+      onAnimationComplete={() => {
+        if (isOpen) didCompleteInitialOpenRef.current = true;
+      }}
       className="absolute inset-0 bg-[#E9E6E1] z-[120] flex flex-col overflow-hidden select-none"
-      style={{ display: isOpen ? "flex" : "none" }}
+      style={{
+        pointerEvents: isOpen ? "auto" : "none",
+        willChange: "opacity",
+      }}
       aria-hidden={!isOpen}
     >
       {!selectedParentSpace ? (
