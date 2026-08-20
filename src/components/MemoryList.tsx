@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Check, Image as ImageIcon, RotateCcw, Search } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { VirtualKeyboard } from "./VirtualKeyboard";
-import { getStickerTitleStyle } from "./StickerTitle";
+import { getStickerTitleStyle, isChineseTitle } from "./StickerTitle";
 import { TagSwitchIcon } from "./TagSwitchIcon";
 import { EditPencilIcon } from "./EditPencilIcon";
 import { CloseIcon } from "./CloseIcon";
@@ -309,7 +309,7 @@ const MemorySearchItem: React.FC<{ item: MemoryItem; compact?: boolean; size?: n
         )}
 
         <div
-          className="absolute left-1/2 z-20 -translate-x-1/2 text-center font-alkatra pointer-events-none select-none"
+          className={`absolute left-1/2 z-20 -translate-x-1/2 text-center pointer-events-none select-none ${isChineseTitle(item.name) ? "font-zihun-biantao" : "font-alkatra"}`}
           style={getStickerTitleStyle(boxSize)}
         >
           {item.name}
@@ -336,7 +336,7 @@ const SubLocationItemPreview: React.FC<{ item: MemoryItem }> = ({ item }) => (
       )}
     </div>
     <div
-      className="absolute left-1/2 z-10 -translate-x-1/2 text-center font-alkatra pointer-events-none select-none"
+      className={`absolute left-1/2 z-10 -translate-x-1/2 text-center pointer-events-none select-none ${isChineseTitle(item.name) ? "font-zihun-biantao" : "font-alkatra"}`}
       style={getStickerTitleStyle(48)}
     >
       {item.name}
@@ -416,7 +416,7 @@ const ItemSticker: React.FC<{
       )}
 
       <div
-        className={`absolute left-1/2 z-20 -translate-x-1/2 text-center font-alkatra select-none ${
+        className={`absolute left-1/2 z-20 -translate-x-1/2 text-center select-none ${isChineseTitle(displayTitle) ? "font-zihun-biantao" : "font-alkatra"} ${
           onTitleClick ? "pointer-events-auto cursor-text active:scale-[0.98] transition-transform" : "pointer-events-none"
         }`}
         style={{

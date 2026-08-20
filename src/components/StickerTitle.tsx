@@ -5,6 +5,8 @@ export const STICKER_TITLE_HEIGHT = 104;
 export const STICKER_TITLE_FONT_SIZE = 44;
 export const STICKER_TITLE_STROKE = 12;
 
+export const isChineseTitle = (value: string): boolean => /[\u3400-\u9fff]/.test(value);
+
 const getRoundedOutlineShadow = (radius: number): string => {
   const samples = 48;
   return Array.from({ length: samples }, (_, index) => {

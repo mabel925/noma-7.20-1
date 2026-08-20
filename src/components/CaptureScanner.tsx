@@ -14,6 +14,7 @@ import { EditPencilIcon } from "./EditPencilIcon";
 import { CloseIcon } from "./CloseIcon";
 import {
   getStickerTitleStyle,
+  isChineseTitle,
   STICKER_BASE_SIZE,
   STICKER_TITLE_FONT_SIZE,
 } from "./StickerTitle";
@@ -3806,7 +3807,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                 }}
               >
                 <div
-                  className="absolute text-center z-20 font-alkatra overflow-visible"
+                  className={`absolute text-center z-20 overflow-visible ${isChineseTitle(stickerTitleText) ? "font-zihun-biantao" : "font-alkatra"}`}
                   style={resultTitleOverlayStyle}
                 >
                   {stickerTitleLines.map((line, index) => (
@@ -3936,7 +3937,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                   )}
 
                   <div
-                    className="absolute text-center pointer-events-none select-none z-30 font-alkatra overflow-visible"
+                    className={`absolute text-center pointer-events-none select-none z-30 overflow-visible ${isChineseTitle(stickerTitleText) ? "font-zihun-biantao" : "font-alkatra"}`}
                     style={resultTitleOverlayStyle}
                   >
                     {stickerTitleLines.map((line, index) => (
@@ -4405,7 +4406,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                                 e.currentTarget.blur();
                               }
                             }}
-                            className="w-full text-center font-alkatra font-bold whitespace-normal break-words focus:outline-none bg-transparent select-text caret-[#232121] outline-none border-0 overflow-visible"
+                            className={`w-full text-center font-bold whitespace-normal break-words focus:outline-none bg-transparent select-text caret-[#232121] outline-none border-0 overflow-visible ${isChineseTitle(customName || activeItem.name) ? "font-zihun-biantao" : "font-alkatra"}`}
                             style={{
                               fontSize: `${RESULT_STICKER_TITLE_FONT_SIZE}px`,
                               color: "#000000",
@@ -4658,7 +4659,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                       {/* Alkatra overlay title exactly like the results page but styled proportionally */}
                       {stickerTitleText && (
                         <div
-                          className="absolute text-center pointer-events-none select-none z-20 font-alkatra overflow-visible"
+                          className={`absolute text-center pointer-events-none select-none z-20 overflow-visible ${isChineseTitle(stickerTitleText) ? "font-zihun-biantao" : "font-alkatra"}`}
                           style={{
                             ...stickerTitleStyle,
                             left: "50%",
