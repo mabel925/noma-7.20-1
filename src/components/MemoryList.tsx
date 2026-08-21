@@ -10,8 +10,8 @@ import { CancelIcon } from "./CancelIcon";
 import { CameraIcon } from "./CameraIcon";
 import { CollapseLocationIcon, ExpandLocationIcon } from "./LocationViewIcons";
 
-const COLOR_BLUR_IMAGE_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/colorblur.png";
-const MATRIX_DOT_IMAGE_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/%E7%9F%A9%E9%98%B5%E5%9C%86%E7%82%B9.png";
+export const COLOR_BLUR_IMAGE_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/colorblur.png";
+export const MATRIX_DOT_IMAGE_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/%E7%9F%A9%E9%98%B5%E5%9C%86%E7%82%B9.png";
 const LIGHTSPOT_IMAGE_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/lightspot.png";
 const DETAIL_CATEGORIES = ["Electronics", "Apparel", "Docs", "Housewares", "Others"];
 
@@ -285,7 +285,7 @@ type MemoryParentLocationOption = {
 
 const DETAIL_MODAL_CONTENT_HEIGHT = 734;
 
-const MatrixDotBackground: React.FC<{ rounded?: boolean }> = ({ rounded = false }) => (
+export const MatrixDotBackground: React.FC<{ rounded?: boolean }> = ({ rounded = false }) => (
   <img
     src={MATRIX_DOT_IMAGE_URL}
     alt=""

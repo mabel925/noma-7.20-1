@@ -5,7 +5,7 @@ import { Header } from "./components/Header";
 import { ActionButtons } from "./components/ActionButtons";
 import { ChatFlow } from "./components/ChatFlow";
 import { VirtualKeyboard } from "./components/VirtualKeyboard";
-import { CaptureScanner } from "./components/CaptureScanner";
+import { AddItemFlowV13 } from "./components/AddItemFlowV13";
 import { useKeyboardReset } from "./hooks/useKeyboardReset";
 import { memoryStorage } from "./services/memoryStorage";
 import { NOMA_AI_URL } from "./services/backendUrls";
@@ -967,7 +967,7 @@ export default function App() {
 
         {/* 7. HIGH-FIDELITY ADD ITEM CAPTURE VIEW & STICKER PIXELATE SCANNER */}
         {!isMemoryOpen && (
-          <CaptureScanner
+          <AddItemFlowV13
             isOpen={isCaptureOpen}
             onClose={() => setIsCaptureOpen(false)}
             existingMemories={customMemories}

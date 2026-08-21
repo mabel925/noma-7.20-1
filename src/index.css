@@ -705,3 +705,559 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
   background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent);
   animation: noma-image-skeleton-shimmer 1.2s ease-in-out infinite;
 }
+
+/* Noma 1.3 Figma board states. */
+.noma-add-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--noma-add-height, 100dvh);
+  color: #232121;
+  font-family: var(--font-sans);
+}
+
+.noma-add-screen {
+  position: relative;
+  width: min(100vw, 390px);
+  height: min(var(--noma-add-height, 844px), 844px);
+  overflow: hidden;
+  border-radius: 40px;
+  background-color: #e9e6e1;
+}
+
+.noma-add-screen button,
+.noma-add-screen input { font: inherit; }
+.noma-add-screen button { cursor: pointer; }
+.noma-add-screen button:disabled { cursor: default; opacity: 0.48; }
+
+.noma-add-modebar {
+  position: absolute;
+  z-index: 30;
+  top: calc(max(env(safe-area-inset-top, 0px), 19px) + 40px);
+  left: 55px;
+  display: flex;
+  align-items: center;
+  width: 320px;
+  height: 51px;
+}
+
+.noma-add-segmented {
+  display: grid;
+  grid-template-columns: 140px 140px;
+  width: 280px;
+  height: 51px;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 28px;
+  background: rgba(204, 196, 190, 0.25);
+}
+
+.noma-add-segmented button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #292929;
+  font-size: 16px;
+  font-weight: 400;
+  letter-spacing: 0;
+  border: 0;
+  border-radius: 28px;
+  background: transparent;
+}
+
+.noma-add-segmented button.is-active { background: #fff; }
+.noma-add-segmented button > span:first-child { font-size: 22px; line-height: 1; }
+.noma-add-top-close {
+  display: grid;
+  width: 40px;
+  height: 51px;
+  place-items: center;
+  color: rgba(35, 33, 33, 0.5);
+  border: 0;
+  background: transparent;
+}
+
+.noma-add-title-form {
+  position: absolute;
+  top: 314px;
+  left: 50%;
+  width: 320px;
+  transform: translateX(-50%);
+  text-align: center;
+}
+
+.noma-add-title-form input {
+  width: 100%;
+  height: 104px;
+  padding: 0 8px;
+  color: #232121;
+  font-size: 42px;
+  font-weight: 600;
+  line-height: 1;
+  text-align: center;
+  border: 0;
+  outline: 0;
+  background: transparent;
+}
+
+.noma-add-title-form input::placeholder { color: rgba(35, 33, 33, 0.6); opacity: 1; }
+.noma-add-title-form span { display: block; width: 250px; height: 1px; margin: 1px auto 0; background: rgba(35, 33, 33, 0.08); }
+
+.noma-add-item-result {
+  position: absolute;
+  top: 140px;
+  left: 50%;
+  width: min(390px, 100%);
+  height: 410px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 32;
+}
+
+.noma-add-glow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  opacity: 0.78;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.noma-add-item-sticker {
+  position: absolute;
+  top: 70px;
+  left: 50%;
+  width: 250px;
+  height: 250px;
+  transform: translateX(-50%);
+}
+
+.noma-add-emoji-media {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 250px;
+  height: 250px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  transform-origin: center;
+  pointer-events: auto;
+}
+
+.noma-add-emoji-image,
+.noma-add-emoji-outline {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.noma-add-emoji-image {
+  z-index: 2;
+  object-fit: contain;
+}
+
+.noma-add-emoji-outline {
+  z-index: 1;
+  inset: -6px;
+  width: calc(100% + 12px);
+  height: calc(100% + 12px);
+  overflow: visible;
+}
+
+.noma-add-item-title {
+  position: absolute;
+  z-index: 3;
+  left: 0;
+  padding: 0;
+  overflow: hidden;
+  color: #050505;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 0;
+  background: transparent;
+  pointer-events: auto;
+}
+
+.noma-add-item-sticker.is-compact {
+  z-index: 35;
+  top: 137px;
+  left: 24px;
+  width: 100px;
+  height: 100px;
+  transform: rotate(-7deg);
+  transform-origin: center;
+}
+
+.noma-add-item-sticker.is-compact .noma-add-emoji-media { inset: auto; top: 0; left: 11px; width: 78px; height: 78px; }
+.noma-add-item-sticker.is-compact .noma-add-item-title { left: 0; pointer-events: none; }
+
+.noma-add-category {
+  position: absolute;
+  top: 343px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 30px;
+  padding: 0 11px;
+  color: rgba(35, 33, 33, 0.5);
+  font-size: 14px;
+  border: 0;
+  border-radius: 15px;
+  background: #fff;
+  transform: translateX(-50%);
+  pointer-events: auto;
+}
+
+.noma-add-category svg { width: 18px; height: 18px; }
+
+.noma-add-result-dismiss {
+  position: absolute;
+  z-index: 31;
+  top: 130px;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.noma-add-title-edit {
+  position: absolute;
+  z-index: 8;
+  top: 70px;
+  left: 50%;
+  width: 250px;
+  height: 250px;
+  transform: translateX(-50%);
+  pointer-events: auto;
+}
+
+.noma-add-title-edit input {
+  position: absolute;
+  left: 0;
+  box-sizing: border-box;
+  padding: 0;
+  color: transparent !important;
+  -webkit-text-fill-color: transparent;
+  caret-color: #050505;
+  text-align: center;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  text-shadow: none !important;
+}
+
+.noma-add-category-option {
+  position: absolute;
+  z-index: 36;
+  top: 358px;
+  left: 50%;
+  width: 0;
+  height: 0;
+  padding: 0;
+  color: rgba(35, 33, 33, 0.5);
+  border: 0;
+  background: transparent;
+  transform-origin: center;
+  pointer-events: auto;
+}
+
+.noma-add-category-option span {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  width: max-content;
+  height: 30px;
+  padding: 0 14px;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  border-radius: 15px;
+  background: #fff;
+  transform: translate(-50%, -50%);
+}
+
+.noma-add-item-actions { position: absolute; inset: 0; }
+.noma-add-round-actions {
+  position: absolute;
+  z-index: 40;
+  bottom: 114px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 44px;
+  transform: translateX(-50%);
+}
+
+.noma-add-item-actions .noma-add-round-actions { gap: 62px; }
+.noma-add-item-actions .noma-add-round-actions .noma-add-round-button:nth-child(3) { display: none; }
+.noma-add-round-button {
+  display: grid;
+  width: 62px;
+  height: 62px;
+  place-items: center;
+  color: rgba(35, 33, 33, 0.48);
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.noma-add-round-button.is-restart,
+.noma-add-round-button.is-confirm { width: 72px; height: 72px; }
+.noma-add-round-button.is-confirm { color: #fff; background: #232121; }
+
+.noma-add-result-underline {
+  position: absolute;
+  z-index: 4;
+  top: 279px;
+  left: 70px;
+  width: 250px;
+  height: 1px;
+  background: rgba(35, 33, 33, 0.08);
+}
+
+@keyframes noma-add-underline-out {
+  from { opacity: 1; transform: scaleX(1); }
+  to { opacity: 0; transform: scaleX(0.7); }
+}
+
+@keyframes noma-add-title-settle {
+  from { transform: translateY(-48px); }
+  to { transform: translateY(0); }
+}
+
+@keyframes noma-add-fade-in {
+  from { opacity: 0; }
+}
+
+@keyframes noma-add-scale-in {
+  from { opacity: 0; transform: scale(0.72); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@property --noma-outline-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 360deg;
+}
+
+@keyframes noma-add-outline-trace {
+  from { --noma-outline-angle: 0deg; }
+  to { --noma-outline-angle: 360deg; }
+}
+
+@keyframes noma-add-button-pop {
+  0% { opacity: 0; transform: scale(0); }
+  78% { opacity: 1; transform: scale(1.4); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.noma-add-item-result.is-revealing .noma-add-result-underline {
+  animation: noma-add-underline-out 140ms ease-out both;
+}
+
+.noma-add-item-result.is-revealing .noma-add-item-title {
+  animation: noma-add-title-settle 360ms 80ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.noma-add-item-result.is-revealing .noma-add-glow {
+  animation: noma-add-fade-in 340ms 180ms ease-out both;
+}
+
+.noma-add-item-result.is-revealing .noma-add-emoji-media {
+  animation: noma-add-scale-in 400ms 250ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.noma-add-emoji-media.is-revealing .noma-add-emoji-outline {
+  --noma-outline-angle: 0deg;
+  -webkit-mask-image: conic-gradient(from -90deg, #000 0deg, #000 var(--noma-outline-angle), transparent var(--noma-outline-angle), transparent 360deg);
+  mask-image: conic-gradient(from -90deg, #000 0deg, #000 var(--noma-outline-angle), transparent var(--noma-outline-angle), transparent 360deg);
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  animation: noma-add-outline-trace 300ms 400ms cubic-bezier(0.2, 0.85, 0.3, 1) both;
+}
+
+.noma-add-item-result.is-revealing .noma-add-category {
+  animation: noma-add-fade-in 200ms 480ms ease-out both;
+}
+
+.noma-add-round-actions.is-revealing .noma-add-round-button {
+  transform-origin: center;
+  animation: noma-add-button-pop 560ms 720ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.noma-add-round-actions.is-revealing .noma-add-round-button:nth-child(2) {
+  animation-delay: 980ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .noma-add-item-result.is-revealing .noma-add-result-underline,
+  .noma-add-item-result.is-revealing .noma-add-item-title,
+  .noma-add-item-result.is-revealing .noma-add-glow,
+  .noma-add-item-result.is-revealing .noma-add-emoji-media,
+  .noma-add-emoji-media.is-revealing .noma-add-emoji-outline,
+  .noma-add-item-result.is-revealing .noma-add-category,
+  .noma-add-round-actions.is-revealing .noma-add-round-button {
+    animation-duration: 1ms;
+    animation-delay: 0ms;
+  }
+}
+
+.noma-add-emoji-picker {
+  position: absolute;
+  z-index: 40;
+  bottom: 24px;
+  left: 20px;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  grid-auto-rows: 42px;
+  gap: 9px 2px;
+  width: 350px;
+  height: 246px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.noma-add-emoji-picker::-webkit-scrollbar { display: none; }
+.noma-add-emoji-picker button { display: grid; width: 42px; height: 42px; padding: 4px; place-items: center; border: 0; background: transparent; }
+.noma-add-emoji-picker img { width: 34px; height: 34px; object-fit: contain; }
+
+.noma-add-camera-page {
+  position: absolute;
+  inset: 0;
+  color: #fff;
+  background: #707070;
+}
+
+.noma-add-live-video { width: 100%; height: 100%; object-fit: cover; background: #707070; }
+
+.noma-add-camera-close { position: absolute; z-index: 5; top: 74px; right: 15px; display: grid; width: 24px; height: 24px; padding: 0; place-items: center; color: #fff; border: 0; background: transparent; }
+.noma-add-camera-page h2 { position: absolute; top: 92px; left: 50%; width: 260px; margin: 0; font-size: 20px; font-weight: 600; line-height: 1.25; text-align: center; transform: translateX(-50%); }
+.noma-add-focus-frame { position: absolute; top: 271px; left: 113px; width: 165px; height: 165px; }
+.noma-add-focus-frame i { position: absolute; width: 22px; height: 22px; border-color: #fff; border-style: solid; }
+.noma-add-focus-frame i:nth-child(1) { top: 0; left: 0; border-width: 3px 0 0 3px; border-radius: 12px 0 0; }
+.noma-add-focus-frame i:nth-child(2) { top: 0; right: 0; border-width: 3px 3px 0 0; border-radius: 0 12px 0 0; }
+.noma-add-focus-frame i:nth-child(3) { bottom: 0; left: 0; border-width: 0 0 3px 3px; border-radius: 0 0 0 12px; }
+.noma-add-focus-frame i:nth-child(4) { right: 0; bottom: 0; border-width: 0 3px 3px 0; border-radius: 0 0 12px; }
+.noma-add-camera-drawer { position: absolute; right: 0; bottom: 0; left: 0; height: 213px; border-radius: 60px 60px 0 0; background: #e9e6e1; }
+.noma-add-drawer-handle { position: absolute; top: 10px; left: 171px; width: 49px; height: 5px; border-radius: 3px; background: #cbc4be; }
+.noma-add-camera-controls { position: absolute; right: 43px; bottom: 42px; left: 43px; display: grid; grid-template-columns: 72px 1fr 72px; align-items: center; justify-items: center; }
+.noma-add-camera-controls > button:not(.noma-add-shutter) { display: grid; width: 62px; height: 62px; place-items: center; color: rgba(35, 33, 33, 0.45); border: 0; background: transparent; }
+.noma-add-camera-controls svg { width: 32px; height: 32px; }
+.noma-add-shutter {
+  position: relative;
+  display: grid;
+  width: 80px;
+  height: 80px;
+  padding: 0;
+  place-items: center;
+  border: 5px solid #fff;
+  border-radius: 50%;
+  background: linear-gradient(140deg, #f5b5d9, #ffc7a6 60%, #a1ebd9);
+  box-shadow: 0 0 8px rgba(245, 181, 217, 0.8);
+}
+.noma-add-shutter::before { content: ""; position: absolute; inset: 6px; border-radius: 50%; background: #f3f1ec; }
+.noma-add-shutter span { position: relative; width: 28px; height: 28px; border: 1px solid rgba(0, 0, 0, 0.12); border-radius: 50%; background: #181817; }
+.noma-add-camera-emoji { display: flex !important; flex-direction: column; color: #111 !important; font-family: "Alkatra", cursive, sans-serif !important; }
+.noma-add-camera-emoji span { font-size: 32px; line-height: 28px; }
+.noma-add-camera-emoji strong { font-size: 17px; }
+
+.noma-add-space-wrap { position: absolute; z-index: 10; top: 186px; left: 20px; width: 350px; height: 424px; transition: transform 180ms ease-out; }
+.noma-add-space-card { position: relative; width: 350px; height: 424px; overflow: hidden; border-radius: 36px; background: rgba(204, 196, 190, 0.5); }
+.noma-add-space-card.is-active { background: #fff; }
+.noma-add-parent-zone { position: absolute; top: 0; left: 0; width: 350px; height: 124px; }
+.noma-add-space-placeholder { position: absolute; top: 48px; left: 60px; width: 230px; color: rgba(35, 33, 33, 0.15); font-size: 22px; font-weight: 600; text-align: center; }
+.noma-add-sub-card { position: absolute; top: 124px; left: 49px; width: 251px; height: 280px; overflow: hidden; border-radius: 36px; background: #fff; }
+.noma-add-space-placeholder-icon { position: absolute; top: 15px; left: 32px; width: 186px; height: 186px; object-fit: contain; opacity: 0.26; }
+.noma-add-space-input-wrap { position: absolute; inset: 0; }
+.noma-add-space-input-wrap input { position: absolute; z-index: 2; left: 10px; bottom: 20px; width: 230px; height: 87px; padding: 0; color: #232121; font-size: 22px; font-weight: 600; line-height: 1.25; text-align: center; white-space: pre-line; border: 0; outline: 0; background: transparent; }
+.noma-add-space-input-wrap input::placeholder { color: rgba(35, 33, 33, 0.15); opacity: 1; }
+.noma-add-parent-zone .noma-add-space-input-wrap input { top: 29px; bottom: auto; left: 60px; }
+.noma-add-parent-zone .noma-add-space-placeholder-icon { top: 5px; left: 125px; width: 100px; height: 100px; opacity: 0.38; }
+.noma-add-sub-placeholder { position: absolute; z-index: 2; right: 10px; bottom: 38px; left: 10px; color: rgba(35, 33, 33, 0.15); font-size: 22px; font-weight: 600; line-height: 1.25; text-align: center; }
+.noma-add-sub-placeholder.is-input-placeholder { pointer-events: none; }
+.noma-add-space-value,
+.noma-add-sub-value { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.noma-add-sub-value img { width: 186px; height: 186px; object-fit: contain; }
+.noma-add-sub-value strong { margin-top: 4px; font-size: 22px; }
+.noma-add-space-value { flex-direction: row; gap: 12px; }
+.noma-add-space-value img { width: 58px; height: 58px; object-fit: contain; }
+.noma-add-space-value strong { max-width: 210px; overflow: hidden; font-size: 20px; text-overflow: ellipsis; white-space: nowrap; }
+.noma-add-space-card.is-active .noma-add-parent-zone { width: 350px; height: 424px; }
+.noma-add-space-card.is-active .noma-add-parent-zone .noma-add-space-placeholder-icon { top: 45px; left: 125px; }
+.noma-add-space-card.is-active .noma-add-parent-zone .noma-add-space-input-wrap input { top: 199px; left: 60px; }
+.noma-add-space-card.is-active .noma-add-space-value { flex-direction: column; gap: 14px; padding-bottom: 80px; }
+.noma-add-space-card.is-active .noma-add-space-value img { width: 120px; height: 120px; }
+.noma-add-space-card.is-active .noma-add-space-value strong { font-size: 22px; }
+.noma-add-space-card.is-active .noma-add-sub-card { top: 316px; left: 43px; width: 264px; height: 82px; border-radius: 42px; background: rgba(233, 230, 225, 0.8); }
+.noma-add-space-card.is-active .noma-add-sub-value { flex-direction: row; gap: 20px; padding: 9px 22px; }
+.noma-add-space-card.is-active .noma-add-sub-value img { width: 50px; height: 50px; flex: 0 0 auto; border-radius: 10px; }
+.noma-add-space-card.is-active .noma-add-sub-value strong { max-width: 150px; margin: 0; overflow: hidden; font-size: 18px; text-overflow: ellipsis; white-space: nowrap; }
+.noma-add-space-card.is-active .noma-add-parent-zone .noma-add-recent-bubble { top: 97px; left: 74px; }
+.noma-add-recent-bubble { position: absolute; z-index: 5; top: 79px; left: 24px; display: flex; align-items: center; width: 203px; height: 56px; padding: 6px 11px; border-radius: 28px; background: rgba(233, 230, 225, 0.86); }
+.noma-add-parent-zone .noma-add-recent-bubble { top: 28px; left: 74px; }
+.noma-add-recent-bubble img { width: 43px; height: 43px; object-fit: cover; border-radius: 10px; }
+.noma-add-recent-bubble span { flex: 1; min-width: 0; padding: 0 9px; overflow: hidden; font-size: 17px; text-overflow: ellipsis; white-space: nowrap; }
+.noma-add-recent-bubble button { display: grid; width: 33px; height: 33px; flex: 0 0 auto; place-items: center; color: #232121; border: 0; border-radius: 50%; background: linear-gradient(140deg, #f5b5d9, #ffc7a6 60%, #a1ebd9); }
+.noma-add-recent-bubble svg { width: 20px; height: 20px; }
+.noma-add-cancel-text { position: absolute; bottom: 132px; left: 50%; color: rgba(35, 33, 33, 0.5); font-size: 18px; border: 0; background: transparent; transform: translateX(-50%); }
+
+.noma-add-space-camera-frame { position: absolute; top: 186px; left: 20px; width: 350px; height: 424px; overflow: hidden; border-radius: 36px; background: rgba(204, 196, 190, 0.5); }
+.noma-add-space-camera-frame > img,
+.noma-add-camera-empty { width: 100%; height: 100%; object-fit: cover; }
+.noma-add-space-camera-frame > img { border: 3px solid #fff; border-radius: 36px; }
+.noma-add-camera-empty { background: rgba(204, 196, 190, 0.42); }
+.noma-add-space-camera-frame > strong { position: absolute; top: 54px; left: 0; width: 100%; color: rgba(255, 255, 255, 0.95); font-size: 22px; text-align: center; }
+.noma-add-camera-sub-bubble { position: absolute; right: 43px; bottom: 25px; left: 43px; display: flex; align-items: center; gap: 20px; height: 82px; padding: 9px 22px; color: #232121; border: 0; border-radius: 42px; background: #fff; }
+.noma-add-camera-sub-bubble img { width: 50px; height: 50px; object-fit: cover; border-radius: 10px; }
+.noma-add-camera-sub-bubble span { overflow: hidden; font-size: 18px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.noma-add-camera-controls.is-space { right: 53px; bottom: 76px; left: 53px; }
+.noma-add-camera-controls.is-space .noma-add-skip { color: rgba(35, 33, 33, 0.2); font-size: 17px; }
+
+.noma-add-final-close { position: absolute; z-index: 10; top: 74px; right: 15px; display: grid; width: 24px; height: 24px; padding: 0; place-items: center; color: rgba(35, 33, 33, 0.5); border: 0; background: transparent; }
+.noma-add-final { position: absolute; inset: 0; }
+.noma-add-final-hero { position: absolute; top: 62px; left: 50%; width: min(390px, 100%); height: 390px; transform: translateX(-50%); }
+.noma-add-final-hero .noma-add-glow { top: 0; }
+.noma-add-final-hero .noma-add-item-sticker { top: 70px; }
+.noma-add-final > .noma-add-category { top: 406px; }
+.noma-add-built { position: absolute; top: 449px; left: 0; width: 100%; color: rgba(35, 33, 33, 0.5); font-size: 13px; text-align: center; }
+.noma-add-final-location { position: absolute; top: 495px; left: 22px; display: grid; grid-template-columns: 112px 1fr; align-items: center; width: 346px; height: 145px; border-radius: 32px; background: #fff; }
+.noma-add-location-images { position: relative; width: 112px; height: 120px; }
+.noma-add-location-images img { position: absolute; top: 12px; left: 16px; width: 90px; height: 90px; object-fit: cover; border-radius: 14px; }
+.noma-add-location-images img + img { top: 70px; left: 68px; width: 54px; height: 54px; border: 2px solid #fff; }
+.noma-add-location-copy { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding-left: 14px; }
+.noma-add-location-copy strong,
+.noma-add-location-copy span { display: flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.noma-add-location-copy strong { font-size: 20px; text-decoration: underline; text-underline-offset: 5px; }
+.noma-add-location-copy span { color: rgba(35, 33, 33, 0.5); font-size: 17px; text-decoration: underline; text-underline-offset: 5px; }
+.noma-add-location-copy svg { width: 16px; height: 16px; flex: 0 0 auto; }
+.noma-add-final-confirm { position: absolute; bottom: 92px; left: 159px; display: grid; width: 72px; height: 72px; place-items: center; color: #fff; border: 0; border-radius: 50%; background: #232121; }
+.noma-add-final-confirm svg { width: 28px; height: 28px; }
+.noma-add-final-hint { position: absolute; bottom: 53px; left: 0; width: 100%; color: rgba(35, 33, 33, 0.5); font-size: 13px; text-align: center; }
+
+@media (max-width: 767px) {
+  .noma-add-screen { width: 100vw; max-width: 390px; border-radius: 0; }
+}
+
+@media (max-height: 700px) {
+  .noma-add-modebar { top: 18px; }
+}

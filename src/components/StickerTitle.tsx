@@ -7,7 +7,7 @@ export const STICKER_TITLE_STROKE = 12;
 
 export const isChineseTitle = (value: string): boolean => /[\u3400-\u9fff]/.test(value);
 
-const getRoundedOutlineShadow = (radius: number): string => {
+export const getRoundedOutlineShadow = (radius: number): string => {
   const samples = 48;
   return Array.from({ length: samples }, (_, index) => {
     const angle = (index / samples) * Math.PI * 2;

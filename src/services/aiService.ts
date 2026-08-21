@@ -1,10 +1,17 @@
 import { NOMA_AI_URL } from "./backendUrls";
 import { AiAccessError, getAiAuthHeaders } from "./aiAuth";
+import { classifyEmojiLocally, EMOJI_CATALOG, EMOJI_KEY_SET, type EmojiKind } from "../data/emojiCatalog";
 
 export interface RecognitionResult {
   title: string;
   category: string;
   labels: string[];
+}
+
+export interface EmojiClassificationResult {
+  title: string;
+  category: string;
+  icon_key: string;
 }
 
 /**
@@ -102,7 +109,7 @@ function getRequestOrigin(): string {
 /**
  * Unified request sender function to Noma Cloudflare Workers Backend
  */
-export async function callNomaBackend(type: "matting" | "vision" | "title", payload: any, scanId?: string): Promise<any> {
+export async function callNomaBackend(type: "matting" | "vision" | "title" | "emoji-classify", payload: any, scanId?: string): Promise<any> {
   if (!isApiEnabled()) {
     console.log(`[API Intercept] IS_API_ENABLED is false. Returning high-fidelity mock data for type "${type}". origin=${getRequestOrigin()}`);
     // Add artificial delay for realistic simulation
@@ -123,6 +130,8 @@ export async function callNomaBackend(type: "matting" | "vision" | "title", payl
           }
         ]
       };
+    } else if (type === "emoji-classify") {
+      return classifyEmojiLocally(String(payload.title || ""), payload.kind || "item");
     } else if (type === "title") {
       // 标题美化 Mock 数据
       return {
@@ -192,6 +201,25 @@ export async function callNomaBackend(type: "matting" | "vision" | "title", payl
     return JSON.parse(responseText);
   } catch {
     throw new Error(`Worker returned invalid JSON [origin: ${getRequestOrigin()}]`);
+  }
+}
+
+export async function classifyEmojiText(title: string, kind: EmojiKind): Promise<EmojiClassificationResult> {
+  const fallback = classifyEmojiLocally(title, kind);
+  try {
+    const result = await callNomaBackend("emoji-classify", { title, kind });
+    const iconKey = String(result?.icon_key || "");
+    if (!EMOJI_KEY_SET.has(iconKey)) return fallback;
+    const catalogEntry = EMOJI_CATALOG.find((entry) => entry.key === iconKey && entry.kind === kind);
+    if (!catalogEntry) return fallback;
+    return {
+      title: String(result?.title || title).trim() || title.trim(),
+      category: catalogEntry.category,
+      icon_key: iconKey,
+    };
+  } catch (error) {
+    console.warn("[Emoji Classifier] Falling back to the local whitelist:", error);
+    return fallback;
   }
 }
 

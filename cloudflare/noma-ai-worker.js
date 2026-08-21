@@ -1,6 +1,12 @@
 const DEFAULT_MATTING_ENDPOINT = "https://api.shiliuai.com/api/matting/v1";
 const DEFAULT_QWEN_ENDPOINT = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
 
+const EMOJI_KEYS_BY_KIND = {
+  item: ["laptop", "phone", "charger", "earphones", "camera", "battery", "gamepad", "tshirt", "pants", "shoes", "hat", "bag", "ring", "pill", "bandage", "thermometer", "glasses", "book", "pen", "scissors", "folder", "key", "umbrella", "tissues", "cosmetics", "perfume", "clock", "coffee", "cup", "utensils", "apple", "wrench", "hammer", "flashlight", "lock", "basketball", "guitar", "puzzle", "tent"],
+  "sub-space": ["box", "drawer", "wardrobe", "shelf", "suitcase", "safe", "trash"],
+  "parent-space": ["home", "living-room", "bedroom", "kitchen", "bathroom", "balcony-garden", "office", "library-study", "car", "garage-workshop"],
+};
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -224,6 +230,31 @@ async function title(env, body) {
   return json({ error: `Title providers failed: ${failures.join(" | ")}` }, 502);
 }
 
+async function classifyEmoji(env, body) {
+  const sourceTitle = String(body.title || "").trim();
+  const kind = String(body.kind || "item");
+  const keys = EMOJI_KEYS_BY_KIND[kind];
+  if (!sourceTitle) return json({ error: "title is required" }, 400);
+  if (!keys) return json({ error: "kind must be item, sub-space, or parent-space" }, 400);
+
+  const prompt = `You are Noma's storage classifier. Classify the user's ${kind} label. Choose exactly one icon_key from this whitelist: ${keys.join(", ")}. Return only JSON with this schema: {"title":"clean concise title in the user's language","category":"short category in the user's language","icon_key":"one whitelisted key"}. User label: ${sourceTitle}`;
+  const failures = [];
+  for (const provider of ["qwen", "gemini"]) {
+    try {
+      const data = provider === "qwen"
+        ? await callQwen(env, prompt, true)
+        : await callGemini(env, [{ text: prompt }], { jsonMode: true });
+      const content = extractText(data);
+      const parsed = JSON.parse(content.replace(/^```json\s*|\s*```$/g, ""));
+      if (!keys.includes(parsed.icon_key)) throw new Error("Provider returned an icon_key outside the whitelist");
+      return json({ title: String(parsed.title || sourceTitle), category: String(parsed.category || ""), icon_key: parsed.icon_key });
+    } catch (error) {
+      failures.push(`${provider}: ${errorMessage(error)}`);
+    }
+  }
+  return json({ error: `Emoji classification providers failed: ${failures.join(" | ")}` }, 502);
+}
+
 async function matting(env, body) {
   if (!body.image_base64) return json({ error: "image_base64 is required" }, 400);
   const mattingApiKey = env.SHILIU_API_KEY || env.MATTING_API_KEY;
@@ -319,7 +350,7 @@ export default {
       return withQuota(response, access);
     }
 
-    if (body.type === "title" || body.type === "generate-image") {
+    if (body.type === "title" || body.type === "generate-image" || body.type === "emoji-classify") {
       try {
         await authenticate(request, env);
       } catch {
@@ -329,6 +360,7 @@ export default {
         }, 401);
       }
       if (body.type === "title") return title(env, body);
+      if (body.type === "emoji-classify") return classifyEmoji(env, body);
       return generateImage(env, body);
     }
 

@@ -12,6 +12,7 @@ import { useLayoutGuard } from "../hooks/useLayoutGuard";
 import { TagSwitchIcon } from "./TagSwitchIcon";
 import { EditPencilIcon } from "./EditPencilIcon";
 import { CloseIcon } from "./CloseIcon";
+import { PhotoUploadIcon } from "./PhotoUploadIcon";
 import {
   getStickerTitleStyle,
   isChineseTitle,
@@ -92,6 +93,9 @@ interface CaptureScannerProps {
     subLocationImg?: string;
     subLocationHighlight?: { x: number; y: number };
   }) => void | Promise<void>;
+  onCutoutComplete?: (result: { name: string; category: string; stickerUrl?: string }) => void;
+  onSwitchToEmoji?: () => void;
+  layer?: number;
 }
 
 interface ExistingMemoryLocationSource {
@@ -263,6 +267,9 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   onClose,
   existingMemories = [],
   onItemAdded,
+  onCutoutComplete,
+  onSwitchToEmoji,
+  layer = 50,
 }) => {
   // Call keyboard reset aggressively when capture page is open to guarantee layout restoration
   useKeyboardReset(false, isOpen);
@@ -505,6 +512,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const [isTracingContour, setIsTracingContour] = useState<boolean>(false);
   const [traceProgress, setTraceProgress] = useState<number>(0);
   const [traceCompleted, setTraceCompleted] = useState<boolean>(false);
+  const cutoutCompleteSentRef = useRef(false);
   const [skipScanEffects, setSkipScanEffects] = useState<boolean>(false);
   const [disintegrateStart, setDisintegrateStart] = useState<boolean>(false);
   const [cutoutFlightStartRect, setCutoutFlightStartRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
@@ -666,12 +674,12 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
   const layout = getActiveLayout();
   const initialCenterY = layout.top + layout.height / 2;
-  const targetCenterY = fullStageHeight * 0.37;
+  const targetCenterY = onCutoutComplete ? 335 : fullStageHeight * 0.37;
   const RESULT_STICKER_VISUAL_SIZE = STICKER_BASE_SIZE;
   const RESULT_STICKER_TITLE_WIDTH = RESULT_STICKER_VISUAL_SIZE;
   const RESULT_STICKER_TITLE_FONT_SIZE = STICKER_TITLE_FONT_SIZE;
   const finalStickerVisualSize = RESULT_STICKER_VISUAL_SIZE;
-  const RESULT_STICKER_CENTER_OFFSET_X = -8;
+  const RESULT_STICKER_CENTER_OFFSET_X = onCutoutComplete ? 0 : -8;
   const finalStickerLeft = (containerWidth - finalStickerVisualSize) / 2 + RESULT_STICKER_CENTER_OFFSET_X;
   const finalStickerTop = targetCenterY - finalStickerVisualSize / 2;
   const cutoutFlightSourceRect = cutoutFlightStartRect ?? {
@@ -820,6 +828,21 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     const x = (targetSize - drawWidth) / 2;
     const y = (targetSize - drawHeight) / 2;
     ctx.drawImage(source, x, y, drawWidth, drawHeight);
+  };
+
+  const imageHasTransparency = (image: HTMLImageElement): boolean => {
+    const canvas = document.createElement("canvas");
+    canvas.width = image.naturalWidth || image.width;
+    canvas.height = image.naturalHeight || image.height;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context || !canvas.width || !canvas.height) return false;
+
+    context.drawImage(image, 0, 0);
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    for (let index = 3; index < pixels.length; index += 4) {
+      if (pixels[index] < 250) return true;
+    }
+    return false;
   };
 
   const generatePhotoThumbnailSticker = (imageSrc: string): Promise<string> => {
@@ -1730,8 +1753,19 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       setResultLocationPicker(null);
       setEditingResultLocationField(null);
       setExpandedExistingLocationPicker(null);
+      cutoutCompleteSentRef.current = false;
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !onCutoutComplete || storageFlowStep !== "none" || scanStep !== "done" || !traceCompleted || cutoutCompleteSentRef.current) return;
+    cutoutCompleteSentRef.current = true;
+    onCutoutComplete({
+      name: customName.trim() || "Scanned Item",
+      category: customCategory.trim() || "其它",
+      stickerUrl: generatedStickerUrl || transparentCutoutUrl || undefined,
+    });
+  }, [isOpen, onCutoutComplete, storageFlowStep, scanStep, traceCompleted, customName, customCategory, generatedStickerUrl, transparentCutoutUrl]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -3085,31 +3119,24 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       return;
     }
 
-    const aiCaptureAccess = reserveAiCapture();
-    const shouldUseAi = aiCaptureAccess === "available";
-    const scanId = shouldUseAi ? createAiScanId() : undefined;
-    setSkipScanEffects(!shouldUseAi);
-    setScanStep(shouldUseAi ? "scanning" : "viewport");
+    setSkipScanEffects(false);
+    setScanStep("scanning");
     setIsCapturing(true);
-    setAiProgress(shouldUseAi ? "Compressing image for high-speed routing..." : null);
+    setAiProgress("Preparing image...");
     setAlignedCutoutUrl(null);
     setFlightCutoutUrl(null);
     setTransparentCutoutUrl(null);
     setPaddedCutoutUrl(null);
     setGeneratedStickerUrl(null);
 
-    // Synchronously clean state and start async classification immediately on raw File in parallel!
+    // Reset recognition state. Transparent PNG uploads are treated as finished cutouts
+    // after their alpha channel has been verified below.
     setCustomCategory(isChinese ? "其它" : "Others");
     setTempIdentifiedCategory("");
-    if (shouldUseAi) {
-      setCustomName("");
-      startImageClassification(file, file.name, scanId!);
-    } else {
-      classificationRequestIdRef.current += 1;
-      classificationPromiseRef.current = null;
-      commitPreparedTitle("Scanned Item");
-      showPhotoThumbnailNotice(aiCaptureAccess);
-    }
+    setCustomName("");
+    preparedTitleRef.current = "";
+    classificationRequestIdRef.current += 1;
+    classificationPromiseRef.current = null;
 
     // 1. 同步进行本地预览
     const localReader = new FileReader();
@@ -3127,7 +3154,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       img.src = b64;
     };
 
-    // 2. 核心抠图流程：采用与相机拍照一致的、支持配置切换与自动降级的抠图处理器
+    // 2. 核心抠图流程：透明 PNG 直接复用旧版完整动画，其余图片走云端抠图并自动降级。
     const processReader = new FileReader();
     processReader.readAsDataURL(file);
     processReader.onload = () => {
@@ -3138,6 +3165,46 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         const iw = img.naturalWidth || img.width || 500;
         const ih = img.naturalHeight || img.height || 500;
         calculateTargetScaleFromDimensions(iw, ih);
+
+        const isTransparentCutout = file.type === "image/png" && imageHasTransparency(img);
+        if (isTransparentCutout) {
+          const fallbackTitle = file.name
+            .replace(/\.[^.]+$/, "")
+            .replace(/[_-]+/g, " ")
+            .trim() || "Scanned Item";
+          commitPreparedTitle(fallbackTitle);
+          setSkipScanEffects(false);
+          setAiProgress(null);
+
+          const [alignedCutout, flightCutout, paddedCutout, finalSticker] = await Promise.all([
+            generateViewportAlignedCutout(b64, iw, ih, false),
+            generateFlightCutout(b64, iw, ih, false),
+            generateTransparentCutoutWithPadding(b64, STICKER_BORDER_SIZE, false),
+            generatePhysicalSticker(b64, STICKER_BORDER_SIZE, "#FFFFFF", false),
+          ]);
+
+          setAlignedCutoutUrl(alignedCutout);
+          setFlightCutoutUrl(paddedCutout);
+          setTransparentCutoutUrl(b64);
+          setPaddedCutoutUrl(paddedCutout);
+          setGeneratedStickerUrl(finalSticker);
+          setTraceCompleted(false);
+          await beginCutoutTransition(iw, ih, flightCutout.bounds);
+          setAiProgress("Done");
+          return;
+        }
+
+        const aiCaptureAccess = reserveAiCapture();
+        const shouldUseAi = aiCaptureAccess === "available";
+        const scanId = shouldUseAi ? createAiScanId() : undefined;
+        setSkipScanEffects(!shouldUseAi);
+
+        if (shouldUseAi) {
+          startImageClassification(file, file.name, scanId!);
+        } else {
+          commitPreparedTitle("Scanned Item");
+          showPhotoThumbnailNotice(aiCaptureAccess);
+        }
 
         if (!shouldUseAi) {
           await startPhotoThumbnailTransition(b64, iw, ih);
@@ -3169,6 +3236,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         }
       };
       img.onerror = async () => {
+        commitPreparedTitle("Scanned Item");
         calculateTargetScaleFromDimensions(500, 500);
         await completeWithPhotoThumbnail(b64, 500, 500);
       };
@@ -3297,11 +3365,20 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       type="button"
       onClick={onClick}
       title={title}
-      className="group relative w-[72px] h-[72px] rounded-full flex items-center justify-center bg-white transition-all duration-300 hover:scale-105 active:scale-95 shadow-none cursor-pointer"
-      style={{ padding: "4px" }}
+      className="group relative w-[72px] h-[72px] rounded-full flex items-center justify-center bg-transparent transition-all duration-300 hover:scale-105 active:scale-95 shadow-none cursor-pointer"
     >
-      <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-cyan-400 via-orange-400 to-red-400 opacity-90 scale-105 blur-[1.5px] transition-all group-hover:scale-110" />
-      <div className="relative w-full h-full rounded-full bg-[#F3F1EC] flex items-center justify-center border-2 border-white shadow-inner">
+      <div
+        className="pointer-events-none absolute -inset-[2px] rounded-full"
+        style={{
+          background: "linear-gradient(to bottom left, #F5B5D9 0%, #FFC7A6 66%, #A1EBD9 100%)",
+          filter: "blur(2px) saturate(1.18)",
+        }}
+      />
+      <div
+        className="pointer-events-none absolute inset-0 rounded-full"
+        style={{ background: "linear-gradient(to bottom left, #F5B5D9 0%, #FFC7A6 66%, #A1EBD9 100%)" }}
+      />
+      <div className="absolute inset-[5px] rounded-full bg-[#F3F1EC] flex items-center justify-center border-2 border-white">
         <div className="w-7 h-7 rounded-full bg-[#181817] border border-black/10" />
       </div>
     </button>
@@ -3560,8 +3637,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
   return createPortal(
     <div 
-      className="camera-page-container camera-wrapper absolute inset-0 bg-[#161616] z-50 overflow-hidden select-none animate-fade-in pb-0"
-      style={{ height: "var(--app-height, 100vh)", paddingBottom: "0px" }}
+      className="camera-page-container camera-wrapper absolute inset-0 bg-[#161616] overflow-hidden select-none animate-fade-in pb-0"
+      style={{ height: "var(--app-height, 100vh)", paddingBottom: "0px", zIndex: layer }}
     >
 	      {/* Hidden element to force immediate pre-loading and browser initialization of the Alkatra font */}
 	      <span className="font-alkatra opacity-0 absolute pointer-events-none select-none w-1 h-1 overflow-hidden" aria-hidden="true">AI</span>
@@ -3739,7 +3816,6 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                   style={{
                     width: COLOR_BLUR_SIZE,
                     height: COLOR_BLUR_SIZE,
-                    marginLeft: "8px",
                     opacity: isResultDecorationVisible && isColorBlurReady ? 1 : 0,
                     transition: "opacity 700ms cubic-bezier(0.16, 1, 0.3, 1)",
                     willChange: "opacity",
@@ -3858,7 +3934,6 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                   style={{
                     width: COLOR_BLUR_SIZE,
                     height: COLOR_BLUR_SIZE,
-                    marginLeft: "8px",
                     opacity: isResultDecorationVisible && isColorBlurReady ? 1 : 0,
                     transition: "opacity 700ms cubic-bezier(0.16, 1, 0.3, 1)",
                     willChange: "opacity",
@@ -3953,7 +4028,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                 </div>
 
                 {/* 🌟 识别出来归类的分类为一个白色小标签，位置上移，离标题更近，且描边结束后淡入 */}
-                {(traceCompleted || scanStep === "done") && customCategory && (
+                {!onCutoutComplete && (traceCompleted || scanStep === "done") && customCategory && (
                   <>
                     {/* Background Backdrop for fanned list when open - kept invisible for closing on outside click */}
                     <AnimatePresence>
@@ -4066,7 +4141,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
               </div>
 
               {/* Bottom section housing the three action buttons and Tap to adjust Input field */}
-              <div
+              {!onCutoutComplete && <div
                 className="capture-bottom-actions absolute left-0 right-0 w-full flex flex-col items-center px-6"
                 style={{ bottom: `${resultInputBottomGap + 56 + RESULT_BUTTON_INPUT_GAP}px` }}
               >
@@ -4108,10 +4183,10 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                     <RotateCcw className="w-5 h-5 text-[#232121]/50 stroke-[2]" />
                   </button>
                 </div>
-              </div>
+              </div>}
 
               {/* Editable bottom pill matching the provided result UI */}
-              <div 
+              {!onCutoutComplete && <div
                 className="absolute left-1/2 z-30 animate-fade-in flex-shrink-0 -translate-x-1/2"
                 style={{ width: "316px", height: "56px", bottom: `${resultInputBottomGap}px` }}
               >
@@ -4126,7 +4201,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                     classificationPromiseRef.current = null;
                   }}
                 />
-              </div>
+              </div>}
             </div>
           )}
 
@@ -4322,7 +4397,6 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                           style={{
                             width: COLOR_BLUR_SIZE,
                             height: COLOR_BLUR_SIZE,
-                            marginLeft: "8px",
                             opacity: isResultDecorationVisible && isColorBlurReady ? 1 : 0,
                             transition: "opacity 700ms cubic-bezier(0.16, 1, 0.3, 1)",
                             willChange: "opacity",
@@ -4965,22 +5039,29 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                   className="w-12 h-12 rounded-full hover:bg-black/5 active:scale-95 flex flex-col items-center justify-center text-[#3A3938] transition-all cursor-pointer"
                   title="Mock uploaded photo scanning"
                 >
-                  <ImageIcon className="w-6 h-6 text-[#3A3938]" />
+                  <PhotoUploadIcon className="h-8 w-8" />
                 </button>
 
                 {/* Aesthetic shutter capture button */}
                 <button
                   onClick={handleCapture}
-                  className="group relative w-20 h-20 rounded-full flex items-center justify-center bg-white transition-all duration-300 hover:scale-105 active:scale-95 shadow-[0_8px_24px_rgba(0,0,0,0.15)] cursor-pointer"
-                  style={{
-                    padding: "4px"
-                  }}
+                  className="group relative w-20 h-20 rounded-full flex items-center justify-center bg-transparent transition-all duration-300 hover:scale-105 active:scale-95 shadow-none cursor-pointer"
                 >
-                  {/* Shutter colorful radial halo border from mockup photo */}
-                  <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-cyan-400 via-orange-400 to-red-400 opacity-90 scale-105 blur-[2px] transition-all group-hover:scale-110" />
+                  {/* Crisp gradient ring with a soft halo, matching the shutter reference */}
+                  <div
+                    className="pointer-events-none absolute -inset-[2px] rounded-full"
+                    style={{
+                      background: "linear-gradient(to bottom left, #F5B5D9 0%, #FFC7A6 66%, #A1EBD9 100%)",
+                      filter: "blur(2px) saturate(1.18)",
+                    }}
+                  />
+                  <div
+                    className="pointer-events-none absolute inset-0 rounded-full"
+                    style={{ background: "linear-gradient(to bottom left, #F5B5D9 0%, #FFC7A6 66%, #A1EBD9 100%)" }}
+                  />
                   
                   {/* Inner button container */}
-                  <div className="relative w-full h-full rounded-full bg-[#F3F1EC] flex items-center justify-center border-2 border-white shadow-inner">
+                  <div className="absolute inset-[5px] rounded-full bg-[#F3F1EC] flex items-center justify-center border-2 border-white">
                     {/* Shiny metal core dot */}
                     <div className="w-8 h-8 rounded-full bg-[#181817] flex items-center justify-center border border-black/10">
                       <div className="w-2.5 h-2.5 rounded-full bg-white/10" />
@@ -4990,10 +5071,11 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
                 {/* Balanced Cancel button to replace CAM text and provide instant closing */}
                 <button
-                  onClick={onClose}
-                  className="w-12 h-12 flex items-center justify-center text-[13px] font-sans text-neutral-500 hover:text-black font-normal transition-all active:scale-95 cursor-pointer"
+                  onClick={onSwitchToEmoji || onClose}
+                  className="w-12 h-12 flex flex-col items-center justify-center text-neutral-500 hover:text-black transition-all active:scale-95 cursor-pointer"
+                  aria-label="Switch to Emoji mode"
                 >
-                  Cancel
+                  {onSwitchToEmoji ? <img src="/assets/icon-emoji.png" alt="" className="h-14 w-14 max-w-none object-contain" /> : "Cancel"}
                 </button>
               </div>
             </div>
