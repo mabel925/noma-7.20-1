@@ -9,6 +9,7 @@ import { AddItemFlowV13 } from "./components/AddItemFlowV13";
 import { useKeyboardReset } from "./hooks/useKeyboardReset";
 import { memoryStorage } from "./services/memoryStorage";
 import { NOMA_AI_URL } from "./services/backendUrls";
+import { isApiEnabled } from "./services/aiService";
 
 import { Wifi, Battery, Signal, RefreshCw, Sparkles, Target, Info } from "lucide-react";
 import { motion, AnimatePresence, useAnimation } from "motion/react";
@@ -495,8 +496,11 @@ export default function App() {
         ]);
       }, 300);
 
-      // Call our direct Worker endpoint
-      fetch(NOMA_AI_URL, {
+      // Keep the diagnostic API switch authoritative for every AI route,
+      // including the chat image-generation path which does not use the
+      // shared callNomaBackend helper.
+      const imageGenerationRequest = isApiEnabled()
+        ? fetch(NOMA_AI_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -506,6 +510,12 @@ export default function App() {
           prompt: prompt
         })
       })
+        : Promise.resolve(new Response(JSON.stringify({}), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }));
+
+      imageGenerationRequest
         .then((res) => {
           return res.text().then((body) => {
             if (!res.ok) {

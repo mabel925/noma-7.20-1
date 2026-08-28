@@ -8,6 +8,7 @@ import { EditPencilIcon } from "./EditPencilIcon";
 import { CloseIcon } from "./CloseIcon";
 import { CancelIcon } from "./CancelIcon";
 import { CameraIcon } from "./CameraIcon";
+import { RestartIcon } from "./RestartIcon";
 import { CollapseLocationIcon, ExpandLocationIcon } from "./LocationViewIcons";
 
 export const COLOR_BLUR_IMAGE_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/colorblur.png";
@@ -116,6 +117,7 @@ const getPersistentImageResource = (src: string) => {
 };
 
 const cachedDisplaySource = (src: string) => persistentImageCache.get(src)?.displaySrc || src;
+const isEmojiImageUrl = (src?: string) => Boolean(src && /(?:^|\/)emoji\/[^/?#]+\.png(?:[?#]|$)/i.test(src));
 
 type PersistentImageProps = React.ImgHTMLAttributes<HTMLImageElement> & {
   showSkeleton?: boolean;
@@ -264,9 +266,9 @@ type SubLocationSummary = {
   subLocationHighlight?: { x: number; y: number };
 };
 
-type MemoryLocationField = "parent" | "sub";
+export type MemoryLocationField = "parent" | "sub";
 
-type MemorySubLocationOption = {
+export type MemorySubLocationOption = {
   key: string;
   name: string;
   parentName: string;
@@ -276,7 +278,7 @@ type MemorySubLocationOption = {
   subLocationHighlight?: { x: number; y: number };
 };
 
-type MemoryParentLocationOption = {
+export type MemoryParentLocationOption = {
   key: string;
   name: string;
   imgUrl: string;
@@ -431,7 +433,7 @@ const SubLocationItemPreview: React.FC<{ item: MemoryItem }> = ({ item }) => (
   </div>
 );
 
-const PriceTag: React.FC<{ price: string; className?: string }> = ({ price, className = "" }) => (
+export const PriceTag: React.FC<{ price: string; className?: string }> = ({ price, className = "" }) => (
   <div className={`h-[30px] text-white flex items-stretch justify-center select-none ${className}`}>
     <svg
       width="19"
@@ -530,7 +532,7 @@ const ParentSpaceResultCard: React.FC<{ space: SpaceSummary; onClick?: () => voi
     className="w-full h-[160px] rounded-[24px] bg-white overflow-hidden px-[14px] py-[18px] select-none cursor-pointer active:scale-[0.98] transition-transform"
   >
     <div className="flex items-center gap-[12px]">
-      <div className="relative w-[56px] h-[56px] rounded-[8px] bg-neutral-100 overflow-hidden shrink-0">
+      <div className={`relative w-[56px] h-[56px] rounded-[8px] overflow-hidden shrink-0 ${isEmojiImageUrl(space.imgUrl) ? "bg-[#E9E6E1]" : "bg-neutral-100"}`}>
         <SkeletonImage
           src={space.imgUrl}
           alt={space.name}
@@ -575,7 +577,7 @@ const ChildSpaceResultCard: React.FC<{ space: SubLocationSummary; onClick?: () =
       className="w-full h-[160px] rounded-[24px] bg-white overflow-hidden px-[14px] py-[18px] select-none cursor-pointer active:scale-[0.98] transition-transform"
     >
       <div className="flex items-start gap-[12px]">
-        <div className="relative w-[56px] h-[56px] rounded-[8px] bg-neutral-100 overflow-hidden shrink-0">
+        <div className={`relative w-[56px] h-[56px] rounded-[8px] overflow-hidden shrink-0 ${isEmojiImageUrl(space.imgUrl) ? "bg-[#E9E6E1]" : "bg-neutral-100"}`}>
           {space.imgUrl ? (
             <SkeletonImage
               src={space.imgUrl}
@@ -828,7 +830,8 @@ const DetailCardActionGroup: React.FC<{
 const RetakePhotoButton: React.FC<{
   onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
   label?: string;
-}> = ({ onClick, label = "Retake photo" }) => (
+  icon?: React.ReactNode;
+}> = ({ onClick, label = "Retake photo", icon }) => (
   <button
     type="button"
     onClick={onClick}
@@ -836,7 +839,7 @@ const RetakePhotoButton: React.FC<{
     title={label}
     className="flex h-[44px] w-[44px] items-center justify-center rounded-full bg-black/60 text-white active:scale-95 transition-transform"
   >
-    <CameraIcon className="h-[22px] w-[22px]" />
+    {icon || <CameraIcon className="h-[22px] w-[22px]" />}
   </button>
 );
 
@@ -1095,7 +1098,7 @@ const LocationRetakeCapture: React.FC<{
   );
 };
 
-const MemoryLocationPicker: React.FC<{
+export const MemoryLocationPicker: React.FC<{
   field: MemoryLocationField;
   parentOptions: MemoryParentLocationOption[];
   subOptions: MemorySubLocationOption[];
@@ -1267,7 +1270,7 @@ const SubLocationListCard: React.FC<{
       className="w-full h-[160px] rounded-[28px] bg-white px-[14px] py-[18px] text-left select-none active:scale-[0.98] transition-transform"
     >
       <div className="flex items-center gap-[14px]">
-        <div className="relative h-[56px] w-[56px] rounded-[9px] overflow-hidden bg-neutral-100 shrink-0">
+        <div className={`relative h-[56px] w-[56px] rounded-[9px] overflow-hidden shrink-0 ${isEmojiImageUrl(space.imgUrl) ? "bg-[#E9E6E1]" : "bg-neutral-100"}`}>
           {space.imgUrl ? (
             <SkeletonImage
               src={space.imgUrl}
@@ -2946,6 +2949,8 @@ export const MemoryList: React.FC<MemoryListProps> = ({
                   alt={selectedParentSpace.name}
                   className={`relative z-10 rounded-[26px] border-[3px] border-white object-cover ${
                     isEditingParentName ? "shadow-none" : "shadow-[0_16px_32px_rgba(35,33,33,0.12)]"
+                  } ${
+                    isEmojiImageUrl(parentHeroImage) ? "bg-[#E9E6E1]" : ""
                   }`}
                   referrerPolicy="no-referrer"
                   animate={{
@@ -2964,6 +2969,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
                         setIsParentRetakeCaptureOpen(true);
                       }}
                       label="Retake parent photo"
+                      icon={<RestartIcon className="h-7 w-7" color="#FFFFFF" />}
                     />
                   </div>
                 )}
@@ -3135,7 +3141,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
                   className="bg-white rounded-[12px] p-[8px] pb-3 hover:shadow-[0_4px_12px_rgba(35,33,33,0.08)] active:scale-[0.98] transition-[transform,box-shadow] flex flex-col overflow-hidden select-none"
                 >
                   {/* Space Parent Image with exact 4:5 aspect */}
-                  <div className="relative rounded-[8px] overflow-hidden aspect-[4/5] w-full bg-neutral-100 flex-shrink-0">
+                  <div className={`relative rounded-[8px] overflow-hidden aspect-[4/5] w-full flex-shrink-0 ${isEmojiImageUrl(space.imgUrl) ? "bg-[#E9E6E1]" : "bg-neutral-100"}`}>
                     <SkeletonImage
                       src={space.imgUrl}
                       alt={space.name}
@@ -3190,7 +3196,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
                   className="bg-white rounded-[12px] p-[8px] pb-3 hover:shadow-[0_4px_12px_rgba(35,33,33,0.08)] active:scale-[0.98] transition-[transform,box-shadow] flex flex-col overflow-hidden select-none"
                 >
                   {/* Space Parent Image with exact 4:5 aspect */}
-                  <div className="relative rounded-[8px] overflow-hidden aspect-[4/5] w-full bg-neutral-100 flex-shrink-0">
+                  <div className={`relative rounded-[8px] overflow-hidden aspect-[4/5] w-full flex-shrink-0 ${isEmojiImageUrl(space.imgUrl) ? "bg-[#E9E6E1]" : "bg-neutral-100"}`}>
                     <SkeletonImage
                       src={space.imgUrl}
                       alt={space.name}

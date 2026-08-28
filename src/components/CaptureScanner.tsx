@@ -13,6 +13,7 @@ import { TagSwitchIcon } from "./TagSwitchIcon";
 import { EditPencilIcon } from "./EditPencilIcon";
 import { CloseIcon } from "./CloseIcon";
 import { PhotoUploadIcon } from "./PhotoUploadIcon";
+import { CaptureShutterButton } from "./CaptureShutterButton";
 import {
   getStickerTitleStyle,
   isChineseTitle,
@@ -5042,32 +5043,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                   <PhotoUploadIcon className="h-8 w-8" />
                 </button>
 
-                {/* Aesthetic shutter capture button */}
-                <button
-                  onClick={handleCapture}
-                  className="group relative w-20 h-20 rounded-full flex items-center justify-center bg-transparent transition-all duration-300 hover:scale-105 active:scale-95 shadow-none cursor-pointer"
-                >
-                  {/* Crisp gradient ring with a soft halo, matching the shutter reference */}
-                  <div
-                    className="pointer-events-none absolute -inset-[2px] rounded-full"
-                    style={{
-                      background: "linear-gradient(to bottom left, #F5B5D9 0%, #FFC7A6 66%, #A1EBD9 100%)",
-                      filter: "blur(2px) saturate(1.18)",
-                    }}
-                  />
-                  <div
-                    className="pointer-events-none absolute inset-0 rounded-full"
-                    style={{ background: "linear-gradient(to bottom left, #F5B5D9 0%, #FFC7A6 66%, #A1EBD9 100%)" }}
-                  />
-                  
-                  {/* Inner button container */}
-                  <div className="absolute inset-[5px] rounded-full bg-[#F3F1EC] flex items-center justify-center border-2 border-white">
-                    {/* Shiny metal core dot */}
-                    <div className="w-8 h-8 rounded-full bg-[#181817] flex items-center justify-center border border-black/10">
-                      <div className="w-2.5 h-2.5 rounded-full bg-white/10" />
-                    </div>
-                  </div>
-                </button>
+                <CaptureShutterButton onClick={handleCapture} />
 
                 {/* Balanced Cancel button to replace CAM text and provide instant closing */}
                 <button

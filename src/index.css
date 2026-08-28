@@ -30,6 +30,8 @@
 
 .font-zihun-biantao {
   font-family: "Zihun Biantao", "Alkatra", cursive, sans-serif !important;
+  font-synthesis: none;
+  font-weight: 400 !important;
 }
 
 body.capture-page-open::before {
@@ -742,7 +744,12 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
   align-items: center;
   width: 320px;
   height: 51px;
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 180ms ease, visibility 0s linear;
 }
+
+.noma-add-modebar.is-keyboard-hidden { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 140ms ease, visibility 0s linear 140ms; }
 
 .noma-add-segmented {
   display: grid;
@@ -775,6 +782,7 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
   display: grid;
   width: 40px;
   height: 51px;
+  padding: 0 0 0 20px;
   place-items: center;
   color: rgba(35, 33, 33, 0.5);
   border: 0;
@@ -791,6 +799,7 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 }
 
 .noma-add-title-form input {
+  box-sizing: border-box;
   width: 100%;
   height: 104px;
   padding: 0 8px;
@@ -804,7 +813,14 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
   background: transparent;
 }
 
-.noma-add-title-form input::placeholder { color: rgba(35, 33, 33, 0.6); opacity: 1; }
+.noma-add-title-form input.font-zihun-biantao {
+  line-height: 1.2;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.noma-add-title-form input:placeholder-shown { opacity: 0.15; }
+.noma-add-title-form input::placeholder { color: #232121; opacity: 1; }
 .noma-add-title-form span { display: block; width: 250px; height: 1px; margin: 1px auto 0; background: rgba(35, 33, 33, 0.08); }
 
 .noma-add-item-result {
@@ -868,9 +884,6 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 
 .noma-add-emoji-outline {
   z-index: 1;
-  inset: -6px;
-  width: calc(100% + 12px);
-  height: calc(100% + 12px);
   overflow: visible;
 }
 
@@ -893,14 +906,13 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
   z-index: 35;
   top: 137px;
   left: 24px;
-  width: 100px;
-  height: 100px;
-  transform: rotate(-7deg);
-  transform-origin: center;
+  width: 250px;
+  height: 250px;
+  transform: scale(0.4) rotate(-7deg);
+  transform-origin: top left;
 }
 
-.noma-add-item-sticker.is-compact .noma-add-emoji-media { inset: auto; top: 0; left: 11px; width: 78px; height: 78px; }
-.noma-add-item-sticker.is-compact .noma-add-item-title { left: 0; pointer-events: none; }
+.noma-add-item-sticker.is-compact .noma-add-item-title { pointer-events: none; }
 
 .noma-add-category {
   position: absolute;
@@ -912,7 +924,7 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
   height: 30px;
   padding: 0 11px;
   color: rgba(35, 33, 33, 0.5);
-  font-size: 14px;
+  font-size: 14px !important;
   border: 0;
   border-radius: 15px;
   background: #fff;
@@ -982,11 +994,11 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
   display: flex;
   width: max-content;
   height: 30px;
-  padding: 0 14px;
+  padding: 0 11px;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 400;
   white-space: nowrap;
   border-radius: 15px;
   background: #fff;
@@ -1022,6 +1034,8 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 .noma-add-round-button.is-restart,
 .noma-add-round-button.is-confirm { width: 72px; height: 72px; }
 .noma-add-round-button.is-confirm { color: #fff; background: #232121; }
+.noma-add-round-actions.is-three .noma-add-round-button.is-restart,
+.noma-add-round-actions.is-three .noma-add-round-button:not(.is-confirm) { width: 62px; height: 62px; }
 
 .noma-add-result-underline {
   position: absolute;
@@ -1064,8 +1078,8 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 }
 
 @keyframes noma-add-button-pop {
-  0% { opacity: 0; transform: scale(0); }
-  78% { opacity: 1; transform: scale(1.4); }
+  0% { opacity: 0; transform: scale(0.72); animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1); }
+  62% { opacity: 1; transform: scale(1.2); animation-timing-function: cubic-bezier(0, 0, 0.2, 1); }
   100% { opacity: 1; transform: scale(1); }
 }
 
@@ -1102,11 +1116,23 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 
 .noma-add-round-actions.is-revealing .noma-add-round-button {
   transform-origin: center;
-  animation: noma-add-button-pop 560ms 720ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: noma-add-button-pop 420ms 720ms both;
 }
 
 .noma-add-round-actions.is-revealing .noma-add-round-button:nth-child(2) {
-  animation-delay: 980ms;
+  animation-delay: 850ms;
+}
+
+/* Location capture has the confirm action in the visual center. Reveal it
+   first, then the reset and close actions in the same entrance sequence. */
+.noma-add-round-actions.is-revealing.is-three .noma-add-round-button:nth-child(2) {
+  animation-delay: 0ms;
+}
+.noma-add-round-actions.is-revealing.is-three .noma-add-round-button:nth-child(1) {
+  animation-delay: 90ms;
+}
+.noma-add-round-actions.is-revealing.is-three .noma-add-round-button:nth-child(3) {
+  animation-delay: 180ms;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1161,7 +1187,7 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 .noma-add-camera-drawer { position: absolute; right: 0; bottom: 0; left: 0; height: 213px; border-radius: 60px 60px 0 0; background: #e9e6e1; }
 .noma-add-drawer-handle { position: absolute; top: 10px; left: 171px; width: 49px; height: 5px; border-radius: 3px; background: #cbc4be; }
 .noma-add-camera-controls { position: absolute; right: 43px; bottom: 42px; left: 43px; display: grid; grid-template-columns: 72px 1fr 72px; align-items: center; justify-items: center; }
-.noma-add-camera-controls > button:not(.noma-add-shutter) { display: grid; width: 62px; height: 62px; place-items: center; color: rgba(35, 33, 33, 0.45); border: 0; background: transparent; }
+.noma-add-camera-controls > button:not(.noma-add-shutter):not(.capture-shutter-button) { display: grid; width: 62px; height: 62px; place-items: center; color: rgba(35, 33, 33, 0.45); border: 0; background: transparent; }
 .noma-add-camera-controls svg { width: 32px; height: 32px; }
 .noma-add-shutter {
   position: relative;
@@ -1181,37 +1207,76 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 .noma-add-camera-emoji span { font-size: 32px; line-height: 28px; }
 .noma-add-camera-emoji strong { font-size: 17px; }
 
-.noma-add-space-wrap { position: absolute; z-index: 10; top: 186px; left: 20px; width: 350px; height: 424px; transition: transform 180ms ease-out; }
-.noma-add-space-card { position: relative; width: 350px; height: 424px; overflow: hidden; border-radius: 36px; background: rgba(204, 196, 190, 0.5); }
+.noma-add-space-composition { position: absolute; z-index: 10; inset: 0; pointer-events: none; transition: transform 420ms cubic-bezier(0.16, 1, 0.3, 1); }
+.noma-add-space-composition .noma-add-item-sticker,
+.noma-add-space-composition .noma-add-space-wrap { pointer-events: auto; }
+.noma-add-space-wrap { position: absolute; z-index: 10; top: 186px; left: 20px; width: 350px; height: 424px; }
+.noma-add-space-card { position: relative; width: 350px; height: 424px; overflow: hidden; overflow: clip; border-radius: 36px; background: rgba(204, 196, 190, 0.5); transition: background-color 420ms cubic-bezier(0.16, 1, 0.3, 1); }
 .noma-add-space-card.is-active { background: #fff; }
-.noma-add-parent-zone { position: absolute; top: 0; left: 0; width: 350px; height: 124px; }
+.noma-add-parent-zone { position: absolute; top: 0; left: 0; width: 350px; height: 424px; }
 .noma-add-space-placeholder { position: absolute; top: 48px; left: 60px; width: 230px; color: rgba(35, 33, 33, 0.15); font-size: 22px; font-weight: 600; text-align: center; }
-.noma-add-sub-card { position: absolute; top: 124px; left: 49px; width: 251px; height: 280px; overflow: hidden; border-radius: 36px; background: #fff; }
-.noma-add-space-placeholder-icon { position: absolute; top: 15px; left: 32px; width: 186px; height: 186px; object-fit: contain; opacity: 0.26; }
+.noma-add-sub-card { position: absolute; top: 124px; left: 49px; width: 251px; height: 280px; overflow: hidden; border-radius: 36px; background: #fff; transition: top 420ms cubic-bezier(0.16, 1, 0.3, 1), left 420ms cubic-bezier(0.16, 1, 0.3, 1), width 420ms cubic-bezier(0.16, 1, 0.3, 1), height 420ms cubic-bezier(0.16, 1, 0.3, 1), border-radius 420ms cubic-bezier(0.16, 1, 0.3, 1), background-color 420ms cubic-bezier(0.16, 1, 0.3, 1); }
+.noma-add-space-placeholder-icon { position: absolute; top: 16px; left: 32px; width: 186px; height: 186px; object-fit: contain; opacity: 0.4; transform: none; transform-origin: top left; transition: transform 420ms cubic-bezier(0.16, 1, 0.3, 1); will-change: transform; }
 .noma-add-space-input-wrap { position: absolute; inset: 0; }
 .noma-add-space-input-wrap input { position: absolute; z-index: 2; left: 10px; bottom: 20px; width: 230px; height: 87px; padding: 0; color: #232121; font-size: 22px; font-weight: 600; line-height: 1.25; text-align: center; white-space: pre-line; border: 0; outline: 0; background: transparent; }
 .noma-add-space-input-wrap input::placeholder { color: rgba(35, 33, 33, 0.15); opacity: 1; }
+.noma-add-space-title-hotspot { cursor: text; touch-action: manipulation; user-select: none; }
+.noma-add-parent-input-preview { position: absolute; z-index: 2; top: 29px; left: 60px; display: flex; width: 230px; height: 87px; align-items: center; justify-content: center; color: rgba(35, 33, 33, 0.15); font-size: 22px; font-weight: 600; line-height: 1.25; text-align: center; }
 .noma-add-parent-zone .noma-add-space-input-wrap input { top: 29px; bottom: auto; left: 60px; }
-.noma-add-parent-zone .noma-add-space-placeholder-icon { top: 5px; left: 125px; width: 100px; height: 100px; opacity: 0.38; }
-.noma-add-sub-placeholder { position: absolute; z-index: 2; right: 10px; bottom: 38px; left: 10px; color: rgba(35, 33, 33, 0.15); font-size: 22px; font-weight: 600; line-height: 1.25; text-align: center; }
+.noma-add-parent-zone .noma-add-space-placeholder-icon { top: 5px; left: 82px; width: 186px; height: 186px; opacity: 0.4; }
+.noma-add-sub-placeholder { position: absolute; z-index: 2; top: 166px; right: 10px; bottom: auto; left: 10px; display: flex; height: 87px; align-items: center; justify-content: center; color: rgba(35, 33, 33, 0.15); font-size: 22px; font-weight: 600; line-height: 1.25; text-align: center; transform: none; transition: top 420ms cubic-bezier(0.16, 1, 0.3, 1), right 420ms cubic-bezier(0.16, 1, 0.3, 1), left 420ms cubic-bezier(0.16, 1, 0.3, 1), height 420ms cubic-bezier(0.16, 1, 0.3, 1), font-size 420ms cubic-bezier(0.16, 1, 0.3, 1); }
 .noma-add-sub-placeholder.is-input-placeholder { pointer-events: none; }
 .noma-add-space-value,
-.noma-add-sub-value { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.noma-add-sub-value img { width: 186px; height: 186px; object-fit: contain; }
-.noma-add-sub-value strong { margin-top: 4px; font-size: 22px; }
-.noma-add-space-value { flex-direction: row; gap: 12px; }
-.noma-add-space-value img { width: 58px; height: 58px; object-fit: contain; }
-.noma-add-space-value strong { max-width: 210px; overflow: hidden; font-size: 20px; text-overflow: ellipsis; white-space: nowrap; }
+.noma-add-sub-value { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: padding 420ms cubic-bezier(0.16, 1, 0.3, 1), gap 420ms cubic-bezier(0.16, 1, 0.3, 1); }
+.noma-add-sub-value img { position: absolute; top: 16px; left: 32px; width: 186px; height: 186px; object-fit: contain; opacity: 1; transform: none; transform-origin: top left; transition: transform 420ms cubic-bezier(0.16, 1, 0.3, 1); will-change: transform; }
+.noma-add-sub-value strong { position: absolute; top: 166px; left: 50%; display: flex; width: max-content; min-width: 0; height: 87px; max-width: 230px; margin: 0; align-items: center; justify-content: center; overflow: hidden; font-size: 18px !important; line-height: 1.2; text-align: center; text-overflow: clip; overflow-wrap: anywhere; white-space: normal; transform: translateX(-50%); transition: top 420ms cubic-bezier(0.16, 1, 0.3, 1), left 420ms cubic-bezier(0.16, 1, 0.3, 1), width 420ms cubic-bezier(0.16, 1, 0.3, 1), height 420ms cubic-bezier(0.16, 1, 0.3, 1), font-size 420ms cubic-bezier(0.16, 1, 0.3, 1), line-height 420ms cubic-bezier(0.16, 1, 0.3, 1), transform 420ms cubic-bezier(0.16, 1, 0.3, 1); }
+.noma-add-space-value { display: block; height: 424px; bottom: auto; }
+.noma-add-space-value img { position: absolute; top: 25px; left: 82px; width: 186px; height: 186px; object-fit: contain; opacity: 1; transform: none; transform-origin: center; will-change: transform; }
+.noma-add-space-value strong { position: absolute; top: 29px; left: calc(210px - (var(--noma-parent-title-width, 184px) / 2)); display: flex; width: max-content; min-width: 0; height: 66px; max-width: 230px; margin: 0; align-items: center; overflow: hidden; font-size: 22px !important; line-height: 1.2; text-align: left; text-overflow: clip; overflow-wrap: anywhere; white-space: normal; opacity: 1; transform: none; transition: top 420ms cubic-bezier(0.16, 1, 0.3, 1), left 420ms cubic-bezier(0.16, 1, 0.3, 1), width 420ms cubic-bezier(0.16, 1, 0.3, 1), height 420ms cubic-bezier(0.16, 1, 0.3, 1), max-width 420ms cubic-bezier(0.16, 1, 0.3, 1), font-size 420ms cubic-bezier(0.16, 1, 0.3, 1), line-height 420ms cubic-bezier(0.16, 1, 0.3, 1), text-align 420ms cubic-bezier(0.16, 1, 0.3, 1), opacity 140ms ease, transform 420ms cubic-bezier(0.16, 1, 0.3, 1); }
+.noma-add-space-value.is-editing strong { pointer-events: none; opacity: 0; }
+.noma-add-parent-visual { position: absolute; top: 0; left: 50%; width: calc(70px + var(--noma-parent-title-width, 184px)); height: 124px; transform: translateX(-50%); transition: width 420ms cubic-bezier(0.16, 1, 0.3, 1), height 420ms cubic-bezier(0.16, 1, 0.3, 1); }
+.noma-add-parent-visual img { top: 33px; left: 0; width: 58px; height: 58px; transform: none; transform-origin: center; transition: top 420ms cubic-bezier(0.16, 1, 0.3, 1), left 420ms cubic-bezier(0.16, 1, 0.3, 1), width 420ms cubic-bezier(0.16, 1, 0.3, 1), height 420ms cubic-bezier(0.16, 1, 0.3, 1); }
+.noma-add-parent-visual strong { top: 29px; left: 70px; width: max-content; height: 66px; max-width: 230px; transform: none; }
 .noma-add-space-card.is-active .noma-add-parent-zone { width: 350px; height: 424px; }
-.noma-add-space-card.is-active .noma-add-parent-zone .noma-add-space-placeholder-icon { top: 45px; left: 125px; }
-.noma-add-space-card.is-active .noma-add-parent-zone .noma-add-space-input-wrap input { top: 199px; left: 60px; }
-.noma-add-space-card.is-active .noma-add-space-value { flex-direction: column; gap: 14px; padding-bottom: 80px; }
-.noma-add-space-card.is-active .noma-add-space-value img { width: 120px; height: 120px; }
-.noma-add-space-card.is-active .noma-add-space-value strong { font-size: 22px; }
-.noma-add-space-card.is-active .noma-add-sub-card { top: 316px; left: 43px; width: 264px; height: 82px; border-radius: 42px; background: rgba(233, 230, 225, 0.8); }
-.noma-add-space-card.is-active .noma-add-sub-value { flex-direction: row; gap: 20px; padding: 9px 22px; }
-.noma-add-space-card.is-active .noma-add-sub-value img { width: 50px; height: 50px; flex: 0 0 auto; border-radius: 10px; }
-.noma-add-space-card.is-active .noma-add-sub-value strong { max-width: 150px; margin: 0; overflow: hidden; font-size: 18px; text-overflow: ellipsis; white-space: nowrap; }
+.noma-add-space-card.is-active .noma-add-parent-zone .noma-add-space-placeholder-icon { top: 25px; left: 82px; width: 186px; height: 186px; }
+.noma-add-space-card.is-active .noma-add-parent-zone .noma-add-space-input-wrap input { top: 189px; left: 60px; }
+.noma-add-space-card.is-active .noma-add-parent-input-preview { top: 189px; }
+.noma-add-space-card.is-active .noma-add-space-value { padding: 0; }
+.noma-add-space-card.is-active .noma-add-parent-visual { width: 230px; height: 276px; }
+.noma-add-space-card.is-active .noma-add-parent-visual img { top: 25px; left: 22px; width: 186px; height: 186px; transform: none; }
+.noma-add-space-card.is-active .noma-add-parent-visual strong { top: 189px; left: 50%; width: max-content; height: 87px; max-width: 230px; align-items: center; justify-content: center; overflow: visible; font-size: 22px; line-height: 1.2; text-align: center; text-overflow: clip; overflow-wrap: anywhere; white-space: normal; transform: translateX(-50%); }
+.noma-add-space-card.is-active .noma-add-sub-card { top: 314px; left: 43px; width: 264px; height: 84px; overflow: visible; border-radius: 42px; background: rgba(204, 196, 190, 0.3); }
+.noma-add-space-card.is-active .noma-add-sub-value { padding: 0; }
+.noma-add-space-card.is-active .noma-add-sub-value img { transform: translate3d(-32px, -20px, 0) scale(0.494624); border-radius: 0; }
+.noma-add-space-card.is-active .noma-add-sub-value img.is-photo {
+  top: 18px;
+  left: 16px;
+  width: 48px;
+  height: 48px;
+  border: 2.5px solid #fff;
+  border-radius: 8px;
+  box-sizing: border-box;
+  object-fit: cover;
+  transform: none;
+}
+.noma-add-space-card.is-active .noma-add-sub-value strong { top: 21px; left: 86px; display: flex; width: 162px; height: 42px; max-width: 162px; margin: 0; align-items: center; justify-content: center; font-size: 18px; line-height: 1.2; transform: none; }
+.noma-add-space-card.is-active .noma-add-sub-value strong { padding-right: 16px; box-sizing: border-box; }
+.noma-add-space-card.is-active .noma-add-sub-card .noma-add-space-placeholder-icon { transform: translate3d(-32px, -20px, 0) scale(0.494624); opacity: 0.4; }
+.noma-add-space-card.is-active .noma-add-sub-card .noma-add-sub-placeholder { top: 21px; right: 16px; bottom: auto; left: 86px; display: flex; width: 162px; max-width: 162px; height: 42px; box-sizing: border-box; padding-right: 16px; align-items: center; justify-content: center; font-size: 17px; line-height: 1.2; transform: none; }
+.noma-add-sub-card.is-active { overflow: visible; }
+.noma-add-sub-card.is-active .noma-add-sub-value strong { font-size: 22px !important; }
+.noma-add-sub-card.is-active .noma-add-space-input-wrap { inset: 0; display: block; height: 280px; }
+.noma-add-sub-card.is-active .noma-add-space-input-wrap .noma-add-space-placeholder-icon { position: absolute; top: 16px; left: 32px; width: 186px; height: 186px; transform: none; }
+.noma-add-sub-card.is-active .noma-add-space-input-wrap input { position: absolute; top: 166px; right: auto; bottom: auto; left: 10px; width: 230px; height: 87px; line-height: 87px; }
+.noma-add-sub-card.is-active .noma-add-space-input-wrap .noma-add-sub-placeholder { top: 166px; right: 10px; bottom: auto; left: 10px; display: flex; height: 87px; align-items: center; justify-content: center; transform: none; }
+.noma-add-space-card .noma-add-space-value.is-photo .noma-add-parent-visual { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: none; }
+.noma-add-space-card .noma-add-space-value.is-photo .noma-add-parent-visual img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; border: 2.5px solid #fff; border-radius: 36px; box-sizing: border-box; transform: none; }
+.noma-add-space-card .noma-add-space-value.is-photo .noma-add-parent-visual strong { position: absolute; top: 54px; left: 0; display: block; width: 100%; height: auto; max-width: none; color: #fff; font-size: 22px; line-height: 1.2; text-align: center; text-overflow: clip; transform: none; }
+.noma-add-space-card:not(.is-active) .noma-add-sub-value.is-photo img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; border: 2.5px solid #fff; border-radius: 36px; box-sizing: border-box; transform: none; }
+.noma-add-space-card:not(.is-active) .noma-add-sub-value.is-photo strong { position: absolute; top: 42px; left: 0; display: block; width: 100%; height: auto; max-width: none; color: #fff; font-size: 22px; line-height: 1.2; text-align: center; text-overflow: clip; transform: none; }
+.noma-add-sub-card.is-active .noma-add-sub-value.is-photo img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; border: 2.5px solid #fff; border-radius: 36px; box-sizing: border-box; transform: none; }
+.noma-add-sub-card.is-active .noma-add-sub-value.is-photo strong { position: absolute; top: 42px; left: 0; display: block; width: 100%; height: auto; max-width: none; color: #fff; font-size: 22px; line-height: 1.2; text-align: center; text-overflow: clip; transform: none; }
+.noma-add-space-placeholder-icon.is-filled { opacity: 1 !important; }
 .noma-add-space-card.is-active .noma-add-parent-zone .noma-add-recent-bubble { top: 97px; left: 74px; }
 .noma-add-recent-bubble { position: absolute; z-index: 5; top: 79px; left: 24px; display: flex; align-items: center; width: 203px; height: 56px; padding: 6px 11px; border-radius: 28px; background: rgba(233, 230, 225, 0.86); }
 .noma-add-parent-zone .noma-add-recent-bubble { top: 28px; left: 74px; }
@@ -1219,40 +1284,155 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 .noma-add-recent-bubble span { flex: 1; min-width: 0; padding: 0 9px; overflow: hidden; font-size: 17px; text-overflow: ellipsis; white-space: nowrap; }
 .noma-add-recent-bubble button { display: grid; width: 33px; height: 33px; flex: 0 0 auto; place-items: center; color: #232121; border: 0; border-radius: 50%; background: linear-gradient(140deg, #f5b5d9, #ffc7a6 60%, #a1ebd9); }
 .noma-add-recent-bubble svg { width: 20px; height: 20px; }
+.noma-add-recent-bubble.is-camera { background: rgba(255, 255, 255, 0.8); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); }
+.noma-add-space-camera-parent-frame > .noma-add-recent-bubble.is-camera { z-index: 9; top: 97px; left: 74px; }
+.noma-add-space-camera-sub-frame > .noma-add-recent-bubble.is-camera { z-index: 9; top: 79px; left: 24px; }
 .noma-add-cancel-text { position: absolute; bottom: 132px; left: 50%; color: rgba(35, 33, 33, 0.5); font-size: 18px; border: 0; background: transparent; transform: translateX(-50%); }
 
-.noma-add-space-camera-frame { position: absolute; top: 186px; left: 20px; width: 350px; height: 424px; overflow: hidden; border-radius: 36px; background: rgba(204, 196, 190, 0.5); }
-.noma-add-space-camera-frame > img,
-.noma-add-camera-empty { width: 100%; height: 100%; object-fit: cover; }
-.noma-add-space-camera-frame > img { border: 3px solid #fff; border-radius: 36px; }
+.noma-add-space-camera-wrap { position: absolute; z-index: 10; inset: 0; pointer-events: none; transition: transform 420ms cubic-bezier(0.16, 1, 0.3, 1); }
+.noma-add-space-camera-parent-frame { position: absolute; top: 186px; left: 20px; width: 350px; height: 424px; overflow: hidden; border-radius: 36px; background: rgba(204, 196, 190, 0.5); pointer-events: auto; }
+.noma-add-space-camera-wrap.is-sub .noma-add-space-camera-parent-frame { overflow: visible; }
+.noma-add-space-camera-sub-frame { position: absolute; z-index: 3; top: 124px; left: 49px; width: 251px; height: 280px; overflow: hidden; border-radius: 36px; background: #fff; transition: top 420ms cubic-bezier(0.16, 1, 0.3, 1), left 420ms cubic-bezier(0.16, 1, 0.3, 1), width 420ms cubic-bezier(0.16, 1, 0.3, 1), height 420ms cubic-bezier(0.16, 1, 0.3, 1), border-radius 420ms cubic-bezier(0.16, 1, 0.3, 1), background-color 420ms cubic-bezier(0.16, 1, 0.3, 1), backdrop-filter 420ms ease; }
+.noma-add-space-camera-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  color: rgba(255, 255, 255, 0.95);
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.noma-add-space-camera-placeholder img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.noma-add-space-camera-placeholder.is-emoji img { position: absolute; top: 50%; left: 50%; width: 186px; height: 186px; object-fit: contain; opacity: 1; transform: translate(-50%, -58%); }
+.noma-add-space-camera-placeholder.is-empty img { opacity: 0.4; }
+.noma-add-space-camera-placeholder strong,
+.noma-add-space-camera-placeholder > .noma-add-space-camera-title { position: absolute; top: 58%; left: 10px; width: calc(100% - 20px); color: rgba(255, 255, 255, 0.95); font-size: 22px; font-weight: 600; line-height: 1.2; text-align: center; }
+.noma-add-space-camera-placeholder.is-emoji strong,
+.noma-add-space-camera-placeholder.is-emoji > .noma-add-space-camera-title { color: #232121; }
+.noma-add-space-camera-placeholder.is-empty strong,
+.noma-add-space-camera-placeholder.is-empty > .noma-add-space-camera-title { color: rgba(35, 33, 33, 0.15); }
+.noma-add-space-camera-sub-frame .noma-add-space-camera-placeholder.is-emoji img { transform: translate(-50%, -68%); }
+.noma-add-space-camera-sub-frame .noma-add-space-camera-placeholder strong,
+.noma-add-space-camera-sub-frame .noma-add-space-camera-placeholder > .noma-add-space-camera-title { top: 68%; font-size: 22px; }
+.noma-add-space-camera-sub-frame .noma-add-space-camera-placeholder strong { top: 68%; font-size: 22px; }
+.noma-add-space-camera-wrap.is-sub .noma-add-space-camera-sub-frame .noma-add-space-camera-placeholder.is-filled.is-emoji strong,
+.noma-add-space-camera-wrap.is-sub .noma-add-space-camera-sub-frame .noma-add-space-camera-placeholder.is-filled.is-emoji > .noma-add-space-camera-title { font-size: 22px; }
+.noma-add-space-camera-wrap.is-sub .noma-add-space-camera-parent-frame > .noma-add-space-camera-placeholder { z-index: 2; height: 124px; }
+.noma-add-space-camera-wrap.is-sub .noma-add-space-camera-parent-frame > .noma-add-space-camera-placeholder.is-empty strong { top: 48px; left: 60px; width: 230px; color: rgba(35, 33, 33, 0.15); font-size: 22px; }
+.noma-add-space-camera-wrap.is-sub .noma-add-space-camera-parent-frame > .noma-add-space-camera-placeholder.is-filled { position: absolute; display: flex; flex-direction: row; gap: 12px; align-items: center; justify-content: center; }
+.noma-add-space-camera-wrap.is-sub .noma-add-space-camera-parent-frame > .noma-add-space-camera-placeholder.is-filled img { position: static; width: 58px; height: 58px; flex: 0 0 58px; object-fit: contain; opacity: 1; border-radius: 0; transform: none; }
+.noma-add-space-camera-wrap.is-sub .noma-add-space-camera-parent-frame > .noma-add-space-camera-placeholder.is-filled.is-photo img { object-fit: cover; border-radius: 14px; }
+.noma-add-space-camera-wrap.is-sub .noma-add-space-camera-parent-frame > .noma-add-space-camera-placeholder.is-filled strong,
+.noma-add-space-camera-wrap.is-sub .noma-add-space-camera-parent-frame > .noma-add-space-camera-placeholder.is-filled > .noma-add-space-camera-title { position: static; width: max-content; max-width: 230px; overflow-wrap: anywhere; color: #232121; font-size: 22px; text-align: left; }
+.noma-add-space-camera-wrap.is-parent .noma-add-space-camera-sub-frame { top: 314px; left: 43px; width: 264px; height: 84px; overflow: visible; border-radius: 42px; background: rgba(255, 255, 255, 0.8); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); }
+.noma-add-space-camera-wrap.is-parent .noma-add-space-camera-sub-frame.is-parent-emoji-context { background: rgba(204, 196, 190, 0.3); }
+.noma-add-space-camera-wrap.is-parent .noma-add-space-camera-sub-frame .noma-add-space-camera-placeholder img { position: absolute; top: -4px; left: 10px; width: 92px; height: 92px; object-fit: contain; opacity: 1; border-radius: 0; transform: none; transition: top 420ms cubic-bezier(0.16, 1, 0.3, 1), left 420ms cubic-bezier(0.16, 1, 0.3, 1), width 420ms cubic-bezier(0.16, 1, 0.3, 1), height 420ms cubic-bezier(0.16, 1, 0.3, 1), opacity 180ms ease; }
+.noma-add-space-camera-wrap.is-parent .noma-add-space-camera-sub-frame .noma-add-space-camera-placeholder.is-emoji img { left: 0; }
+.noma-add-space-camera-wrap.is-parent .noma-add-space-camera-sub-frame .noma-add-space-camera-placeholder.is-photo img { object-fit: cover; border-radius: 14px; }
+.noma-add-space-camera-wrap.is-parent .noma-add-space-camera-sub-frame .noma-add-space-camera-placeholder.is-photo img {
+  top: 18px;
+  left: 16px;
+  width: 48px;
+  height: 48px;
+  border: 2.5px solid #fff;
+  border-radius: 8px;
+  box-sizing: border-box;
+}
+.noma-add-space-camera-wrap.is-parent .noma-add-space-camera-sub-frame .noma-add-space-camera-placeholder.is-empty img { opacity: 0.4; }
+.noma-add-space-camera-wrap.is-parent .noma-add-space-camera-sub-frame .noma-add-space-camera-placeholder strong,
+.noma-add-space-camera-wrap.is-parent .noma-add-space-camera-sub-frame .noma-add-space-camera-placeholder > .noma-add-space-camera-title { position: absolute; top: 21px; left: 86px; display: flex; width: 162px; height: 42px; box-sizing: border-box; padding-right: 16px; align-items: center; justify-content: center; color: #232121; font-size: 18px; line-height: 1.2; text-align: center; transition: top 420ms cubic-bezier(0.16, 1, 0.3, 1), left 420ms cubic-bezier(0.16, 1, 0.3, 1), width 420ms cubic-bezier(0.16, 1, 0.3, 1), height 420ms cubic-bezier(0.16, 1, 0.3, 1), font-size 420ms cubic-bezier(0.16, 1, 0.3, 1), color 180ms ease; }
+.noma-add-space-camera-wrap.is-parent .noma-add-space-camera-sub-frame .noma-add-space-camera-placeholder strong { position: absolute; top: 21px; left: 86px; display: flex; width: 162px; height: 42px; box-sizing: border-box; padding-right: 16px; align-items: center; justify-content: center; color: #232121; font-size: 18px; line-height: 1.2; text-align: center; transition: top 420ms cubic-bezier(0.16, 1, 0.3, 1), left 420ms cubic-bezier(0.16, 1, 0.3, 1), width 420ms cubic-bezier(0.16, 1, 0.3, 1), height 420ms cubic-bezier(0.16, 1, 0.3, 1), font-size 420ms cubic-bezier(0.16, 1, 0.3, 1), color 180ms ease; }
+.noma-add-space-camera-wrap.is-parent .noma-add-space-camera-sub-frame .noma-add-space-camera-placeholder.is-empty strong { color: rgba(35, 33, 33, 0.15); font-size: 17px; }
+.noma-add-space-camera-parent-frame.is-emoji { background: #fff; }
+.noma-add-space-camera-parent-emoji { position: absolute; top: 0; left: 50%; width: 230px; height: 276px; transform: translateX(-50%); }
+.noma-add-space-camera-parent-frame .noma-add-space-camera-parent-emoji img { position: absolute; top: 25px; left: 22px; width: 186px; height: 186px; object-fit: contain; opacity: 1; transform: none; }
+.noma-add-space-camera-parent-emoji strong { position: absolute; top: 189px; left: 50%; display: flex; width: max-content; height: 87px; max-width: 230px; align-items: center; justify-content: center; overflow-wrap: anywhere; color: #232121; font-size: 22px; font-weight: 600; line-height: 1.2; text-align: center; white-space: normal; transform: translateX(-50%); }
+.noma-add-space-camera-parent-frame img,
+.noma-add-space-camera-parent-frame video,
+.noma-add-camera-empty { display: block; width: 100%; height: 100%; object-fit: cover; }
+.noma-add-space-camera-parent-frame > img,
+.noma-add-space-camera-sub-frame > img { border: 2.5px solid #fff; border-radius: 36px; box-sizing: border-box; }
 .noma-add-camera-empty { background: rgba(204, 196, 190, 0.42); }
-.noma-add-space-camera-frame > strong { position: absolute; top: 54px; left: 0; width: 100%; color: rgba(255, 255, 255, 0.95); font-size: 22px; text-align: center; }
-.noma-add-camera-sub-bubble { position: absolute; right: 43px; bottom: 25px; left: 43px; display: flex; align-items: center; gap: 20px; height: 82px; padding: 9px 22px; color: #232121; border: 0; border-radius: 42px; background: #fff; }
-.noma-add-camera-sub-bubble img { width: 50px; height: 50px; object-fit: cover; border-radius: 10px; }
-.noma-add-camera-sub-bubble span { overflow: hidden; font-size: 18px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.noma-add-camera-controls.is-space { right: 53px; bottom: 76px; left: 53px; }
-.noma-add-camera-controls.is-space .noma-add-skip { color: rgba(35, 33, 33, 0.2); font-size: 17px; }
+.noma-add-space-camera-title { z-index: 5; margin: 0; padding: 0; border: 0; background: transparent; cursor: text; font: inherit; font-weight: 600; }
+.noma-add-space-camera-parent-frame > strong,
+.noma-add-space-camera-parent-frame > .noma-add-space-camera-title { position: absolute; z-index: 5; top: 54px; left: 0; width: 100%; margin: 0; padding: 0; color: rgba(255, 255, 255, 0.95); font-size: 22px; font-weight: 600; text-align: center; border: 0; background: transparent; }
+.noma-add-space-camera-sub-frame > strong,
+.noma-add-space-camera-sub-frame > .noma-add-space-camera-title { position: absolute; z-index: 5; top: 42px; left: 0; width: 100%; margin: 0; padding: 0; color: rgba(255, 255, 255, 0.95); font-size: 22px; font-weight: 600; text-align: center; border: 0; background: transparent; }
+.noma-add-space-camera-title-form { position: absolute; z-index: 8; left: 50%; width: 230px; height: 48px; transform: translateX(-50%); }
+.noma-add-space-camera-title-form.is-parent { top: 42px; }
+.noma-add-space-camera-title-form.is-sub { top: 30px; }
+.noma-add-space-camera-title-form input { width: 100%; height: 100%; padding: 0; color: #fff; font-size: 22px; font-weight: 600; line-height: 48px; text-align: center; border: 0; border-bottom: 1px solid rgba(255, 255, 255, 0.72); outline: 0; background: transparent; }
+.noma-add-space-camera-actions-layer { position: absolute; z-index: 40; right: 53px; bottom: 76px; left: 53px; height: 80px; pointer-events: none; }
+.noma-add-space-camera-action-state { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: auto; }
+.noma-add-camera-controls.is-space { position: static; display: grid; width: 292px; height: 80px; grid-template-columns: 62px 80px 62px; column-gap: 44px; align-items: center; justify-content: center; }
+.noma-add-camera-controls.is-space > button:first-child { width: 48px; height: 48px; justify-self: center; }
+.noma-add-camera-controls.is-space .capture-shutter-button { width: 80px; height: 80px; }
+.noma-add-camera-controls.is-space .noma-add-skip { color: rgba(35, 33, 33, 0.5) !important; font-size: 17px; font-weight: 500; }
+.noma-add-camera-controls.is-space .noma-add-skip:disabled { color: rgba(35, 33, 33, 0.15) !important; opacity: 1; cursor: default; }
+.noma-add-space-camera-action-state .noma-add-round-actions { position: static; gap: 44px; transform: none; }
 
-.noma-add-final-close { position: absolute; z-index: 10; top: 74px; right: 15px; display: grid; width: 24px; height: 24px; padding: 0; place-items: center; color: rgba(35, 33, 33, 0.5); border: 0; background: transparent; }
-.noma-add-final { position: absolute; inset: 0; }
+.noma-add-final-close { position: absolute; z-index: 10; top: calc(max(env(safe-area-inset-top, 0px), 19px) + 40px); right: 15px; }
+.noma-add-final { position: absolute; z-index: 32; inset: 0; }
+.noma-add-final-exit { position: absolute; z-index: 24; inset: 0; overflow: hidden; pointer-events: none; animation: noma-add-final-old-fade 700ms 0ms cubic-bezier(0.33, 1, 0.68, 1) both; }
+.noma-add-final-exit .noma-add-modebar,
+.noma-add-final-exit .noma-add-space-composition,
+.noma-add-final-exit .noma-add-round-actions { pointer-events: none; }
+.noma-add-final-exit .noma-add-round-button { animation: noma-add-final-old-button-out 240ms 0ms cubic-bezier(0.4, 0, 1, 1) both; }
+@keyframes noma-add-final-old-fade {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes noma-add-final-old-button-out {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(0.72); }
+}
 .noma-add-final-hero { position: absolute; top: 62px; left: 50%; width: min(390px, 100%); height: 390px; transform: translateX(-50%); }
 .noma-add-final-hero .noma-add-glow { top: 0; }
+.noma-add-final-price { position: absolute; z-index: 20; top: 62px; left: 34px; transform: rotate(-14deg); }
 .noma-add-final-hero .noma-add-item-sticker { top: 70px; }
+.noma-add-final.is-revealing .noma-add-final-hero .noma-add-item-sticker { animation: noma-add-final-sticker-in 520ms 90ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+@keyframes noma-add-final-sticker-in {
+  from { opacity: 0; transform: translateX(-50%) scale(0.72); }
+  to { opacity: 1; transform: translateX(-50%) scale(1); }
+}
+.noma-add-final.is-revealing .noma-add-final-hero .noma-add-glow { animation: noma-add-fade-in 430ms 180ms ease-out both; }
 .noma-add-final > .noma-add-category { top: 406px; }
+.noma-add-final > .noma-add-category-option { top: 421px; }
 .noma-add-built { position: absolute; top: 449px; left: 0; width: 100%; color: rgba(35, 33, 33, 0.5); font-size: 13px; text-align: center; }
+.noma-add-final.is-revealing > .noma-add-category,
+.noma-add-final.is-revealing .noma-add-built,
+.noma-add-final.is-revealing .noma-add-final-location { animation: noma-add-fade-in 300ms 420ms ease-out both; }
 .noma-add-final-location { position: absolute; top: 495px; left: 22px; display: grid; grid-template-columns: 112px 1fr; align-items: center; width: 346px; height: 145px; border-radius: 32px; background: #fff; }
 .noma-add-location-images { position: relative; width: 112px; height: 120px; }
 .noma-add-location-images img { position: absolute; top: 12px; left: 16px; width: 90px; height: 90px; object-fit: cover; border-radius: 14px; }
+.noma-add-location-images img.is-emoji { background: #E9E6E1; }
 .noma-add-location-images img + img { top: 70px; left: 68px; width: 54px; height: 54px; border: 2px solid #fff; }
-.noma-add-location-copy { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding-left: 14px; }
-.noma-add-location-copy strong,
-.noma-add-location-copy span { display: flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.noma-add-location-copy strong { font-size: 20px; text-decoration: underline; text-underline-offset: 5px; }
-.noma-add-location-copy span { color: rgba(35, 33, 33, 0.5); font-size: 17px; text-decoration: underline; text-underline-offset: 5px; }
-.noma-add-location-copy svg { width: 16px; height: 16px; flex: 0 0 auto; }
-.noma-add-final-confirm { position: absolute; bottom: 92px; left: 159px; display: grid; width: 72px; height: 72px; place-items: center; color: #fff; border: 0; border-radius: 50%; background: #232121; }
+.noma-add-location-copy { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding-left: 14px; transform: translateX(10px); }
+.noma-add-location-row { position: relative; display: flex; min-width: 0; align-items: center; }
+.noma-add-location-pin { position: absolute; top: 50%; left: -20px; font-size: 18px; line-height: 1; transform: translateY(-50%); }
+.noma-add-location-title,
+.noma-add-location-row input { min-width: 0; max-width: 175px; padding: 0 0 3px; overflow: hidden; color: #232121; text-align: left; text-overflow: ellipsis; white-space: nowrap; border: 0; border-bottom: 1px solid #E9E6E1; outline: 0; background: transparent; }
+.noma-add-location-row.is-parent .noma-add-location-title,
+.noma-add-location-row.is-parent input { font-size: 20px; font-weight: 700; }
+.noma-add-location-row.is-sub .noma-add-location-title,
+.noma-add-location-row.is-sub input { color: rgba(35, 33, 33, 0.5); font-size: 17px; font-weight: 400; }
+.noma-add-location-switch { display: grid; width: 22px; height: 22px; flex: 0 0 22px; margin-left: 3px; padding: 0; place-items: center; color: rgba(35, 33, 33, 0.5); border: 0; background: transparent; }
+.noma-add-location-switch svg { width: 16px; height: 16px; }
+.noma-add-final-actions { position: absolute; bottom: 92px; left: 50%; display: flex; align-items: center; gap: 62px; transform: translateX(-50%); }
+.noma-add-final-cancel,
+.noma-add-final-confirm { display: grid; width: 72px; height: 72px; flex: 0 0 72px; place-items: center; border: 0; border-radius: 50%; }
+.noma-add-final-cancel { color: rgba(35, 33, 33, 0.5); background: #fff; }
+.noma-add-final-confirm { color: #fff; background: #232121; }
+.noma-add-final-cancel svg,
 .noma-add-final-confirm svg { width: 28px; height: 28px; }
-.noma-add-final-hint { position: absolute; bottom: 53px; left: 0; width: 100%; color: rgba(35, 33, 33, 0.5); font-size: 13px; text-align: center; }
+.noma-add-final.is-revealing .noma-add-final-actions .noma-add-final-cancel { animation: noma-add-button-pop 360ms 560ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.noma-add-final.is-revealing .noma-add-final-actions .noma-add-final-confirm { animation: noma-add-button-pop 360ms 625ms cubic-bezier(0.16, 1, 0.3, 1) both; }
 
 @media (max-width: 767px) {
   .noma-add-screen { width: 100vw; max-width: 390px; border-radius: 0; }
