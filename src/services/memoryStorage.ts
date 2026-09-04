@@ -23,6 +23,9 @@ type ItemRow = {
   date: string;
   emoji: string;
   sticker_url?: string | null;
+  // The deployed v2 schema keeps these columns non-null. An empty string is
+  // the persisted representation of an absent level; the UI treats it as
+  // missing and never invents a location name.
   parent_location_name: string;
   sub_location_name: string;
   parent_location_img?: string | null;
@@ -77,9 +80,9 @@ export class MemoryItemLimitError extends Error {
 
 const toItemRow = (ownerId: string, item: MemoryItem | StoredMemoryItem, existing?: ItemRow): ItemRow => {
   const id = item.id || createId();
-  const parentLocationName = item.parentLocationName || "Bedroom";
-  const subLocationName = item.subLocationName || "Drawer";
-  const { subId } = spaceIdsForLocation(ownerId, parentLocationName, subLocationName);
+  const parentLocationName = item.parentLocationName?.trim() || "";
+  const subLocationName = item.subLocationName?.trim() || "";
+  const { parentId, subId } = spaceIdsForLocation(ownerId, parentLocationName, subLocationName);
   return {
     id,
     user_id: ownerId,
@@ -94,7 +97,7 @@ const toItemRow = (ownerId: string, item: MemoryItem | StoredMemoryItem, existin
     parent_location_img: item.parentLocationImg || null,
     sub_location_img: item.subLocationImg || null,
     sub_location_highlight: item.subLocationHighlight || null,
-    space_id: subId,
+    space_id: subLocationName ? subId : parentLocationName ? parentId : null,
     created_at: existing?.created_at || (item as Partial<StoredMemoryItem>).createdAt || nowIso(),
     updated_at: nowIso(),
   };
@@ -150,8 +153,8 @@ const fromItemRow = (row: ItemRow): StoredMemoryItem => ({
   date: row.date,
   emoji: row.emoji,
   stickerUrl: displayMediaValue(row.sticker_url, row.updated_at),
-  parentLocationName: row.parent_location_name,
-  subLocationName: row.sub_location_name,
+  parentLocationName: row.parent_location_name || "",
+  subLocationName: row.sub_location_name || "",
   // Location files use content-hashed R2 keys, so the path itself is the cache version.
   parentLocationImg: displayMediaValue(row.parent_location_img),
   subLocationImg: displayMediaValue(row.sub_location_img),
@@ -172,10 +175,10 @@ const toSpaceRows = (ownerId: string, items: ItemRow[]): SpaceRow[] => {
   const timestamp = nowIso();
 
   items.forEach((item) => {
-    const parentKey = item.parent_location_name || "Bedroom";
-    const subName = item.sub_location_name || "Drawer";
+    const parentKey = item.parent_location_name?.trim() || "";
+    const subName = item.sub_location_name?.trim() || "";
     const { parentId, subId } = spaceIdsForLocation(ownerId, parentKey, subName);
-    if (!parents.has(parentKey)) {
+    if (parentKey && !parents.has(parentKey)) {
       parents.set(parentKey, {
         id: parentId,
         user_id: ownerId,
@@ -188,27 +191,31 @@ const toSpaceRows = (ownerId: string, items: ItemRow[]): SpaceRow[] => {
       });
     }
 
-    const parent = parents.get(parentKey)!;
-    parent.metadata = { ...(parent.metadata || {}), item_count: Number(parent.metadata?.item_count || 0) + 1 };
-    if (!parent.image_url && item.parent_location_img) parent.image_url = item.parent_location_img;
+    if (parentKey) {
+      const parent = parents.get(parentKey)!;
+      parent.metadata = { ...(parent.metadata || {}), item_count: Number(parent.metadata?.item_count || 0) + 1 };
+      if (!parent.image_url && item.parent_location_img) parent.image_url = item.parent_location_img;
+    }
 
     const subKey = `${parentKey}::${subName}`;
-    if (!subs.has(subKey)) {
+    if (subName && !subs.has(subKey)) {
       subs.set(subKey, {
         id: subId,
         user_id: ownerId,
         name: subName,
         kind: "sub",
-        parent_id: parentId,
-        parent_name: parentKey,
+        parent_id: parentKey ? parentId : null,
+        parent_name: parentKey || null,
         image_url: item.sub_location_img || null,
         metadata: { item_count: 0 },
         updated_at: timestamp,
       });
     }
-    const sub = subs.get(subKey)!;
-    sub.metadata = { ...(sub.metadata || {}), item_count: Number(sub.metadata?.item_count || 0) + 1 };
-    if (!sub.image_url && item.sub_location_img) sub.image_url = item.sub_location_img;
+    if (subName) {
+      const sub = subs.get(subKey)!;
+      sub.metadata = { ...(sub.metadata || {}), item_count: Number(sub.metadata?.item_count || 0) + 1 };
+      if (!sub.image_url && item.sub_location_img) sub.image_url = item.sub_location_img;
+    }
   });
 
   return [...parents.values(), ...subs.values()];

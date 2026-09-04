@@ -1211,11 +1211,15 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 .noma-add-space-composition .noma-add-item-sticker,
 .noma-add-space-composition .noma-add-space-wrap { pointer-events: auto; }
 .noma-add-space-wrap { position: absolute; z-index: 10; top: 186px; left: 20px; width: 350px; height: 424px; }
-.noma-add-space-card { position: relative; width: 350px; height: 424px; overflow: hidden; overflow: clip; border-radius: 36px; background: rgba(204, 196, 190, 0.5); transition: background-color 420ms cubic-bezier(0.16, 1, 0.3, 1); }
+.noma-add-space-card { position: relative; width: 350px; height: 424px; overflow: hidden; overflow: clip; border-radius: 36px; background: rgba(204, 196, 190, 0.5); transform: scale(1); transform-origin: center; transition: background-color 420ms cubic-bezier(0.16, 1, 0.3, 1), transform 180ms cubic-bezier(0.16, 1, 0.3, 1); }
 .noma-add-space-card.is-active { background: #fff; }
+.noma-add-space-card.is-pressed,
+.noma-add-sub-card.is-pressed,
+.noma-add-space-camera-parent-frame.is-pressed,
+.noma-add-space-camera-sub-frame.is-pressed { transform: scale(0.988); transition-duration: 90ms; transition-timing-function: cubic-bezier(0.4, 0, 1, 1); }
 .noma-add-parent-zone { position: absolute; top: 0; left: 0; width: 350px; height: 424px; }
 .noma-add-space-placeholder { position: absolute; top: 48px; left: 60px; width: 230px; color: rgba(35, 33, 33, 0.15); font-size: 22px; font-weight: 600; text-align: center; }
-.noma-add-sub-card { position: absolute; top: 124px; left: 49px; width: 251px; height: 280px; overflow: hidden; border-radius: 36px; background: #fff; transition: top 420ms cubic-bezier(0.16, 1, 0.3, 1), left 420ms cubic-bezier(0.16, 1, 0.3, 1), width 420ms cubic-bezier(0.16, 1, 0.3, 1), height 420ms cubic-bezier(0.16, 1, 0.3, 1), border-radius 420ms cubic-bezier(0.16, 1, 0.3, 1), background-color 420ms cubic-bezier(0.16, 1, 0.3, 1); }
+.noma-add-sub-card { position: absolute; top: 124px; left: 49px; width: 251px; height: 280px; overflow: hidden; border-radius: 36px; background: #fff; transform: scale(1); transform-origin: center; transition: top 420ms cubic-bezier(0.16, 1, 0.3, 1), left 420ms cubic-bezier(0.16, 1, 0.3, 1), width 420ms cubic-bezier(0.16, 1, 0.3, 1), height 420ms cubic-bezier(0.16, 1, 0.3, 1), border-radius 420ms cubic-bezier(0.16, 1, 0.3, 1), background-color 420ms cubic-bezier(0.16, 1, 0.3, 1), transform 180ms cubic-bezier(0.16, 1, 0.3, 1); }
 .noma-add-space-placeholder-icon { position: absolute; top: 16px; left: 32px; width: 186px; height: 186px; object-fit: contain; opacity: 0.4; transform: none; transform-origin: top left; transition: transform 420ms cubic-bezier(0.16, 1, 0.3, 1); will-change: transform; }
 .noma-add-space-input-wrap { position: absolute; inset: 0; }
 .noma-add-space-input-wrap input { position: absolute; z-index: 2; left: 10px; bottom: 20px; width: 230px; height: 87px; padding: 0; color: #232121; font-size: 22px; font-weight: 600; line-height: 1.25; text-align: center; white-space: pre-line; border: 0; outline: 0; background: transparent; }
@@ -1232,6 +1236,8 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 .noma-add-sub-value strong { position: absolute; top: 166px; left: 50%; display: flex; width: max-content; min-width: 0; height: 87px; max-width: 230px; margin: 0; align-items: center; justify-content: center; overflow: hidden; font-size: 18px !important; line-height: 1.2; text-align: center; text-overflow: clip; overflow-wrap: anywhere; white-space: normal; transform: translateX(-50%); transition: top 420ms cubic-bezier(0.16, 1, 0.3, 1), left 420ms cubic-bezier(0.16, 1, 0.3, 1), width 420ms cubic-bezier(0.16, 1, 0.3, 1), height 420ms cubic-bezier(0.16, 1, 0.3, 1), font-size 420ms cubic-bezier(0.16, 1, 0.3, 1), line-height 420ms cubic-bezier(0.16, 1, 0.3, 1), transform 420ms cubic-bezier(0.16, 1, 0.3, 1); }
 .noma-add-space-value { display: block; height: 424px; bottom: auto; }
 .noma-add-space-value img { position: absolute; top: 25px; left: 82px; width: 186px; height: 186px; object-fit: contain; opacity: 1; transform: none; transform-origin: center; will-change: transform; }
+.noma-add-space-value.is-empty img,
+.noma-add-sub-value.is-empty img { opacity: 0.4; }
 .noma-add-space-value strong { position: absolute; top: 29px; left: calc(210px - (var(--noma-parent-title-width, 184px) / 2)); display: flex; width: max-content; min-width: 0; height: 66px; max-width: 230px; margin: 0; align-items: center; overflow: hidden; font-size: 22px !important; line-height: 1.2; text-align: left; text-overflow: clip; overflow-wrap: anywhere; white-space: normal; opacity: 1; transform: none; transition: top 420ms cubic-bezier(0.16, 1, 0.3, 1), left 420ms cubic-bezier(0.16, 1, 0.3, 1), width 420ms cubic-bezier(0.16, 1, 0.3, 1), height 420ms cubic-bezier(0.16, 1, 0.3, 1), max-width 420ms cubic-bezier(0.16, 1, 0.3, 1), font-size 420ms cubic-bezier(0.16, 1, 0.3, 1), line-height 420ms cubic-bezier(0.16, 1, 0.3, 1), text-align 420ms cubic-bezier(0.16, 1, 0.3, 1), opacity 140ms ease, transform 420ms cubic-bezier(0.16, 1, 0.3, 1); }
 .noma-add-space-value.is-editing strong { pointer-events: none; opacity: 0; }
 .noma-add-parent-visual { position: absolute; top: 0; left: 50%; width: calc(70px + var(--noma-parent-title-width, 184px)); height: 124px; transform: translateX(-50%); transition: width 420ms cubic-bezier(0.16, 1, 0.3, 1), height 420ms cubic-bezier(0.16, 1, 0.3, 1); }
@@ -1278,21 +1284,22 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 .noma-add-sub-card.is-active .noma-add-sub-value.is-photo strong { position: absolute; top: 42px; left: 0; display: block; width: 100%; height: auto; max-width: none; color: #fff; font-size: 22px; line-height: 1.2; text-align: center; text-overflow: clip; transform: none; }
 .noma-add-space-placeholder-icon.is-filled { opacity: 1 !important; }
 .noma-add-space-card.is-active .noma-add-parent-zone .noma-add-recent-bubble { top: 97px; left: 74px; }
-.noma-add-recent-bubble { position: absolute; z-index: 5; top: 79px; left: 24px; display: flex; align-items: center; width: 203px; height: 56px; padding: 6px 11px; border-radius: 28px; background: rgba(233, 230, 225, 0.86); }
+.noma-add-sub-card.is-active .noma-add-recent-bubble.is-emoji { top: 109px; }
+.noma-add-recent-bubble { position: absolute; z-index: 5; top: 79px; left: 24px; display: flex; align-items: center; width: 203px; height: 56px; box-sizing: border-box; padding: 6px 11px; border-radius: 28px; background: rgba(204, 196, 190, 0.3); }
 .noma-add-parent-zone .noma-add-recent-bubble { top: 28px; left: 74px; }
-.noma-add-recent-bubble img { width: 43px; height: 43px; object-fit: cover; border-radius: 10px; }
+.noma-add-recent-bubble img { display: block; width: 43px; height: 43px; flex: 0 0 43px; object-fit: cover; border-radius: 10px; }
 .noma-add-recent-bubble span { flex: 1; min-width: 0; padding: 0 9px; overflow: hidden; font-size: 17px; text-overflow: ellipsis; white-space: nowrap; }
 .noma-add-recent-bubble button { display: grid; width: 33px; height: 33px; flex: 0 0 auto; place-items: center; color: #232121; border: 0; border-radius: 50%; background: linear-gradient(140deg, #f5b5d9, #ffc7a6 60%, #a1ebd9); }
 .noma-add-recent-bubble svg { width: 20px; height: 20px; }
 .noma-add-recent-bubble.is-camera { background: rgba(255, 255, 255, 0.8); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); }
 .noma-add-space-camera-parent-frame > .noma-add-recent-bubble.is-camera { z-index: 9; top: 97px; left: 74px; }
-.noma-add-space-camera-sub-frame > .noma-add-recent-bubble.is-camera { z-index: 9; top: 79px; left: 24px; }
+.noma-add-space-camera-sub-frame > .noma-add-recent-bubble.is-camera { z-index: 9; top: 109px; left: 24px; }
 .noma-add-cancel-text { position: absolute; bottom: 132px; left: 50%; color: rgba(35, 33, 33, 0.5); font-size: 18px; border: 0; background: transparent; transform: translateX(-50%); }
 
 .noma-add-space-camera-wrap { position: absolute; z-index: 10; inset: 0; pointer-events: none; transition: transform 420ms cubic-bezier(0.16, 1, 0.3, 1); }
-.noma-add-space-camera-parent-frame { position: absolute; top: 186px; left: 20px; width: 350px; height: 424px; overflow: hidden; border-radius: 36px; background: rgba(204, 196, 190, 0.5); pointer-events: auto; }
+.noma-add-space-camera-parent-frame { position: absolute; top: 186px; left: 20px; width: 350px; height: 424px; overflow: hidden; border-radius: 36px; background: rgba(204, 196, 190, 0.5); transform: scale(1); transform-origin: center; transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1); pointer-events: auto; }
 .noma-add-space-camera-wrap.is-sub .noma-add-space-camera-parent-frame { overflow: visible; }
-.noma-add-space-camera-sub-frame { position: absolute; z-index: 3; top: 124px; left: 49px; width: 251px; height: 280px; overflow: hidden; border-radius: 36px; background: #fff; transition: top 420ms cubic-bezier(0.16, 1, 0.3, 1), left 420ms cubic-bezier(0.16, 1, 0.3, 1), width 420ms cubic-bezier(0.16, 1, 0.3, 1), height 420ms cubic-bezier(0.16, 1, 0.3, 1), border-radius 420ms cubic-bezier(0.16, 1, 0.3, 1), background-color 420ms cubic-bezier(0.16, 1, 0.3, 1), backdrop-filter 420ms ease; }
+.noma-add-space-camera-sub-frame { position: absolute; z-index: 3; top: 124px; left: 49px; width: 251px; height: 280px; overflow: hidden; border-radius: 36px; background: #fff; transform: scale(1); transform-origin: center; transition: top 420ms cubic-bezier(0.16, 1, 0.3, 1), left 420ms cubic-bezier(0.16, 1, 0.3, 1), width 420ms cubic-bezier(0.16, 1, 0.3, 1), height 420ms cubic-bezier(0.16, 1, 0.3, 1), border-radius 420ms cubic-bezier(0.16, 1, 0.3, 1), background-color 420ms cubic-bezier(0.16, 1, 0.3, 1), backdrop-filter 420ms ease, transform 180ms cubic-bezier(0.16, 1, 0.3, 1); }
 .noma-add-space-camera-placeholder {
   position: absolute;
   inset: 0;
@@ -1353,8 +1360,10 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 .noma-add-space-camera-parent-emoji { position: absolute; top: 0; left: 50%; width: 230px; height: 276px; transform: translateX(-50%); }
 .noma-add-space-camera-parent-frame .noma-add-space-camera-parent-emoji img { position: absolute; top: 25px; left: 22px; width: 186px; height: 186px; object-fit: contain; opacity: 1; transform: none; }
 .noma-add-space-camera-parent-emoji strong { position: absolute; top: 189px; left: 50%; display: flex; width: max-content; height: 87px; max-width: 230px; align-items: center; justify-content: center; overflow-wrap: anywhere; color: #232121; font-size: 22px; font-weight: 600; line-height: 1.2; text-align: center; white-space: normal; transform: translateX(-50%); }
-.noma-add-space-camera-parent-frame img,
-.noma-add-space-camera-parent-frame video,
+.noma-add-space-camera-parent-frame > img,
+.noma-add-space-camera-parent-frame > video,
+.noma-add-space-camera-sub-frame > img,
+.noma-add-space-camera-sub-frame > video,
 .noma-add-camera-empty { display: block; width: 100%; height: 100%; object-fit: cover; }
 .noma-add-space-camera-parent-frame > img,
 .noma-add-space-camera-sub-frame > img { border: 2.5px solid #fff; border-radius: 36px; box-sizing: border-box; }
@@ -1395,6 +1404,12 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 .noma-add-final-hero { position: absolute; top: 62px; left: 50%; width: min(390px, 100%); height: 390px; transform: translateX(-50%); }
 .noma-add-final-hero .noma-add-glow { top: 0; }
 .noma-add-final-price { position: absolute; z-index: 20; top: 62px; left: 34px; transform: rotate(-14deg); }
+.noma-add-final-price-button { position: absolute; z-index: 20; top: 62px; left: 34px; display: block; padding: 0; color: inherit; border: 0; background: transparent; transform: rotate(-14deg); cursor: text; }
+.noma-add-final-price-button .noma-add-final-price { position: static; transform: none; }
+.noma-add-final-price-editing { width: 98px; height: 30px; }
+.noma-add-final-price-editing > div { position: absolute; inset: 0; }
+.noma-add-final-price-editing > div > span { min-width: 79px; color: transparent; }
+.noma-add-final-price-editing input { position: absolute; z-index: 2; top: 0; right: 6px; width: 72px; height: 30px; padding: 1px 2px 0 0; color: #fff; font-family: "Alkatra", cursive, sans-serif; font-size: 15px; line-height: 30px; text-align: center; border: 0; outline: 0; background: transparent; }
 .noma-add-final-hero .noma-add-item-sticker { top: 70px; }
 .noma-add-final.is-revealing .noma-add-final-hero .noma-add-item-sticker { animation: noma-add-final-sticker-in 520ms 90ms cubic-bezier(0.16, 1, 0.3, 1) both; }
 @keyframes noma-add-final-sticker-in {

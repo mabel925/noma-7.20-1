@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Check, Image as ImageIcon, RotateCcw, Search } from "lucide-react";
+import { ArrowLeft, Check, Image as ImageIcon, RotateCcw, Search } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { VirtualKeyboard } from "./VirtualKeyboard";
 import { getStickerTitleStyle, isChineseTitle } from "./StickerTitle";
@@ -10,6 +10,7 @@ import { CancelIcon } from "./CancelIcon";
 import { CameraIcon } from "./CameraIcon";
 import { RestartIcon } from "./RestartIcon";
 import { CollapseLocationIcon, ExpandLocationIcon } from "./LocationViewIcons";
+import { classifyEmojiLocally, emojiAsset } from "../data/emojiCatalog";
 
 export const COLOR_BLUR_IMAGE_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/colorblur.png";
 export const MATRIX_DOT_IMAGE_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/%E7%9F%A9%E9%98%B5%E5%9C%86%E7%82%B9.png";
@@ -249,11 +250,15 @@ const normalizeCategory = (cat: string): string => {
 };
 
 type SpaceSummary = {
+  key: string;
   name: string;
   imgUrl: string;
   itemCount: number;
-  subLocations: { name: string; itemCount: number }[];
+  subLocations: SubLocationSummary[];
   items: MemoryItem[];
+  directItems: MemoryItem[];
+  sourceField: "parent" | "sub";
+  parentName: string;
 };
 
 type SubLocationSummary = {
@@ -482,45 +487,56 @@ const ItemSticker: React.FC<{
   isTitleEditing = false,
 }) => {
   const displayTitle = title ?? item.name;
+  const scale = size / 250;
+  const emojiKey = item.emoji && /^[a-z0-9-]+$/i.test(item.emoji) ? item.emoji : "";
 
   return (
     <div
-      className={`relative rotate-[-1.5deg] flex items-center justify-center overflow-visible ${alignLeft ? "origin-left" : ""}`}
+      className={`relative flex items-center justify-center overflow-visible ${alignLeft ? "origin-left" : ""}`}
       style={{ width: size, height: size }}
     >
-      {item.stickerUrl ? (
-        <PersistentImage
-          src={item.stickerUrl}
-          alt={item.name}
-          className="w-full h-full object-contain block select-none"
-          referrerPolicy="no-referrer"
-        />
-      ) : (
-        <div
-          className="flex items-center justify-center overflow-visible select-none"
-          style={{ width: size, height: size, fontSize: Math.round(size * 0.52) }}
-        >
-          {item.emoji || "📦"}
-        </div>
-      )}
-
       <div
-        className={`absolute left-1/2 z-20 -translate-x-1/2 text-center select-none ${isChineseTitle(displayTitle) ? "font-zihun-biantao" : "font-alkatra"} ${
-          onTitleClick ? "pointer-events-auto cursor-text active:scale-[0.98] transition-transform" : "pointer-events-none"
-        }`}
-        style={{
-          ...getStickerTitleStyle(size),
-          ...(titleSize ? { fontSize: `${titleSize}px`, lineHeight: `${titleSize}px` } : {}),
-          ...(stroke ? { WebkitTextStroke: `${stroke}px #ffffff` } : {}),
-        }}
-        onClick={onTitleClick}
+        className="relative h-[250px] w-[250px] shrink-0 overflow-visible"
+        style={{ transform: `scale(${scale})`, transformOrigin: "top left" }}
       >
-        <span>
-          {displayTitle}
-          {isTitleEditing && (
-            <span className="ml-[2px] inline-block h-[0.72em] w-[2px] bg-[#232121] align-[-0.08em] animate-cursor-blink-black" />
-          )}
-        </span>
+        {item.stickerUrl ? (
+          <PersistentImage
+            src={item.stickerUrl}
+            alt={item.name}
+            className="absolute inset-0 z-[2] block h-[250px] w-[250px] object-contain select-none"
+            referrerPolicy="no-referrer"
+          />
+        ) : emojiKey ? (
+          <img
+            src={emojiAsset(emojiKey)}
+            alt=""
+            className="absolute inset-0 z-[2] block h-[250px] w-[250px] object-contain select-none"
+            draggable={false}
+          />
+        ) : (
+          <div className="absolute inset-0 z-[2] flex h-[250px] w-[250px] items-center justify-center overflow-visible text-[130px] leading-none select-none">
+            {item.emoji || "📦"}
+          </div>
+        )}
+
+        <div
+          className={`absolute left-0 z-20 text-center select-none ${isChineseTitle(displayTitle) ? "font-zihun-biantao" : "font-alkatra"} ${
+            onTitleClick ? "pointer-events-auto cursor-text active:scale-[0.98] transition-transform" : "pointer-events-none"
+          }`}
+          style={{
+            ...getStickerTitleStyle(250),
+            ...(titleSize ? { fontSize: `${titleSize / scale}px`, lineHeight: `${titleSize / scale}px` } : {}),
+            ...(stroke ? { WebkitTextStroke: `${stroke / scale}px #ffffff` } : {}),
+          }}
+          onClick={onTitleClick}
+        >
+          <span>
+            {displayTitle}
+            {isTitleEditing && (
+              <span className="ml-[2px] inline-block h-[0.72em] w-[2px] bg-[#232121] align-[-0.08em] animate-cursor-blink-black" />
+            )}
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -1308,6 +1324,28 @@ const SubLocationListCard: React.FC<{
   );
 };
 
+const DirectLocationItemsCard: React.FC<{
+  items: MemoryItem[];
+  onItemClick: (item: MemoryItem) => void;
+}> = ({ items, onItemClick }) => (
+  <div className="relative min-h-[159px] w-full overflow-hidden rounded-[24px] border-[2.5px] border-dashed border-[#CCC4BE] bg-[#CCC4BE]/20 px-[18px] py-[20px]">
+    <MatrixDotBackground rounded />
+    <div className="relative z-10 grid grid-cols-4 justify-items-center gap-x-[16px] gap-y-[14px]">
+      {items.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          onClick={() => onItemClick(item)}
+          className="h-[62px] w-[62px] border-0 bg-transparent p-0 active:scale-95 transition-transform"
+          aria-label={`Open ${item.name}`}
+        >
+          <ItemSticker item={item} size={62} stroke={2.5} />
+        </button>
+      ))}
+    </div>
+  </div>
+);
+
 const SpaceDetailModal: React.FC<{
   space: SubLocationSummary;
   parentOptions: MemoryParentLocationOption[];
@@ -1740,6 +1778,123 @@ const SpaceDetailModal: React.FC<{
         onCancel={() => setDeleteRequest(null)}
         onConfirm={confirmDelete}
       />
+    </motion.div>
+  );
+};
+
+/** Unified location detail used by both first-level and second-level spaces.
+ *  A second-level space promoted to an entry has the same layout; only its
+ *  relation metadata differs. This intentionally removes the old flip-card
+ *  interaction so every location detail follows the Figma 437:1747 layout.
+ */
+const LocationDetailModal: React.FC<{
+  location: SpaceSummary;
+  onClose: () => void;
+  onOpenItem: (item: MemoryItem) => void;
+  onOpenSubLocation: (space: SubLocationSummary) => void;
+  onSaveLocation: (location: SpaceSummary, name: string) => void;
+}> = ({ location, onClose, onOpenItem, onOpenSubLocation, onSaveLocation }) => {
+  const image = location.imgUrl || emojiAsset(classifyEmojiLocally(location.name, "parent-space").icon_key);
+  const [isEditing, setIsEditing] = React.useState(false);
+  const [draftName, setDraftName] = React.useState(location.name);
+
+  const finishEditing = () => {
+    const nextName = draftName.trim();
+    if (nextName && nextName !== location.name) onSaveLocation(location, nextName);
+    setIsEditing(false);
+  };
+
+  return (
+    <motion.div
+      className="absolute inset-0 z-[180] overflow-y-auto overscroll-contain bg-[#E9E6E1]"
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 18 }}
+      transition={{ type: "tween", duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+    >
+      <MatrixDotBackground />
+      <div className="relative z-10 min-h-full px-[15px] pb-[28px]">
+        <div
+          className="flex items-center justify-between px-[5px]"
+          style={{
+            height: "calc(var(--noma-statusbar-height) + 56px)",
+            paddingTop: "var(--noma-statusbar-height)",
+          }}
+        >
+          <button type="button" onClick={onClose} className="flex h-6 w-6 items-center justify-center active:scale-95" aria-label="Back">
+            <ArrowLeft className="h-6 w-6 text-[#232121]" strokeWidth={2.2} />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (isEditing) {
+                finishEditing();
+              } else {
+                setDraftName(location.name);
+                setIsEditing(true);
+              }
+            }}
+            className="flex h-6 w-6 items-center justify-center active:scale-95"
+            aria-label={isEditing ? "Done editing" : "Edit location"}
+          >
+            {isEditing ? <Check className="h-5 w-5 text-[#232121]" strokeWidth={2.5} /> : <ParentDetailEditIcon />}
+          </button>
+        </div>
+
+        <div className="flex flex-col items-center text-center">
+          <motion.div layout className="relative mt-[17px] flex h-[128px] w-[174px] items-center justify-center">
+            <div className="absolute left-[55px] top-[32px] z-[1] h-[94px] w-[112px] rotate-[8deg] rounded-[26px] bg-[linear-gradient(135deg,#FFB0B0_0%,#FFD2B4_50%,#8DEBD9_100%)] opacity-95" />
+            <div className={`relative z-10 h-[114px] w-[114px] rotate-[-9deg] overflow-hidden rounded-[26px] border-[3px] border-white shadow-[0_16px_32px_rgba(35,33,33,0.12)] ${isEmojiImageUrl(image) ? "bg-[#E9E6E1]" : "bg-neutral-100"}`}>
+              <SkeletonImage src={image} alt={location.name} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+            </div>
+          </motion.div>
+          <div className="mt-[12px] flex max-w-[320px] items-center justify-center text-[24px] font-sans font-extrabold leading-tight tracking-tight text-[#232121]">
+            <span className="mr-[7px] text-[21px]">📍</span>
+            {isEditing ? (
+              <input
+                autoFocus
+                value={draftName}
+                onChange={(event) => setDraftName(event.target.value)}
+                onKeyDown={(event) => { if (event.key === "Enter") finishEditing(); }}
+                className="w-[230px] border-0 border-b-[1.5px] border-[#E9E6E1] bg-transparent px-0 pb-[3px] text-center font-inherit text-[24px] font-extrabold outline-none"
+                aria-label="Edit location name"
+              />
+            ) : location.name}
+          </div>
+          {location.parentName && location.sourceField === "sub" && (
+            <div className="mt-[6px] text-[14px] font-sans text-[#232121]/50">in {location.parentName}</div>
+          )}
+        </div>
+
+        <div className="mt-[26px] flex flex-col gap-[16px]">
+          <section>
+            <div className="mb-[10px] px-[3px] text-[14px] font-sans font-semibold text-[#232121]/55">Items in this space</div>
+            {location.directItems.length > 0 ? (
+              <DirectLocationItemsCard items={location.directItems} onItemClick={onOpenItem} />
+            ) : (
+              <div className="relative flex h-[104px] items-center justify-center overflow-hidden rounded-[24px] border-[2.5px] border-dashed border-[#CCC4BE] bg-[#CCC4BE]/20 text-[14px] font-sans text-[#232121]/40">
+                <MatrixDotBackground rounded />
+                <span className="relative z-10">No items in this space</span>
+              </div>
+            )}
+          </section>
+
+          {location.subLocations.length > 0 && (
+            <section>
+              <div className="mb-[10px] px-[3px] text-[14px] font-sans font-semibold text-[#232121]/55">Sub-spaces</div>
+              <div className="flex flex-col gap-[8px]">
+                {location.subLocations.map((sub) => (
+                  <SubLocationListCard
+                    key={`${location.key}-${sub.name}`}
+                    space={sub}
+                    onClick={() => onOpenSubLocation(sub)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+      </div>
     </motion.div>
   );
 };
@@ -2328,6 +2483,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
   const [selectedDetailItem, setSelectedDetailItem] = useState<MemoryItem | null>(null);
   const [selectedParentSpace, setSelectedParentSpace] = useState<SpaceSummary | null>(null);
   const [selectedSpaceDetail, setSelectedSpaceDetail] = useState<SubLocationSummary | null>(null);
+  const [selectedLocationDetail, setSelectedLocationDetail] = useState<SpaceSummary | null>(null);
   const [isEditingParentName, setIsEditingParentName] = useState(false);
   const [parentNameDraft, setParentNameDraft] = useState("");
   const [parentImageDraft, setParentImageDraft] = useState("");
@@ -2340,44 +2496,13 @@ export const MemoryList: React.FC<MemoryListProps> = ({
   const didItemsLongPressRef = React.useRef(false);
   const didCompleteInitialOpenRef = React.useRef(false);
 
-  // Grouping by Spaces (Parent Locations)
-  const spacesMap: { [key: string]: MemoryItem[] } = {};
-  memories.forEach((item) => {
-    const parent = item.parentLocationName || "Bedroom";
-    if (!spacesMap[parent]) {
-      spacesMap[parent] = [];
-    }
-    spacesMap[parent].push(item);
-  });
-
-  const spacesList = Object.keys(spacesMap).map((parentName) => {
-    const spaceItems = spacesMap[parentName];
-    // Find the first available parent image or fallback
-    const parentImg =
-      spaceItems.find((itm) => itm.parentLocationImg)?.parentLocationImg ||
-      "https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=500&auto=format&fit=crop&q=80";
-
-    const subLocations = Array.from(
-      spaceItems.reduce((map, item) => {
-        if (!item.subLocationName) return map;
-        const current = map.get(item.subLocationName) || 0;
-        map.set(item.subLocationName, current + 1);
-        return map;
-      }, new Map<string, number>())
-    ).map(([name, itemCount]) => ({ name, itemCount }));
-
-    return {
-      name: parentName,
-      imgUrl: parentImg,
-      itemCount: spaceItems.length,
-      subLocations,
-      items: spaceItems,
-    };
-  });
-
+  // Build location summaries without inventing fallback names. A record with
+  // only a second-level location is promoted to a first-level entry; records
+  // with a parent remain grouped under that parent.
   const subLocationMap = memories.reduce((map, item) => {
-      const subName = item.subLocationName || "Storage Spot";
-      const parentName = item.parentLocationName || "Bedroom";
+      const subName = item.subLocationName?.trim() || "";
+      if (!subName) return map;
+      const parentName = item.parentLocationName?.trim() || "";
       const key = `${parentName}::${subName}`;
       const existing = map.get(key);
       if (existing) {
@@ -2394,16 +2519,58 @@ export const MemoryList: React.FC<MemoryListProps> = ({
         name: subName,
         parentName,
         imgUrl: item.subLocationImg || "",
-        parentImgUrl:
-          item.parentLocationImg ||
-          "https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=500&auto=format&fit=crop&q=80",
+        parentImgUrl: item.parentLocationImg || "",
         itemCount: 1,
         items: [item],
         subLocationHighlight: item.subLocationHighlight,
       });
       return map;
     }, new Map<string, SubLocationSummary>());
-  const subLocationList: SubLocationSummary[] = Array.from(subLocationMap.values());
+  const subLocationList: SubLocationSummary[] = (Array.from(subLocationMap.values()) as SubLocationSummary[]).map((space) => (
+    space.imgUrl
+      ? space
+      : {
+          ...space,
+          // Older memories may contain a sub-location name without a saved
+          // image. Keep the space card populated with its deterministic Emoji
+          // skin instead of rendering an empty thumbnail.
+          imgUrl: emojiAsset(classifyEmojiLocally(space.name, "sub-space").icon_key),
+        }
+  ));
+
+  const spacesMap = new Map<string, MemoryItem[]>();
+  memories.forEach((item) => {
+    const parentName = item.parentLocationName?.trim() || "";
+    const subName = item.subLocationName?.trim() || "";
+    const key = parentName || (subName ? `sub:${subName}` : "");
+    if (!key) return;
+    const current = spacesMap.get(key) || [];
+    current.push(item);
+    spacesMap.set(key, current);
+  });
+
+  const spacesList: SpaceSummary[] = Array.from(spacesMap.entries()).map(([key, spaceItems]) => {
+    const promotedSub = key.startsWith("sub:");
+    const name = promotedSub ? (spaceItems[0]?.subLocationName?.trim() || "") : key;
+    const directItems = spaceItems.filter((item) => promotedSub || !item.subLocationName?.trim());
+    const childSpaces = promotedSub
+      ? []
+      : subLocationList.filter((space) => space.parentName === name);
+    const imgUrl = promotedSub
+      ? (spaceItems.find((item) => item.subLocationImg)?.subLocationImg || emojiAsset(classifyEmojiLocally(name, "sub-space").icon_key))
+      : (spaceItems.find((item) => item.parentLocationImg)?.parentLocationImg || emojiAsset(classifyEmojiLocally(name, "parent-space").icon_key));
+    return {
+      key,
+      name,
+      imgUrl,
+      itemCount: spaceItems.length,
+      subLocations: childSpaces,
+      items: spaceItems,
+      directItems,
+      sourceField: promotedSub ? "sub" : "parent",
+      parentName: promotedSub ? "" : name,
+    };
+  });
 
   // Filtered Items for Items tab
   const itemsCategories = ["All", "Electronics", "Apparel", "Docs", "Housewares", "Others"];
@@ -2481,6 +2648,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
     if (onRequireAuth && !onRequireAuth(openMemorySearch)) return;
     setSelectedParentSpace(null);
     setSelectedSpaceDetail(null);
+    setSelectedLocationDetail(null);
     setIsEditingParentName(false);
     setIsEditingItemsList(false);
     setSelectedItemsListIds([]);
@@ -2493,6 +2661,21 @@ export const MemoryList: React.FC<MemoryListProps> = ({
     if (!item) return;
     setIsMemoryKeyboardOpen(false);
     setSelectedDetailItem(item);
+  };
+
+  const saveLocationName = (location: SpaceSummary, nextName: string) => {
+    const previousName = location.name;
+    onMemoriesChange((currentMemories) => currentMemories.map((item) => {
+      if (location.sourceField === "parent") {
+        return item.parentLocationName === previousName
+          ? { ...item, parentLocationName: nextName }
+          : item;
+      }
+      return item.subLocationName === previousName && !item.parentLocationName
+        ? { ...item, subLocationName: nextName }
+        : item;
+    }));
+    setSelectedLocationDetail((current) => current ? { ...current, name: nextName } : current);
   };
 
   const clearItemsLongPressTimer = () => {
@@ -2563,7 +2746,9 @@ export const MemoryList: React.FC<MemoryListProps> = ({
     setIsSearchOpen(false);
     setIsEditingItemsList(false);
     setSelectedItemsListIds([]);
-    setSelectedParentSpace(space);
+    setSelectedParentSpace(null);
+    setSelectedSpaceDetail(null);
+    setSelectedLocationDetail(space);
   };
 
   const startParentEdit = () => {
@@ -2722,7 +2907,19 @@ export const MemoryList: React.FC<MemoryListProps> = ({
   const openSpaceDetail = (space?: SubLocationSummary) => {
     if (!space) return;
     setIsMemoryKeyboardOpen(false);
-    setSelectedSpaceDetail(space);
+    setSelectedParentSpace(null);
+    setSelectedSpaceDetail(null);
+    setSelectedLocationDetail({
+      key: `${space.parentName}::${space.name}`,
+      name: space.name,
+      imgUrl: space.imgUrl || emojiAsset(classifyEmojiLocally(space.name, "sub-space").icon_key),
+      itemCount: space.itemCount,
+      subLocations: [],
+      items: space.items,
+      directItems: space.items,
+      sourceField: "sub",
+      parentName: space.parentName,
+    });
   };
 
   return (
@@ -3305,7 +3502,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
                     onContextMenu={(event) => event.preventDefault()}
                   >
                     <div className="absolute left-0 top-0 z-30 max-w-[calc(100%-8px)] truncate text-[14px] font-sans font-semibold leading-none tracking-tight text-[#232121]">
-                      📍 {item.parentLocationName || "Bedroom"}
+                      📍 {item.parentLocationName || item.subLocationName}
                     </div>
 
                     {/* Sticker Display Area - transparent background, centered */}
@@ -3420,15 +3617,13 @@ export const MemoryList: React.FC<MemoryListProps> = ({
       </AnimatePresence>
 
       <AnimatePresence>
-        {selectedSpaceDetail && (
-          <SpaceDetailModal
-            space={selectedSpaceDetail}
-            parentOptions={memoryParentLocationOptions}
-            onClose={() => setSelectedSpaceDetail(null)}
-            onDeleteSpace={deleteSubLocation}
-            onDeleteItems={deleteSubLocationItems}
-            onUpdateSpaceImage={updateSelectedSpaceImage}
-            onSaveSpace={saveSelectedSpaceDetail}
+        {selectedLocationDetail && (
+          <LocationDetailModal
+            location={selectedLocationDetail}
+            onClose={() => setSelectedLocationDetail(null)}
+            onOpenItem={openDetail}
+            onOpenSubLocation={openSpaceDetail}
+            onSaveLocation={saveLocationName}
           />
         )}
       </AnimatePresence>
