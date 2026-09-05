@@ -15,7 +15,7 @@ import { CaptureShutterButton } from "./CaptureShutterButton";
 import { useLayoutGuard } from "../hooks/useLayoutGuard";
 import { classifyEmojiText, recognizeImage } from "../services/aiService";
 import { classifyEmojiLocally, EMOJI_CATALOG, emojiAsset, type EmojiKind } from "../data/emojiCatalog";
-import { getRoundedOutlineShadow, getStickerTitleStyle, isChineseTitle } from "./StickerTitle";
+import { generateEmojiOutline, getRoundedOutlineShadow, getStickerTitleStyle, isChineseTitle } from "./StickerTitle";
 
 type Stage = "新增物品-默认" | "识别emoji" | "切换emoji" | "新增物品-拍摄模式" | "新增spaces" | "最终结果页";
 type Mode = "emoji" | "camera";
@@ -89,6 +89,11 @@ const spaceDisplaySkinUrl = (entity: DraftEntity, preferredMode: Mode) => {
   return displayMode ? spaceSkinUrl(entity, displayMode) : undefined;
 };
 
+const lastConfirmedSpaceSkinUrl = (entity: DraftEntity) => {
+  if (entity.lastSkinMode && spaceHasSkin(entity, entity.lastSkinMode)) return spaceSkinUrl(entity, entity.lastSkinMode);
+  return spaceSkinUrl(entity, "emoji") || spaceSkinUrl(entity, "camera");
+};
+
 const clearSpaceSkin = (entity: DraftEntity, mode: Mode): DraftEntity => {
   const next = mode === "emoji"
     ? { ...entity, emojiImageUrl: undefined, emojiIconKey: undefined }
@@ -113,63 +118,6 @@ const commitSpaceSkin = (entity: DraftEntity, mode: Mode): DraftEntity => {
   }
   const fallbackMode = mode === "emoji" ? "camera" : "emoji";
   return spaceHasSkin(entity, fallbackMode) ? { ...entity, lastSkinMode: fallbackMode } : entity;
-};
-
-const emojiOutlineCache = new Map<string, string>();
-
-const generateEmojiOutline = (imageUrl: string): Promise<string> => {
-  const cached = emojiOutlineCache.get(imageUrl);
-  if (cached) return Promise.resolve(cached);
-
-  return new Promise((resolve) => {
-    const image = new Image();
-    image.onload = () => {
-      const renderScale = 3;
-      const size = 250 * renderScale;
-      const border = 8 * renderScale;
-      const source = document.createElement("canvas");
-      const sourceContext = source.getContext("2d");
-      const outline = document.createElement("canvas");
-      const outlineContext = outline.getContext("2d");
-      source.width = outline.width = size;
-      source.height = outline.height = size;
-      if (!sourceContext || !outlineContext) {
-        resolve("");
-        return;
-      }
-
-      const scale = Math.min(size / image.naturalWidth, size / image.naturalHeight);
-      const width = image.naturalWidth * scale;
-      const height = image.naturalHeight * scale;
-      const x = (size - width) / 2;
-      const y = (size - height) / 2;
-      sourceContext.drawImage(image, x, y, width, height);
-
-      const sourcePixels = sourceContext.getImageData(0, 0, size, size);
-      for (let index = 3; index < sourcePixels.data.length; index += 4) {
-        sourcePixels.data[index] = sourcePixels.data[index] >= 96 ? 255 : 0;
-      }
-      sourceContext.putImageData(sourcePixels, 0, 0);
-
-      outlineContext.save();
-      for (let angle = 0; angle < 360; angle += 1) {
-        const radians = angle * Math.PI / 180;
-        outlineContext.drawImage(source, Math.cos(radians) * border, Math.sin(radians) * border);
-      }
-      outlineContext.globalCompositeOperation = "source-in";
-      outlineContext.fillStyle = "#fff";
-      outlineContext.fillRect(0, 0, size, size);
-      outlineContext.restore();
-      outlineContext.globalCompositeOperation = "destination-out";
-      outlineContext.drawImage(source, 0, 0);
-
-      const result = outline.toDataURL("image/png");
-      emojiOutlineCache.set(imageUrl, result);
-      resolve(result);
-    };
-    image.onerror = () => resolve("");
-    image.src = imageUrl;
-  });
 };
 
 const ModeSwitch = ({ mode, onChange, onClose, hidden = false }: { mode: Mode; onChange: (mode: Mode) => void; onClose: () => void; hidden?: boolean }) => (
@@ -225,12 +173,13 @@ const CategoryFan = ({ open, current, onSelect }: { open: boolean; current: stri
   </AnimatePresence>
 );
 
-const ItemSticker = ({ item, compact = false, onImageClick, onTitleClick, reveal = false }: {
+const ItemSticker = ({ item, compact = false, onImageClick, onTitleClick, reveal = false, style }: {
   item: DraftEntity;
   compact?: boolean;
   onImageClick?: () => void;
   onTitleClick?: () => void;
   reveal?: boolean;
+  style?: React.CSSProperties;
 }) => {
   const imageUrl = entityImage(item);
   const showEmojiOutline = !item.imageUrl;
@@ -249,7 +198,7 @@ const ItemSticker = ({ item, compact = false, onImageClick, onTitleClick, reveal
   }, [imageUrl, showEmojiOutline]);
 
   return (
-  <div className={compact ? "noma-add-item-sticker is-compact" : "noma-add-item-sticker"}>
+  <div className={compact ? "noma-add-item-sticker is-compact" : "noma-add-item-sticker"} style={style}>
     <button type="button" className={`noma-add-emoji-media${reveal ? " is-revealing" : ""}`} onClick={onImageClick} aria-label={onImageClick ? "Change emoji" : undefined} tabIndex={onImageClick ? 0 : -1}>
       {showEmojiOutline && emojiOutline && <img className="noma-add-emoji-outline" src={emojiOutline} alt="" aria-hidden="true" />}
       <img className="noma-add-emoji-image" src={imageUrl} alt="" />
@@ -268,6 +217,54 @@ const ItemSticker = ({ item, compact = false, onImageClick, onTitleClick, reveal
   );
 };
 
+const InactiveSubSpaceCard = ({
+  entity,
+  backgroundColor,
+  onTitlePointerDown,
+  onPointerDown,
+  onPointerUp,
+  onPointerCancel,
+  onPointerLeave,
+  onClick,
+  pressed = false,
+  pressSuppressed = false,
+}: {
+  entity: DraftEntity;
+  backgroundColor: string;
+  onTitlePointerDown?: (event: React.PointerEvent<HTMLElement>) => void;
+  onPointerDown: React.PointerEventHandler<HTMLDivElement>;
+  onPointerUp: React.PointerEventHandler<HTMLDivElement>;
+  onPointerCancel: React.PointerEventHandler<HTMLDivElement>;
+  onPointerLeave: React.PointerEventHandler<HTMLDivElement>;
+  onClick?: React.MouseEventHandler<HTMLDivElement>;
+  pressed?: boolean;
+  pressSuppressed?: boolean;
+}) => {
+  const imageUrl = lastConfirmedSpaceSkinUrl(entity);
+  const isEmpty = !imageUrl;
+  const isPhoto = imageUrlIsPhoto(imageUrl);
+  const image = imageUrl || emojiAsset(entity.emojiIconKey || entity.iconKey || "box");
+  const title = entity.name.trim();
+  return (
+    <div
+      className={`noma-add-shared-sub-card${pressed ? " is-pressed" : ""}${pressSuppressed ? " is-press-suppressed" : ""}`}
+      style={{ "--noma-shared-sub-card-background": backgroundColor } as React.CSSProperties}
+      onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
+      onPointerLeave={onPointerLeave}
+      onClick={onClick}
+    >
+      <div className={`noma-add-shared-sub-card-content${isEmpty ? " is-empty" : ""}${isPhoto ? " is-photo" : " is-emoji"}`}>
+        <img src={image} alt="" />
+        <strong className="noma-add-space-title-hotspot" onPointerDown={onTitlePointerDown}>
+          {title || <>New Sub-Space<br />eg. Nightstand</>}
+        </strong>
+      </div>
+    </div>
+  );
+};
+
 export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose, existingMemories = [], onItemAdded }) => {
   useLayoutGuard(isOpen);
   const [stage, setStage] = useState<Stage>("新增物品-默认");
@@ -277,12 +274,14 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
   const [subSpace, setSubSpace] = useState<DraftEntity>(EMPTY_SUB);
   const [parentSpace, setParentSpace] = useState<DraftEntity>(EMPTY_PARENT);
   const [activeSpace, setActiveSpace] = useState<SpaceField | null>(null);
+  const [dismissedRecentSpaces, setDismissedRecentSpaces] = useState<Record<SpaceField, boolean>>({ parent: false, sub: false });
   const [spaceInput, setSpaceInput] = useState("");
   const [spaceCameraTarget, setSpaceCameraTarget] = useState<SpaceField>("sub");
   const [spaceCameraActions, setSpaceCameraActions] = useState<"capture" | "review">("capture");
   const [isRecognizing, setIsRecognizing] = useState(false);
   const [isSpaceProcessingSlow, setIsSpaceProcessingSlow] = useState(false);
   const [pressedSpace, setPressedSpace] = useState<SpaceField | null>(null);
+  const [spacePressSuppression, setSpacePressSuppression] = useState<SpaceField | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isItemReveal, setIsItemReveal] = useState(false);
   const [isActionReveal, setIsActionReveal] = useState(false);
@@ -314,10 +313,18 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const hadSpaceInfoRef = useRef(false);
   const spaceActionRevealTimerRef = useRef<number | null>(null);
+  const suppressSpaceCardClickRef = useRef<SpaceField | null>(null);
 
   const updateEditingSpace = (field: SpaceField | null) => {
     editingSpaceRef.current = field;
     setEditingSpace(field);
+  };
+
+  const rememberSelectedSpaceMode = (field: SpaceField, mode: Mode) => {
+    const setter = field === "sub" ? setSubSpace : setParentSpace;
+    setter((current) => spaceHasSkin(current, mode)
+      ? { ...current, lastSkinMode: mode }
+      : current);
   };
 
   const triggerSpaceActionReveal = () => {
@@ -416,6 +423,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
     setSubSpace(EMPTY_SUB);
     setParentSpace(EMPTY_PARENT);
     setActiveSpace(null);
+    setDismissedRecentSpaces({ parent: false, sub: false });
     setSpaceInput("");
     setSpaceCameraTarget("sub");
     setSpaceCameraActions("capture");
@@ -664,9 +672,18 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
     const kind: EmojiKind = field === "sub" ? "sub-space" : "parent-space";
     const currentEntity = field === "sub" ? subSpace : parentSpace;
     const localResult = classifyEmojiLocally(title, kind);
+    const titleChangedInCamera = spaceMode === "camera" && title !== currentEntity.name;
+    const emptyModeEntity = {
+      ...currentEntity,
+      name: title,
+      iconKey: field === "sub" ? EMPTY_SUB.iconKey : EMPTY_PARENT.iconKey,
+      category: field === "sub" ? EMPTY_SUB.category : EMPTY_PARENT.category,
+    };
     const localEntity = spaceMode === "emoji"
-      ? setSpaceSkin({ ...currentEntity, name: localResult.title, iconKey: localResult.icon_key, category: localResult.category }, "emoji", emojiAsset(localResult.icon_key), { iconKey: localResult.icon_key })
-      : { ...currentEntity, name: title };
+      ? setSpaceSkin({ ...currentEntity, name: title, iconKey: localResult.icon_key, category: localResult.category }, "emoji", emojiAsset(localResult.icon_key), { iconKey: localResult.icon_key })
+      : titleChangedInCamera
+        ? clearSpaceSkin(emptyModeEntity, "emoji")
+        : { ...currentEntity, name: title };
     if (field === "sub") setSubSpace(localEntity);
     else setParentSpace(localEntity);
     setSpaceInput("");
@@ -676,8 +693,8 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
     if (spaceMode !== "emoji") return;
     void classifyEmojiText(title, kind).then((result) => {
       const setter = field === "sub" ? setSubSpace : setParentSpace;
-      setter((current) => current.name === localEntity.name
-        ? setSpaceSkin({ ...current, name: result.title, iconKey: result.icon_key, category: result.category }, "emoji", emojiAsset(result.icon_key), { iconKey: result.icon_key })
+      setter((current) => current.name === title
+        ? setSpaceSkin({ ...current, name: title, iconKey: result.icon_key, category: result.category }, "emoji", emojiAsset(result.icon_key), { iconKey: result.icon_key })
         : current);
     }).catch((error) => {
       console.warn("[Noma 1.3] Space emoji refinement failed; keeping the local fallback:", error);
@@ -706,6 +723,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
 
   const activateSpace = (field: SpaceField) => {
     const targetName = field === "sub" ? subSpace.name : parentSpace.name;
+    rememberSelectedSpaceMode(field, spaceMode);
     if (editingSpace !== null) {
       handleSpaceInputFocus();
       setActiveSpace(field);
@@ -730,6 +748,11 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
     if (field === "sub") event.stopPropagation();
     const target = event.target as HTMLElement;
     if (target.closest("input, button, .noma-add-recent-bubble")) return;
+    if (hideRecentSpaceForCard(field, spaceMode)) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     if (activeSpace === field) setPressedSpace(field);
     activateSpace(field);
   };
@@ -750,6 +773,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
 
   const switchSpaceCameraTarget = (field: SpaceField) => {
     const entity = field === "sub" ? subSpace : parentSpace;
+    rememberSelectedSpaceMode(field, "camera");
     setSpaceCameraTarget(field);
     setActiveSpace(field);
     setSpaceCameraActions(spaceHasSkin(entity, "camera") ? "review" : "capture");
@@ -776,6 +800,29 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
     setSpaceCameraActions("capture");
     updateEditingSpace(field);
     setSpaceInput(entity.name);
+  };
+
+  const handleCameraSpacePointerDown = (event: React.PointerEvent<HTMLElement>, field: SpaceField) => {
+    if (field === "sub") event.stopPropagation();
+    const target = event.target as HTMLElement;
+    if (target.closest("input, button, .noma-add-recent-bubble")) return;
+    if (hideRecentSpaceForCard(field, "camera")) {
+      event.preventDefault();
+      event.stopPropagation();
+      suppressSpaceCardClickRef.current = field;
+      return;
+    }
+    if (activeSpace === field) setPressedSpace(field);
+  };
+
+  const handleCameraSpaceClick = (event: React.MouseEvent<HTMLElement>, field: SpaceField) => {
+    if (suppressSpaceCardClickRef.current === field) {
+      suppressSpaceCardClickRef.current = null;
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    switchSpaceCameraTarget(field);
   };
 
   const acceptRecentSub = () => {
@@ -870,8 +917,9 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
 
   const resetSpace = () => {
     if (!activeSpace) return;
-    const setter = activeSpace === "sub" ? setSubSpace : setParentSpace;
-    setter((current) => clearSpaceSkin(current, spaceMode));
+    if (activeSpace === "sub") setSubSpace(EMPTY_SUB);
+    else setParentSpace(EMPTY_PARENT);
+    setDismissedRecentSpaces((current) => ({ ...current, [activeSpace]: false }));
     setSpaceInput("");
     updateEditingSpace(null);
     if (spaceMode === "camera") {
@@ -895,9 +943,16 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
     setIsSpaceProcessingSlow(false);
     (document.activeElement as HTMLElement | null)?.blur?.();
     setActiveSpace(null);
+    setSubSpace(EMPTY_SUB);
+    setParentSpace(EMPTY_PARENT);
+    setDismissedRecentSpaces({ parent: false, sub: false });
     setSpaceInput("");
     updateEditingSpace(null);
     setSpaceCameraActions("capture");
+    setSpaceCameraTarget("sub");
+    setSpaceMode("emoji");
+    setFinalTransitionSource(null);
+    hadSpaceInfoRef.current = false;
     setStage("识别emoji");
   };
 
@@ -947,7 +1002,34 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
   const spaceShift = isSpaceKeyboardOpen ? -105 : 0;
   const shouldShowRecentSpace = (mode: Mode, entity: DraftEntity, field: SpaceField) => {
     const recent = field === "parent" ? recentParent : recentSub;
-    return Boolean(recent && activeSpace === field && editingSpace === null && !spaceHasSkin(entity, mode));
+    return Boolean(recent && !entity.name.trim() && activeSpace === field && editingSpace === null && !dismissedRecentSpaces[field] && !spaceHasSkin(entity, mode));
+  };
+
+  const hideRecentSpaceForCard = (field: SpaceField, mode: Mode) => {
+    const entity = field === "parent" ? parentSpace : subSpace;
+    if (!shouldShowRecentSpace(mode, entity, field)) return false;
+    setPressedSpace(null);
+    setSpacePressSuppression(field);
+    window.requestAnimationFrame(() => {
+      setSpacePressSuppression((current) => current === field ? null : current);
+    });
+    setDismissedRecentSpaces((current) => ({ ...current, [field]: true }));
+    setSpaceInput("");
+    updateEditingSpace(null);
+    return true;
+  };
+
+  const dismissVisibleRecentSpaces = (event: React.PointerEvent<HTMLElement>) => {
+    if (stage !== "新增spaces" || (event.target as HTMLElement).closest(".noma-add-recent-bubble")) return;
+    setDismissedRecentSpaces((current) => {
+      const next = { ...current };
+      (Object.keys(next) as SpaceField[]).forEach((field) => {
+        const entity = field === "parent" ? parentSpace : subSpace;
+        const recent = field === "parent" ? recentParent : recentSub;
+        if (recent && activeSpace === field && editingSpace === null && !spaceHasSkin(entity, spaceMode)) next[field] = true;
+      });
+      return next;
+    });
   };
   const renderRecentSpace = (mode: Mode, entity: DraftEntity, field: SpaceField) => {
     if (!shouldShowRecentSpace(mode, entity, field)) return null;
@@ -957,7 +1039,13 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
     return (
       <div
         className={`noma-add-recent-bubble is-${mode} is-${field}`}
-        onPointerDown={(event) => event.stopPropagation()}
+        onPointerDown={(event) => {
+          if ((event.target as HTMLElement).closest("button")) {
+            event.stopPropagation();
+            return;
+          }
+          beginSpaceTitleEdit(event, field);
+        }}
         onClick={(event) => event.stopPropagation()}
       >
         <img src={recent.imageUrl || emojiAsset(field === "parent" ? "home" : "box")} alt="" />
@@ -1055,12 +1143,13 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
     <>
         <ModeSwitch mode={spaceMode} onChange={(mode) => {
           if (mode === spaceMode) return;
+          const selectedField = activeSpace || spaceCameraTarget;
+          const selectedEntity = selectedField === "sub" ? subSpace : parentSpace;
+          rememberSelectedSpaceMode(selectedField, mode);
           if (mode === "camera") {
-            const selectedField = activeSpace || spaceCameraTarget;
             setSpaceCameraTarget(selectedField);
-            setSpaceCameraActions("capture");
+            setSpaceCameraActions(spaceHasSkin(selectedEntity, "camera") ? "review" : "capture");
           } else {
-            const selectedField = activeSpace || spaceCameraTarget;
             setActiveSpace(selectedField);
           }
           setSpaceInput("");
@@ -1071,7 +1160,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
       <div className="noma-add-space-composition" style={{ transform: `translateY(${spaceShift}px)` }}>
         <ItemSticker item={item} compact />
         <div className="noma-add-space-wrap">
-          <section className={`noma-add-space-card ${activeSpace === "parent" ? "is-active" : ""}${pressedSpace === "parent" ? " is-pressed" : ""}`} onPointerDown={(event) => handleSpaceCardPointerDown(event, "parent")} onPointerUp={() => releaseSpacePress("parent")} onPointerCancel={() => releaseSpacePress("parent")} onPointerLeave={() => releaseSpacePress("parent")}>
+          <section className={`noma-add-space-card ${activeSpace === "parent" ? "is-active" : ""}${pressedSpace === "parent" ? " is-pressed" : ""}${spacePressSuppression === "parent" ? " is-press-suppressed" : ""}`} onPointerDown={(event) => handleSpaceCardPointerDown(event, "parent")} onPointerUp={() => releaseSpacePress("parent")} onPointerCancel={() => releaseSpacePress("parent")} onPointerLeave={() => releaseSpacePress("parent")}>
             <div className="noma-add-parent-zone">
               {parentSpace.name ? (
                 <div className={`noma-add-space-value${imageUrlIsPhoto(activeSpace === "parent" ? spaceSkinUrl(parentSpace, "emoji") : spaceDisplaySkinUrl(parentSpace, "emoji")) ? " is-photo" : ""}${!(activeSpace === "parent" ? spaceHasSkin(parentSpace, "emoji") : spaceDisplaySkinUrl(parentSpace, "emoji")) ? " is-empty" : ""}${editingSpace === "parent" ? " is-editing" : ""}`} style={{ "--noma-parent-title-width": `${parentTitleWidth}px` } as React.CSSProperties}>
@@ -1103,23 +1192,39 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
               )}
             </div>
 
-            <div className={`noma-add-sub-card ${activeSpace === "sub" ? "is-active" : ""}${pressedSpace === "sub" ? " is-pressed" : ""}`} onPointerDown={(event) => handleSpaceCardPointerDown(event, "sub")} onPointerUp={() => releaseSpacePress("sub")} onPointerCancel={() => releaseSpacePress("sub")} onPointerLeave={() => releaseSpacePress("sub")}>
-              {editingSpace === "sub" ? (
+            {editingSpace === "sub" ? (
+              <div className={`noma-add-sub-card ${activeSpace === "sub" ? "is-active" : ""}${pressedSpace === "sub" ? " is-pressed" : ""}${spacePressSuppression === "sub" ? " is-press-suppressed" : ""}`} onPointerDown={(event) => handleSpaceCardPointerDown(event, "sub")} onPointerUp={() => releaseSpacePress("sub")} onPointerCancel={() => releaseSpacePress("sub")} onPointerLeave={() => releaseSpacePress("sub")}>
                 <form onSubmit={submitSpaceTitle} className="noma-add-space-input-wrap">
                   <img src={spaceSkinUrl(subSpace, "emoji") || emojiAsset(subSpace.emojiIconKey || subSpace.iconKey)} alt="" className={`noma-add-space-placeholder-icon${spaceHasSkin(subSpace, "emoji") ? " is-filled" : ""}`} />
                   <input autoFocus value={spaceInput} onFocus={handleSpaceInputFocus} onBlur={handleSpaceInputBlur} onChange={(event) => setSpaceInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="" aria-label="New sub-space" enterKeyHint="send" />
                   {!spaceInput && <span className="noma-add-sub-placeholder is-input-placeholder">New Sub-Space<br />eg. Nightstand</span>}
                 </form>
-              ) : subSpace.name ? (
-                <div className={`noma-add-sub-value${imageUrlIsPhoto(activeSpace === "sub" ? spaceSkinUrl(subSpace, "emoji") : spaceDisplaySkinUrl(subSpace, "emoji")) ? " is-photo" : ""}${!(activeSpace === "sub" ? spaceHasSkin(subSpace, "emoji") : spaceDisplaySkinUrl(subSpace, "emoji")) ? " is-empty" : ""}`}><img src={(activeSpace === "sub" ? spaceSkinUrl(subSpace, "emoji") : spaceDisplaySkinUrl(subSpace, "emoji")) || emojiAsset(subSpace.emojiIconKey || subSpace.iconKey)} alt="" className={imageUrlIsPhoto(activeSpace === "sub" ? spaceSkinUrl(subSpace, "emoji") : spaceDisplaySkinUrl(subSpace, "emoji")) ? "is-photo" : undefined} /><strong className="noma-add-space-title-hotspot" onPointerDown={(event) => beginSpaceTitleEdit(event, "sub")}>{subSpace.name}</strong></div>
-              ) : (
-                <div className="noma-add-space-input-wrap is-preview">
-                  {!shouldShowRecentSpace("emoji", subSpace, "sub") && <img src={emojiAsset("box")} alt="" className="noma-add-space-placeholder-icon" />}
-                  {!shouldShowRecentSpace("emoji", subSpace, "sub") && <span className="noma-add-sub-placeholder noma-add-space-title-hotspot" onPointerDown={(event) => beginSpaceTitleEdit(event, "sub")}>New Sub-Space<br />eg. Nightstand</span>}
-                  {renderRecentSpace("emoji", subSpace, "sub")}
-                </div>
-              )}
-            </div>
+              </div>
+            ) : activeSpace === "sub" ? (
+              <div className={`noma-add-sub-card is-active${pressedSpace === "sub" ? " is-pressed" : ""}${spacePressSuppression === "sub" ? " is-press-suppressed" : ""}`} onPointerDown={(event) => handleSpaceCardPointerDown(event, "sub")} onPointerUp={() => releaseSpacePress("sub")} onPointerCancel={() => releaseSpacePress("sub")} onPointerLeave={() => releaseSpacePress("sub")}>
+                {subSpace.name ? (
+                  <div className={`noma-add-sub-value${imageUrlIsPhoto(spaceSkinUrl(subSpace, "emoji")) ? " is-photo" : ""}${!spaceHasSkin(subSpace, "emoji") ? " is-empty" : ""}`}><img src={spaceSkinUrl(subSpace, "emoji") || emojiAsset(subSpace.emojiIconKey || subSpace.iconKey)} alt="" className={imageUrlIsPhoto(spaceSkinUrl(subSpace, "emoji")) ? "is-photo" : undefined} /><strong className="noma-add-space-title-hotspot" onPointerDown={(event) => beginSpaceTitleEdit(event, "sub")}>{subSpace.name}</strong></div>
+                ) : (
+                  <div className="noma-add-space-input-wrap is-preview">
+                    {!shouldShowRecentSpace("emoji", subSpace, "sub") && <img src={emojiAsset("box")} alt="" className="noma-add-space-placeholder-icon" />}
+                    {!shouldShowRecentSpace("emoji", subSpace, "sub") && <span className="noma-add-sub-placeholder noma-add-space-title-hotspot" onPointerDown={(event) => beginSpaceTitleEdit(event, "sub")}>New Sub-Space<br />eg. Nightstand</span>}
+                    {renderRecentSpace("emoji", subSpace, "sub")}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <InactiveSubSpaceCard
+                entity={subSpace}
+                backgroundColor="rgba(204, 196, 190, 0.3)"
+                onTitlePointerDown={(event) => beginSpaceTitleEdit(event, "sub")}
+                onPointerDown={(event) => handleSpaceCardPointerDown(event, "sub")}
+                onPointerUp={() => releaseSpacePress("sub")}
+                onPointerCancel={() => releaseSpacePress("sub")}
+                onPointerLeave={() => releaseSpacePress("sub")}
+                pressed={pressedSpace === "sub"}
+                pressSuppressed={spacePressSuppression === "sub"}
+              />
+            )}
           </section>
         </div>
       </div>
@@ -1180,19 +1285,21 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
         spaceRecognitionRequestRef.current += 1;
         setIsRecognizing(false);
         setIsSpaceProcessingSlow(false);
+        const selectedField = activeSpace || spaceCameraTarget;
+        const selectedEntity = selectedField === "sub" ? subSpace : parentSpace;
+        rememberSelectedSpaceMode(selectedField, mode);
         setSpaceMode(mode);
         // Mode is only the input method. Keep the selected card, its title,
         // and any captured/accepted media when moving between Emoji and Camera.
-        const selectedField = activeSpace || spaceCameraTarget;
         setSpaceCameraTarget(selectedField);
-        setSpaceCameraActions("capture");
+        setSpaceCameraActions(spaceHasSkin(selectedEntity, "camera") ? "review" : "capture");
         setSpaceInput("");
         updateEditingSpace(null);
         (document.activeElement as HTMLElement | null)?.blur?.();
       }} onClose={onClose} hidden={isSpaceKeyboardOpen} />
-        <ItemSticker item={item} compact />
+        <ItemSticker item={item} compact style={{ top: `${137 + spaceShift}px` }} />
         <div className={`noma-add-space-camera-wrap${isSubCamera ? " is-sub" : " is-parent"}`} style={{ transform: `translateY(${spaceShift}px)` }}>
-          <div className={`noma-add-space-camera-parent-frame${pressedSpace === "parent" ? " is-pressed" : ""}`} onPointerDown={(event) => { if (activeSpace === "parent" && !(event.target as HTMLElement).closest("input, button, .noma-add-recent-bubble")) setPressedSpace("parent"); }} onPointerUp={() => releaseSpacePress("parent")} onPointerCancel={() => releaseSpacePress("parent")} onPointerLeave={() => releaseSpacePress("parent")} onClick={() => switchSpaceCameraTarget("parent")}>
+          <div className={`noma-add-space-camera-parent-frame${pressedSpace === "parent" ? " is-pressed" : ""}${spacePressSuppression === "parent" ? " is-press-suppressed" : ""}`} onPointerDown={(event) => handleCameraSpacePointerDown(event, "parent")} onPointerUp={() => releaseSpacePress("parent")} onPointerCancel={() => releaseSpacePress("parent")} onPointerLeave={() => releaseSpacePress("parent")} onClick={(event) => handleCameraSpaceClick(event, "parent")}>
             {isSubCamera ? (
               renderInactiveLocation(parentSpace, "parent")
             ) : (
@@ -1202,17 +1309,30 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
               </>
             )}
             {renderRecentSpace("camera", parentSpace, "parent")}
-            <div className={`noma-add-space-camera-sub-frame${isParentEmojiContext ? " is-parent-emoji-context" : ""}${pressedSpace === "sub" ? " is-pressed" : ""}`} onPointerDown={(event) => { event.stopPropagation(); if (activeSpace === "sub" && !(event.target as HTMLElement).closest("input, button, .noma-add-recent-bubble")) setPressedSpace("sub"); }} onPointerUp={() => releaseSpacePress("sub")} onPointerCancel={() => releaseSpacePress("sub")} onPointerLeave={() => releaseSpacePress("sub")} onClick={(event) => { event.stopPropagation(); switchSpaceCameraTarget("sub"); }}>
-              {isSubCamera ? (
-                spaceHasSkin(subSpace, "camera") ? (
+            {isSubCamera ? (
+              <div className={`noma-add-space-camera-sub-frame${pressedSpace === "sub" ? " is-pressed" : ""}${spacePressSuppression === "sub" ? " is-press-suppressed" : ""}`} onPointerDown={(event) => handleCameraSpacePointerDown(event, "sub")} onPointerUp={() => releaseSpacePress("sub")} onPointerCancel={() => releaseSpacePress("sub")} onPointerLeave={() => releaseSpacePress("sub")} onClick={(event) => handleCameraSpaceClick(event, "sub")}>
+                {spaceHasSkin(subSpace, "camera") ? (
                   <>
                     <img src={spaceSkinUrl(subSpace, "camera")} alt="" />
                     {renderCameraTitle(subSpace, "sub")}
                   </>
-                ) : <><video ref={videoRef} className="noma-add-live-video" autoPlay playsInline muted />{renderCameraTitle(subSpace, "sub")}</>
-              ) : renderInactiveLocation(subSpace, "sub")}
-              {renderRecentSpace("camera", subSpace, "sub")}
-            </div>
+                ) : <><video ref={videoRef} className="noma-add-live-video" autoPlay playsInline muted />{renderCameraTitle(subSpace, "sub")}</>}
+                {renderRecentSpace("camera", subSpace, "sub")}
+              </div>
+            ) : (
+              <InactiveSubSpaceCard
+                entity={subSpace}
+                backgroundColor={isParentEmojiContext ? "rgba(204, 196, 190, 0.3)" : "rgba(255, 255, 255, 0.8)"}
+                onTitlePointerDown={spaceHasSkin(subSpace, "camera") ? (event) => beginSpaceCameraTitleEdit(event, "sub") : undefined}
+                onPointerDown={(event) => handleCameraSpacePointerDown(event, "sub")}
+                onPointerUp={() => releaseSpacePress("sub")}
+                onPointerCancel={() => releaseSpacePress("sub")}
+                onPointerLeave={() => releaseSpacePress("sub")}
+                onClick={(event) => handleCameraSpaceClick(event, "sub")}
+                pressed={pressedSpace === "sub"}
+                pressSuppressed={spacePressSuppression === "sub"}
+              />
+            )}
           </div>
         </div>
         <div className="noma-add-space-camera-actions-layer">
@@ -1247,7 +1367,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
 
   return createPortal(
     <div className="noma-add-overlay" style={stageStyle} role="dialog" aria-modal="true" aria-label="Add item">
-      <div className="noma-add-screen" data-board={stage}>
+      <div className="noma-add-screen" data-board={stage} onPointerDownCapture={dismissVisibleRecentSpaces}>
         <MatrixDotBackground />
         {stage === "新增物品-默认" && (
           <>
