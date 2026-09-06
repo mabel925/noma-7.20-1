@@ -1360,7 +1360,8 @@ const SubLocationListCard: React.FC<{
   onClick: () => void;
   onDelete?: () => void;
 }> = ({ space, onClick, onDelete }) => {
-  const previewItems = space.items.slice(0, 3);
+  const hasOverflow = space.itemCount > 5;
+  const previewItems = space.items.slice(0, hasOverflow ? 4 : 5);
   const remainingItems = Math.max(0, space.itemCount - previewItems.length);
   const [swipeX, setSwipeX] = React.useState(0);
   const swipeStartXRef = React.useRef<number | null>(null);
@@ -1438,14 +1439,14 @@ const SubLocationListCard: React.FC<{
         </div>
 
         {(previewItems.length > 0 || remainingItems > 0) && (
-          <div className="mt-[12px] flex h-[56px] min-h-[56px] items-center gap-[8px] overflow-visible">
+          <div className="mt-[12px] grid h-[55px] min-h-[55px] w-full grid-cols-5 items-center gap-0 overflow-visible">
             {previewItems.map((item) => (
-              <div key={item.id} className="h-[56px] w-[72px] min-w-[72px] shrink-0 overflow-visible">
-                <ItemSticker item={item} size={48} alignLeft />
+              <div key={item.id} className="h-[55px] w-[55px] min-w-0 shrink-0 overflow-visible">
+                <ItemSticker item={item} size={55} alignLeft />
               </div>
             ))}
             {remainingItems > 0 && (
-              <div className="ml-auto h-[50px] w-[50px] shrink-0 rounded-[16px] bg-[#F3F1EC] flex items-center justify-center text-[18px] font-sans font-bold text-[#232121]/55">
+              <div className="h-[55px] w-[55px] shrink-0 rounded-[16px] bg-[#F3F1EC] flex items-center justify-center text-[18px] font-sans font-bold text-[#232121]/55">
                 +{remainingItems}
               </div>
             )}
@@ -1508,6 +1509,8 @@ const DirectLocationItemsCard: React.FC<{
               onPointerUp={(event) => { event.stopPropagation(); clearLongPress(); }}
               onPointerCancel={(event) => { event.stopPropagation(); clearLongPress(); }}
               onPointerLeave={clearLongPress}
+              onContextMenu={(event) => event.preventDefault()}
+              onDragStart={(event) => event.preventDefault()}
               onClick={(event) => {
                 event.stopPropagation();
                 clearLongPress();
@@ -1518,7 +1521,8 @@ const DirectLocationItemsCard: React.FC<{
                 if (isEditing) onToggleItem?.(item.id);
                 else onItemClick(item);
               }}
-              className="relative h-[74px] w-[74px] border-0 bg-transparent p-0 active:scale-95 transition-transform"
+              className="relative h-[74px] w-[74px] border-0 bg-transparent p-0 select-none active:scale-95 transition-transform"
+              style={{ WebkitTouchCallout: "none", WebkitUserSelect: "none" }}
               aria-label={isEditing ? `Select ${item.name}` : `Open ${item.name}`}
             >
               <ItemSticker item={item} size={74} alignLeft />
@@ -1844,7 +1848,8 @@ const SpaceDetailModal: React.FC<{
                   type="button"
                   key={item.id}
                   data-memory-item-id={item.id}
-                  className={`relative z-20 block h-[74px] w-[74px] border-0 bg-transparent p-0 rounded-[12px] ${isEditingItems ? "cursor-pointer pointer-events-auto" : "cursor-default"}`}
+                  className={`relative z-20 block h-[74px] w-[74px] border-0 bg-transparent p-0 rounded-[12px] select-none ${isEditingItems ? "cursor-pointer pointer-events-auto" : "cursor-default"}`}
+                  style={{ WebkitTouchCallout: "none", WebkitUserSelect: "none" }}
                   onPointerDown={(event) => {
                     if (isEditingItems) event.stopPropagation();
                   }}
@@ -1853,6 +1858,8 @@ const SpaceDetailModal: React.FC<{
                     if (!isEditingItems) return;
                     toggleItemSelection(item.id);
                   }}
+                  onContextMenu={(event) => event.preventDefault()}
+                  onDragStart={(event) => event.preventDefault()}
                 >
                   <ItemSticker item={item} size={74} alignLeft />
                   {isEditingItems && (
@@ -1994,8 +2001,20 @@ const LocationDetailModal: React.FC<{
   const [pendingDeleteSubLocation, setPendingDeleteSubLocation] = React.useState<SubLocationSummary | null>(null);
   const [draftName, setDraftName] = React.useState(location.name);
   const [draftImage, setDraftImage] = React.useState(image);
+  const [isEditingTitle, setIsEditingTitle] = React.useState(false);
+  const locationTitleEditRef = React.useRef<HTMLInputElement>(null);
   const [isRetakeCaptureOpen, setIsRetakeCaptureOpen] = React.useState(false);
   const draftTitleLength = Math.max(1, Math.min(MAX_LOCATION_TITLE_LENGTH, Array.from(draftName).length));
+
+  React.useEffect(() => {
+    if (!isEditingTitle) return;
+    const frame = window.requestAnimationFrame(() => {
+      const input = locationTitleEditRef.current;
+      input?.focus();
+      if (input) input.setSelectionRange(input.value.length, input.value.length);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [isEditingTitle]);
 
   const finishEditing = () => {
     const nextName = limitLocationTitle(draftName.trim());
@@ -2003,12 +2022,14 @@ const LocationDetailModal: React.FC<{
       onSaveLocation(location, { name: nextName, imgUrl: draftImage });
     }
     setIsEditing(false);
+    setIsEditingTitle(false);
   };
 
   const resetEditing = () => {
     setDraftName(location.name);
     setDraftImage(image);
     setIsRetakeCaptureOpen(false);
+    setIsEditingTitle(false);
   };
 
   const toggleItemsEditing = () => {
@@ -2076,8 +2097,10 @@ const LocationDetailModal: React.FC<{
           <div className={`${isEditing ? "mt-[70px]" : "mt-[12px]"} flex max-w-[320px] items-center justify-center text-[24px] font-sans font-extrabold leading-tight tracking-tight text-[#232121]`}>
             {location.sourceField === "parent" && <span className="mr-[4px] text-[21px]">📍</span>}
             {isEditing ? (
+              isEditingTitle ? (
               <input
-                autoFocus
+                ref={locationTitleEditRef}
+                autoFocus={isEditingTitle}
                 value={limitLocationTitle(draftName)}
                 onChange={(event) => setDraftName(limitLocationTitle(event.target.value))}
                 onKeyDown={(event) => { if (event.key === "Enter") finishEditing(); }}
@@ -2086,10 +2109,20 @@ const LocationDetailModal: React.FC<{
                 className="min-w-[42px] max-w-[230px] border-0 border-b-[1.5px] border-[#CCC4BE] bg-transparent px-0 pb-[3px] text-center font-inherit text-[24px] font-extrabold outline-none"
                 aria-label="Edit location name"
               />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setIsEditingTitle(true)}
+                  className="min-w-[42px] max-w-[230px] border-0 border-b-[1.5px] border-[#CCC4BE] bg-transparent px-0 pb-[3px] text-center font-inherit text-[24px] font-extrabold outline-none truncate"
+                  aria-label="Edit location name"
+                >
+                  {truncateLocationTitle(draftName)}
+                </button>
+              )
             ) : (
               <>
                 <span className="max-w-[270px] truncate">{truncateLocationTitle(location.name)}</span>
-                <button type="button" onClick={() => { setDraftName(location.name); setDraftImage(image); setIsEditing(true); }} className="ml-[10px] flex h-[18px] w-[18px] shrink-0 items-center justify-center active:scale-95" aria-label="Edit location">
+                <button type="button" onClick={() => { setDraftName(location.name); setDraftImage(image); setIsEditing(true); setIsEditingTitle(false); }} className="ml-[10px] flex h-[18px] w-[18px] shrink-0 items-center justify-center active:scale-95" aria-label="Edit location">
                   <EditPencilIcon />
                 </button>
               </>

@@ -284,6 +284,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
   const [spacePressSuppression, setSpacePressSuppression] = useState<SpaceField | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isItemReveal, setIsItemReveal] = useState(false);
+  const [isColorBlurReady, setIsColorBlurReady] = useState(false);
   const [isActionReveal, setIsActionReveal] = useState(false);
   const [isSpaceActionReveal, setIsSpaceActionReveal] = useState(false);
   const [isFinalReveal, setIsFinalReveal] = useState(false);
@@ -416,6 +417,14 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
 
   useEffect(() => {
     if (!isOpen) return;
+    setIsColorBlurReady(false);
+    const colorBlur = new Image();
+    colorBlur.decoding = "async";
+    colorBlur.referrerPolicy = "no-referrer";
+    colorBlur.onload = () => setIsColorBlurReady(true);
+    colorBlur.src = COLOR_BLUR_IMAGE_URL;
+    const decodePromise = colorBlur.decode?.();
+    if (decodePromise) void decodePromise.then(() => setIsColorBlurReady(true)).catch(() => undefined);
     setStage("新增物品-默认");
     setItemMode("emoji");
     setSpaceMode("emoji");
@@ -822,6 +831,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
       event.stopPropagation();
       return;
     }
+    if (field === "sub") event.stopPropagation();
     switchSpaceCameraTarget(field);
   };
 
@@ -1089,7 +1099,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
       )}
       <main className={`noma-add-item-result${isItemReveal ? " is-revealing" : ""}${isEditingItemTitle ? " is-editing-title" : ""}`}>
         {isItemReveal && <span className="noma-add-result-underline" aria-hidden="true" />}
-        <img className="noma-add-glow" src={COLOR_BLUR_IMAGE_URL} alt="" aria-hidden="true" referrerPolicy="no-referrer" />
+        <img className={`noma-add-glow${isColorBlurReady ? " is-ready" : ""}`} src={COLOR_BLUR_IMAGE_URL} alt="" aria-hidden="true" referrerPolicy="no-referrer" onLoad={() => setIsColorBlurReady(true)} />
         <ItemSticker
           item={item}
           reveal={isItemReveal}
@@ -1259,8 +1269,8 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
         );
       }
       return spaceHasSkin(entity, "camera") ? (
-        <button type="button" className={`noma-add-space-camera-title is-${field}`} onPointerDown={(event) => beginSpaceCameraTitleEdit(event, field)}>{label}</button>
-      ) : <strong>{label}</strong>;
+        <button type="button" className={`noma-add-space-camera-title is-${field}`} onPointerDown={(event) => beginSpaceCameraTitleEdit(event, field)}><span>{label}</span></button>
+      ) : <strong><span>{label}</span></strong>;
     };
     const renderInactiveLocation = (entity: DraftEntity, field: SpaceField) => {
       const isParent = field === "parent";
@@ -1274,7 +1284,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
           onClick={(event) => { event.stopPropagation(); switchSpaceCameraTarget(field); }}
         >
           {(!isEmpty || !isParent) && <img src={image} alt="" />}
-          {isEmpty && field === "sub" ? <strong>New Sub-Space<br />eg. Nightstand</strong> : renderCameraTitle(entity, field)}
+          {isEmpty && field === "sub" ? <strong><span>New Sub-Space<br />eg. Nightstand</span></strong> : renderCameraTitle(entity, field)}
         </div>
       );
     };
@@ -1429,7 +1439,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
             )}
             <main className={`noma-add-final${isFinalReveal ? " is-revealing" : ""}`}>
               <div className="noma-add-final-hero">
-                <img className="noma-add-glow" src={COLOR_BLUR_IMAGE_URL} alt="" aria-hidden="true" referrerPolicy="no-referrer" />
+                <img className={`noma-add-glow${isColorBlurReady ? " is-ready" : ""}`} src={COLOR_BLUR_IMAGE_URL} alt="" aria-hidden="true" referrerPolicy="no-referrer" onLoad={() => setIsColorBlurReady(true)} />
                 {isEditingPrice ? (
                   <div className="noma-add-final-price noma-add-final-price-editing">
                     <PriceTag price={price || "0.00"} />

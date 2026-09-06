@@ -755,6 +755,12 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
   transition: opacity 180ms ease, visibility 0s linear;
 }
 
+/* In standalone PWA mode the safe-area/status-bar height is already included
+   in --noma-statusbar-height. Do not add the browser-mode offset again. */
+.pwa-standalone .noma-add-modebar {
+  top: var(--noma-statusbar-height);
+}
+
 .noma-add-modebar.is-keyboard-hidden { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 140ms ease, visibility 0s linear 140ms; }
 
 .noma-add-segmented {
@@ -851,6 +857,7 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
   object-fit: contain;
   pointer-events: none;
 }
+.noma-add-glow:not(.is-ready) { opacity: 0; }
 
 .noma-add-item-sticker {
   position: absolute;
@@ -1408,12 +1415,12 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 .noma-add-space-camera-sub-frame > .noma-add-space-camera-title { position: absolute; z-index: 5; top: 42px; left: 0; width: 100%; margin: 0; padding: 0; color: rgba(255, 255, 255, 0.95); font-size: 22px; font-weight: 600; text-align: center; border: 0; background: transparent; }
 .noma-add-space-camera-wrap.is-sub .noma-add-space-camera-sub-frame > strong,
 .noma-add-space-camera-wrap.is-sub .noma-add-space-camera-sub-frame > .noma-add-space-camera-title {
-  top: 42px;
+  top: 166px;
   left: 0;
-  display: -webkit-box;
+  display: flex;
   width: 100%;
   max-width: none;
-  height: 53px;
+  height: 87px;
   padding: 0 10px;
   box-sizing: border-box;
   overflow: hidden;
@@ -1421,6 +1428,16 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
   font-size: 22px;
   line-height: 1.2;
   text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  align-items: center;
+  justify-content: center;
+}
+.noma-add-space-camera-wrap.is-sub .noma-add-space-camera-sub-frame > strong > span,
+.noma-add-space-camera-wrap.is-sub .noma-add-space-camera-sub-frame > .noma-add-space-camera-title > span {
+  display: -webkit-box;
+  width: 100%;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: normal;
   overflow-wrap: anywhere;
