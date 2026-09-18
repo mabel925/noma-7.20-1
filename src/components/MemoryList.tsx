@@ -9,8 +9,10 @@ import { CloseIcon } from "./CloseIcon";
 import { CancelIcon } from "./CancelIcon";
 import { CameraIcon } from "./CameraIcon";
 import { RestartIcon } from "./RestartIcon";
+import { PhotoUploadIcon } from "./PhotoUploadIcon";
+import { CaptureShutterButton } from "./CaptureShutterButton";
 import { CollapseLocationIcon, ExpandLocationIcon } from "./LocationViewIcons";
-import { classifyEmojiLocally, emojiAsset } from "../data/emojiCatalog";
+import { classifyEmojiLocally, EMOJI_CATALOG, emojiAsset, refreshEmojiAssetUrl, type EmojiKind } from "../data/emojiCatalog";
 
 export const COLOR_BLUR_IMAGE_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/colorblur.png";
 export const MATRIX_DOT_IMAGE_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/%E7%9F%A9%E9%98%B5%E5%9C%86%E7%82%B9.png";
@@ -150,6 +152,11 @@ const getPersistentImageResource = (src: string) => {
 
 const cachedDisplaySource = (src: string) => persistentImageCache.get(src)?.displaySrc || src;
 const isEmojiImageUrl = (src?: string) => Boolean(src && /(?:^|\/)emoji\/[^/?#]+\.png(?:[?#]|$)/i.test(src));
+const emojiKeyFromImageUrl = (src?: string) => {
+  if (!src) return "";
+  const match = src.match(/(?:^|\/)emoji\/([^/?#]+)\.png(?:[?#]|$)/i);
+  return match?.[1] || "";
+};
 
 type PersistentImageProps = React.ImgHTMLAttributes<HTMLImageElement> & {
   showSkeleton?: boolean;
@@ -328,7 +335,7 @@ export const MatrixDotBackground: React.FC<{ rounded?: boolean }> = ({ rounded =
     src={MATRIX_DOT_IMAGE_URL}
     alt=""
     aria-hidden="true"
-    className={`absolute inset-0 z-0 h-full w-full object-cover pointer-events-none select-none ${rounded ? "rounded-[24px]" : ""}`}
+    className={`absolute inset-0 z-0 h-full w-full object-cover pointer-events-none select-none ${rounded ? "rounded-[36px]" : ""}`}
     referrerPolicy="no-referrer"
   />
 );
@@ -481,6 +488,7 @@ const ItemSticker: React.FC<{
   alignLeft?: boolean;
   onTitleClick?: (event: React.MouseEvent) => void;
   isTitleEditing?: boolean;
+  titleTrailingAction?: React.ReactNode;
 }> = ({
   item,
   size = 210,
@@ -489,6 +497,7 @@ const ItemSticker: React.FC<{
   alignLeft = false,
   onTitleClick,
   isTitleEditing = false,
+  titleTrailingAction,
 }) => {
   const displayTitle = title ?? item.name;
   const scale = size / 250;
@@ -562,6 +571,11 @@ const ItemSticker: React.FC<{
               <span className="ml-[2px] inline-block h-[0.72em] w-[2px] bg-[#232121] align-[-0.08em] animate-cursor-blink-black" />
             )}
           </span>
+          {titleTrailingAction && (
+            <span className="ml-[6px] flex h-[30px] w-[30px] shrink-0 items-center justify-center">
+              {titleTrailingAction}
+            </span>
+          )}
         </div>
       </div>
     </div>
@@ -844,8 +858,9 @@ const DetailCardActionGroup: React.FC<{
   isEditing: boolean;
   onEditToggle: (event: React.MouseEvent<HTMLButtonElement>) => void;
   onCloseOrCancel: (event: React.MouseEvent<HTMLButtonElement>) => void;
-}> = ({ isEditing, onEditToggle, onCloseOrCancel }) => (
-  <div className="absolute right-0 top-[-52px] z-30 flex items-center gap-[16px]">
+  className?: string;
+}> = ({ isEditing, onEditToggle, onCloseOrCancel, className = "" }) => (
+  <div className={`absolute right-0 top-[-52px] z-30 flex items-center gap-[16px] ${className}`}>
     {isEditing ? (
       <>
         <MemoryActionButton label="Cancel editing" onClick={onCloseOrCancel}>
@@ -1134,6 +1149,200 @@ const LocationRetakeCapture: React.FC<{
         </div>
       </div>
 
+      <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileChange} />
+    </motion.div>
+  );
+};
+
+/**
+ * Memory-only location image replacement flow. Unlike the add-location flow,
+ * this intentionally has no title input: it only replaces the selected
+ * location skin. Parent and child details both use this same component.
+ */
+const LocationImageEditFlow: React.FC<{
+  initialImage?: string;
+  initialMode?: "emoji" | "camera";
+  emojiKind: EmojiKind;
+  onCancel: () => void;
+  onConfirm: (imageUrl: string) => void;
+}> = ({ initialImage = "", initialMode, emojiKind, onCancel, onConfirm }) => {
+  const [mode, setMode] = React.useState<"emoji" | "camera">(
+    initialMode || (isEmojiImageUrl(initialImage) ? "emoji" : "camera"),
+  );
+  const [workingImage, setWorkingImage] = React.useState(initialImage);
+  const [phase, setPhase] = React.useState<"capture" | "preview">("capture");
+  const [cameraActive, setCameraActive] = React.useState(false);
+  const [cameraError, setCameraError] = React.useState("");
+  const [shutterFlash, setShutterFlash] = React.useState(false);
+  const videoRef = React.useRef<HTMLVideoElement>(null);
+  const streamRef = React.useRef<MediaStream | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const stopCamera = React.useCallback(() => {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    setCameraActive(false);
+  }, []);
+
+  React.useEffect(() => {
+    if (mode !== "camera" || phase !== "capture") {
+      stopCamera();
+      return;
+    }
+    let cancelled = false;
+    const startCamera = async () => {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setCameraError("Camera is unavailable. You can upload a photo instead.");
+        return;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" } },
+          audio: false,
+        });
+        if (cancelled) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        streamRef.current = stream;
+        if (videoRef.current) videoRef.current.srcObject = stream;
+        setCameraActive(true);
+        setCameraError("");
+      } catch {
+        setCameraError("Could not start the camera. You can upload a photo instead.");
+      }
+    };
+    void startCamera();
+    return () => {
+      cancelled = true;
+      stopCamera();
+    };
+  }, [mode, phase, stopCamera]);
+
+  const changeMode = (nextMode: "emoji" | "camera") => {
+    if (nextMode === mode) return;
+    setMode(nextMode);
+    setPhase("capture");
+    setWorkingImage((current) => {
+      if (!current) return "";
+      return nextMode === "emoji" && isEmojiImageUrl(current) ? current :
+        nextMode === "camera" && !isEmojiImageUrl(current) ? current : "";
+    });
+  };
+
+  const resetImage = () => {
+    stopCamera();
+    setWorkingImage("");
+    setPhase("capture");
+    setCameraError("");
+  };
+
+  const captureFrame = () => {
+    setShutterFlash(true);
+    window.setTimeout(() => setShutterFlash(false), 180);
+    const video = videoRef.current;
+    if (!video || !cameraActive || video.videoWidth <= 0 || video.videoHeight <= 0) {
+      fileInputRef.current?.click();
+      return;
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext("2d")?.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const nextImage = canvas.toDataURL("image/jpeg", 0.92);
+    setWorkingImage(nextImage);
+    setPhase("preview");
+  };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setWorkingImage(String(reader.result || ""));
+      setPhase("preview");
+      event.target.value = "";
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const confirmImage = () => {
+    if (!workingImage) return;
+    stopCamera();
+    onConfirm(workingImage);
+  };
+
+  return (
+    <motion.div
+      className="absolute inset-0 z-[270] overflow-hidden bg-[#E9E6E1] select-none"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.18 }}
+    >
+      <div className="noma-add-modebar">
+        <div className="noma-add-segmented" role="tablist" aria-label="Location image mode">
+          <button type="button" role="tab" aria-selected={mode === "emoji"} className={mode === "emoji" ? "is-active" : ""} onClick={() => changeMode("emoji")}>
+            <span aria-hidden="true">🦄</span><span>Emoji Mode</span>
+          </button>
+          <button type="button" role="tab" aria-selected={mode === "camera"} className={mode === "camera" ? "is-active" : ""} onClick={() => changeMode("camera")}>
+            <CameraIcon className="h-7 w-7" /><span>Camera</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="absolute inset-x-0 top-[126px] bottom-[178px] flex items-center justify-center px-4">
+        {mode === "emoji" ? (
+          <div className="flex h-[424px] w-[350px] flex-col items-center justify-center rounded-[36px] bg-white/55 p-5 shadow-[0_12px_32px_rgba(35,33,33,0.08)]">
+            <div className="flex h-[228px] w-[228px] items-center justify-center rounded-[32px] bg-[#E9E6E1]">
+              {workingImage ? (
+                <SkeletonImage src={workingImage} alt="Selected emoji" className="h-[186px] w-[186px] object-contain" referrerPolicy="no-referrer" />
+              ) : (
+                <img src={emojiAsset(emojiKind === "parent-space" ? "home" : "box")} alt="Choose an emoji" className="h-[186px] w-[186px] object-contain opacity-40" />
+              )}
+            </div>
+            <div className="mt-4 grid max-h-[150px] w-full grid-cols-6 gap-2 overflow-y-auto px-2" aria-label="Choose emoji">
+              {EMOJI_CATALOG.filter((entry) => entry.kind === emojiKind).map((entry) => (
+                <button key={entry.key} type="button" className="flex h-12 w-12 items-center justify-center rounded-xl bg-white active:scale-95" onClick={() => setWorkingImage(emojiAsset(entry.key))} aria-label={entry.key}>
+                  <img src={emojiAsset(entry.key)} alt="" className="h-9 w-9 object-contain" />
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="relative h-[424px] w-[350px] overflow-hidden rounded-[36px] bg-[#1b1b1b] shadow-[0_12px_32px_rgba(35,33,33,0.14)]">
+            {phase === "capture" ? (
+              <>
+                <video ref={videoRef} className={`absolute inset-0 h-full w-full object-cover ${cameraActive ? "opacity-100" : "opacity-0"}`} autoPlay playsInline muted />
+                {!cameraActive && <div className="absolute inset-0 bg-[#1b1b1b]" />}
+                {cameraError && <p className="absolute inset-x-6 top-1/2 -translate-y-1/2 text-center text-[16px] leading-snug text-white/75">{cameraError}</p>}
+                {!cameraError && <div className="pointer-events-none absolute inset-8 rounded-[28px] border-2 border-white/80" />}
+              </>
+            ) : (
+              <SkeletonImage src={workingImage} alt="Captured location" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+            )}
+          </div>
+        )}
+      </div>
+
+      {shutterFlash && <div className="pointer-events-none absolute inset-0 z-[80] bg-white/85" />}
+      <div className="noma-add-space-camera-actions-layer">
+        <div className="noma-add-space-camera-action-state">
+        {mode === "camera" && phase === "capture" ? (
+          <div className="noma-add-camera-controls is-space">
+            <button type="button" onClick={() => fileInputRef.current?.click()} aria-label="Choose from photos"><PhotoUploadIcon /></button>
+            <CaptureShutterButton onClick={captureFrame} label="Take photo" />
+            <button type="button" className="noma-add-skip" onClick={onCancel}>Cancel</button>
+          </div>
+        ) : (
+          <div className="noma-add-round-actions is-three">
+            <button type="button" className="noma-add-round-button is-restart" onClick={resetImage} aria-label="Reset image"><RestartIcon className="h-7 w-7" /></button>
+            <button type="button" className="noma-add-round-button is-confirm" onClick={confirmImage} disabled={!workingImage} aria-label="Confirm image"><Check className="h-7 w-7" strokeWidth={2.5} /></button>
+            <button type="button" className="noma-add-round-button" onClick={onCancel} aria-label="Cancel"><CloseIcon className="h-5 w-5 text-[#232121]/50" /></button>
+          </div>
+        )}
+        </div>
+      </div>
       <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileChange} />
     </motion.div>
   );
@@ -1545,9 +1754,8 @@ const SpaceDetailModal: React.FC<{
   onClose: () => void;
   onDeleteSpace: () => void;
   onDeleteItems: (itemIds: string[]) => void;
-  onUpdateSpaceImage?: (imgUrl: string) => void;
   onSaveSpace: (updates: { parentName: string; subName: string; parentImgUrl?: string; imgUrl?: string }) => void;
-}> = ({ space, parentOptions, onClose, onDeleteSpace, onDeleteItems, onUpdateSpaceImage, onSaveSpace }) => {
+}> = ({ space, parentOptions, onClose, onDeleteSpace, onDeleteItems, onSaveSpace }) => {
   const [isFlipped, setIsFlipped] = React.useState(false);
   const [isEditingItems, setIsEditingItems] = React.useState(false);
   const [editingField, setEditingField] = React.useState<"sub" | null>(null);
@@ -1559,6 +1767,7 @@ const SpaceDetailModal: React.FC<{
   const [parentImgUrl, setParentImgUrl] = React.useState(space.parentImgUrl);
   const [subName, setSubName] = React.useState(space.name);
   const [isRetakeCaptureOpen, setIsRetakeCaptureOpen] = React.useState(false);
+  const [replacementMode, setReplacementMode] = React.useState<"emoji" | "camera">(isEmojiImageUrl(space.imgUrl) ? "emoji" : "camera");
   const modalScale = useDetailModalScale();
   const helperText = isFlipped ? "Flip card to see the location" : "Flip card to see all items";
   const locationImage = spaceImage || space.parentImgUrl;
@@ -1651,12 +1860,12 @@ const SpaceDetailModal: React.FC<{
 
   const handleRetakeSpacePhoto = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
+    setReplacementMode(isEmojiImageUrl(spaceImage) ? "emoji" : "camera");
     setIsRetakeCaptureOpen(true);
   };
 
   const handleRetakeConfirm = (nextUrl: string) => {
     setSpaceImage(nextUrl);
-    onUpdateSpaceImage?.(nextUrl);
     setIsRetakeCaptureOpen(false);
   };
 
@@ -1952,15 +2161,12 @@ const SpaceDetailModal: React.FC<{
 
       <AnimatePresence>
         {isRetakeCaptureOpen && (
-          <LocationRetakeCapture
+          <LocationImageEditFlow
             initialImage={spaceImage}
-            onCancel={() => setIsRetakeCaptureOpen(false)}
+            initialMode={replacementMode}
+            emojiKind="sub-space"
+            onCancel={() => { setSpaceImage(space.imgUrl); setIsRetakeCaptureOpen(false); }}
             onConfirm={handleRetakeConfirm}
-            titleText="Retake this little home."
-            promptText="Use this sub-location photo?"
-            confirmText="Confirm sub-location photo"
-            captureLabel="Capture sub-location photo"
-            previewLabel="Retake sub-location photo"
           />
         )}
       </AnimatePresence>
@@ -1992,44 +2198,30 @@ const LocationDetailModal: React.FC<{
   onDeleteItems: (itemIds: string[]) => void;
   onDeleteSubLocation: (space: SubLocationSummary) => void;
 }> = ({ location, onClose, onOpenItem, onOpenSubLocation, onSaveLocation, onDeleteItems, onDeleteSubLocation }) => {
-  const image = location.imgUrl || emojiAsset(classifyEmojiLocally(location.name, "parent-space").icon_key);
+  const locationKind = location.sourceField === "sub" ? "sub-space" : "parent-space";
+  const image = refreshEmojiAssetUrl(location.imgUrl) || emojiAsset(classifyEmojiLocally(location.name, locationKind).icon_key);
   const locationItems = location.directItems;
   const [isEditing, setIsEditing] = React.useState(false);
   const [isEditingItems, setIsEditingItems] = React.useState(false);
   const [selectedItemIds, setSelectedItemIds] = React.useState<string[]>([]);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = React.useState(false);
   const [pendingDeleteSubLocation, setPendingDeleteSubLocation] = React.useState<SubLocationSummary | null>(null);
-  const [draftName, setDraftName] = React.useState(location.name);
   const [draftImage, setDraftImage] = React.useState(image);
-  const [isEditingTitle, setIsEditingTitle] = React.useState(false);
-  const locationTitleEditRef = React.useRef<HTMLInputElement>(null);
+  const [replacementMode, setReplacementMode] = React.useState<"emoji" | "camera">(isEmojiImageUrl(image) ? "emoji" : "camera");
   const [isRetakeCaptureOpen, setIsRetakeCaptureOpen] = React.useState(false);
-  const draftTitleLength = Math.max(1, Math.min(MAX_LOCATION_TITLE_LENGTH, Array.from(draftName).length));
-
-  React.useEffect(() => {
-    if (!isEditingTitle) return;
-    const frame = window.requestAnimationFrame(() => {
-      const input = locationTitleEditRef.current;
-      input?.focus();
-      if (input) input.setSelectionRange(input.value.length, input.value.length);
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [isEditingTitle]);
 
   const finishEditing = () => {
-    const nextName = limitLocationTitle(draftName.trim());
-    if (nextName && (nextName !== location.name || draftImage !== image)) {
-      onSaveLocation(location, { name: nextName, imgUrl: draftImage });
+    if (draftImage !== image) {
+      onSaveLocation(location, { name: location.name, imgUrl: draftImage });
     }
     setIsEditing(false);
-    setIsEditingTitle(false);
   };
 
   const resetEditing = () => {
-    setDraftName(location.name);
-    setDraftImage(image);
-    setIsRetakeCaptureOpen(false);
-    setIsEditingTitle(false);
+    // Reset means start a fresh image replacement. It must not restore the
+    // previous image; closing or cancelling is the explicit restore path.
+    setDraftImage("");
+    setIsRetakeCaptureOpen(true);
   };
 
   const toggleItemsEditing = () => {
@@ -2096,37 +2288,8 @@ const LocationDetailModal: React.FC<{
           </motion.div>
           <div className={`${isEditing ? "mt-[70px]" : "mt-[12px]"} flex max-w-[320px] items-center justify-center text-[24px] font-sans font-extrabold leading-tight tracking-tight text-[#232121]`}>
             {location.sourceField === "parent" && <span className="mr-[4px] text-[21px]">📍</span>}
-            {isEditing ? (
-              isEditingTitle ? (
-              <input
-                ref={locationTitleEditRef}
-                autoFocus={isEditingTitle}
-                value={limitLocationTitle(draftName)}
-                onChange={(event) => setDraftName(limitLocationTitle(event.target.value))}
-                onKeyDown={(event) => { if (event.key === "Enter") finishEditing(); }}
-                maxLength={MAX_LOCATION_TITLE_LENGTH}
-                style={{ width: `${Math.min(230, Math.max(42, draftTitleLength * 24))}px` }}
-                className="min-w-[42px] max-w-[230px] border-0 border-b-[1.5px] border-[#CCC4BE] bg-transparent px-0 pb-[3px] text-center font-inherit text-[24px] font-extrabold outline-none"
-                aria-label="Edit location name"
-              />
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setIsEditingTitle(true)}
-                  className="min-w-[42px] max-w-[230px] border-0 border-b-[1.5px] border-[#CCC4BE] bg-transparent px-0 pb-[3px] text-center font-inherit text-[24px] font-extrabold outline-none truncate"
-                  aria-label="Edit location name"
-                >
-                  {truncateLocationTitle(draftName)}
-                </button>
-              )
-            ) : (
-              <>
-                <span className="max-w-[270px] truncate">{truncateLocationTitle(location.name)}</span>
-                <button type="button" onClick={() => { setDraftName(location.name); setDraftImage(image); setIsEditing(true); setIsEditingTitle(false); }} className="ml-[10px] flex h-[18px] w-[18px] shrink-0 items-center justify-center active:scale-95" aria-label="Edit location">
-                  <EditPencilIcon />
-                </button>
-              </>
-            )}
+            <span className="max-w-[270px] truncate">{truncateLocationTitle(location.name)}</span>
+            {!isEditing && <button type="button" onClick={() => { setDraftImage(image); setReplacementMode(isEmojiImageUrl(image) ? "emoji" : "camera"); setIsEditing(true); }} className="ml-[10px] flex h-[18px] w-[18px] shrink-0 items-center justify-center active:scale-95" aria-label="Edit location image"><EditPencilIcon /></button>}
           </div>
           {location.parentName && location.sourceField === "sub" && (
             <div className="mt-[6px] text-[14px] font-sans text-[#232121]/50">in {location.parentName}</div>
@@ -2177,18 +2340,15 @@ const LocationDetailModal: React.FC<{
 
       <AnimatePresence>
         {isRetakeCaptureOpen && (
-          <LocationRetakeCapture
+          <LocationImageEditFlow
             initialImage={draftImage}
-            onCancel={() => setIsRetakeCaptureOpen(false)}
+            initialMode={replacementMode}
+            emojiKind={location.sourceField === "parent" ? "parent-space" : "sub-space"}
+            onCancel={() => { setDraftImage(image); setIsRetakeCaptureOpen(false); }}
             onConfirm={(imgUrl) => {
               setDraftImage(imgUrl);
               setIsRetakeCaptureOpen(false);
             }}
-            titleText="Retake this location photo."
-            promptText="Use this location photo?"
-            confirmText="Confirm location photo"
-            captureLabel="Capture location photo"
-            previewLabel="Retake location photo"
           />
         )}
       </AnimatePresence>
@@ -2233,8 +2393,11 @@ const MemoryDetailModal: React.FC<{
   const [editingField, setEditingField] = React.useState<"title" | "parent" | "sub" | null>(null);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = React.useState(false);
   const [isCardEditing, setIsCardEditing] = React.useState(false);
-  const [parentLocationImg, setParentLocationImg] = React.useState(item.parentLocationImg || "");
-  const [subLocationImg, setSubLocationImg] = React.useState(item.subLocationImg || "");
+  const [isItemImageEditOpen, setIsItemImageEditOpen] = React.useState(false);
+  const [itemImageEditMode, setItemImageEditMode] = React.useState<"emoji" | "camera">("emoji");
+  const [itemImageDraft, setItemImageDraft] = React.useState(item.stickerUrl || (item.emoji ? emojiAsset(item.emoji) : ""));
+  const [parentLocationImg, setParentLocationImg] = React.useState(refreshEmojiAssetUrl(item.parentLocationImg) || "");
+  const [subLocationImg, setSubLocationImg] = React.useState(refreshEmojiAssetUrl(item.subLocationImg) || "");
   const [subLocationHighlight, setSubLocationHighlight] = React.useState(item.subLocationHighlight || { x: 70, y: 62 });
   const [locationPickerField, setLocationPickerField] = React.useState<MemoryLocationField | null>(null);
   const modalScale = useDetailModalScale();
@@ -2248,6 +2411,12 @@ const MemoryDetailModal: React.FC<{
   const subDisplayImage = subLocationImg || parentLocationImg || fallbackLocationImage;
   const parentIsEmoji = isEmojiImageUrl(parentDisplayImage);
   const subIsEmoji = isEmojiImageUrl(subDisplayImage);
+  const activeLocationImage = locationView === "sub" ? subDisplayImage : parentDisplayImage;
+  const activeLocationIsEmoji = locationView === "sub" ? subIsEmoji : parentIsEmoji;
+  const activeLocationName = locationView === "sub" ? subLocationName : parentLocationName;
+  const hasParentLocation = Boolean(item.parentLocationName?.trim() || parentLocationName.trim() !== "Main Bedroom");
+  const hasSubLocation = Boolean(item.subLocationName?.trim() || subLocationName.trim() !== "Nightstand");
+  const canToggleLocationView = hasParentLocation && hasSubLocation;
   const helperText = isFlipped
     ? "Tap to flip card for item"
     : "Tap to flip card for space";
@@ -2268,6 +2437,17 @@ const MemoryDetailModal: React.FC<{
   ];
   const selectedParentKey = parentLocationName.trim() || item.parentLocationName || "";
   const selectedSubKey = `${parentLocationName.trim() || item.parentLocationName || ""}::${subLocationName.trim() || item.subLocationName || ""}`;
+  const displayItem = itemImageDraft === (item.stickerUrl || (item.emoji ? emojiAsset(item.emoji) : ""))
+    ? item
+    : { ...item, stickerUrl: itemImageDraft || undefined, emoji: emojiKeyFromImageUrl(itemImageDraft) || item.emoji };
+  const resetItemImageDraft = () => setItemImageDraft(item.stickerUrl || (item.emoji ? emojiAsset(item.emoji) : ""));
+  const openItemImageEditor = (event?: React.MouseEvent) => {
+    event?.stopPropagation();
+    if (!isCardEditing) return;
+    setItemImageDraft("");
+    setItemImageEditMode(isEmojiImageUrl(item.stickerUrl || (item.emoji ? emojiAsset(item.emoji) : "")) ? "emoji" : "camera");
+    setIsItemImageEditOpen(true);
+  };
 
   const setEditingValue = (field: "title" | "parent" | "sub", value: string) => {
     if (field === "title") {
@@ -2333,6 +2513,8 @@ const MemoryDetailModal: React.FC<{
         parentLocationImg: parentLocationImg || undefined,
         subLocationImg: subLocationImg || undefined,
         subLocationHighlight,
+        stickerUrl: itemImageDraft || undefined,
+        emoji: emojiKeyFromImageUrl(itemImageDraft) || item.emoji,
       });
       setIsCategorySelectorOpen(false);
       setLocationPickerField(null);
@@ -2340,6 +2522,7 @@ const MemoryDetailModal: React.FC<{
       return;
     }
     setIsCardEditing(true);
+    resetItemImageDraft();
   };
 
   const handleCardDeleteOrCancel = (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -2349,9 +2532,11 @@ const MemoryDetailModal: React.FC<{
       setSelectedCategory(item.category || "Others");
       setParentLocationName(item.parentLocationName || "Main Bedroom");
       setSubLocationName(item.subLocationName || "Nightstand");
-      setParentLocationImg(item.parentLocationImg || "");
-      setSubLocationImg(item.subLocationImg || "");
+      setParentLocationImg(refreshEmojiAssetUrl(item.parentLocationImg) || "");
+      setSubLocationImg(refreshEmojiAssetUrl(item.subLocationImg) || "");
       setSubLocationHighlight(item.subLocationHighlight || { x: 70, y: 62 });
+      resetItemImageDraft();
+      setIsItemImageEditOpen(false);
       setEditingField(null);
       setIsCategorySelectorOpen(false);
       setLocationPickerField(null);
@@ -2445,7 +2630,7 @@ const MemoryDetailModal: React.FC<{
       <div
         className="absolute left-1/2 z-10"
         style={{
-          top: "calc(50% + (env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) / 2)",
+          top: "calc(50% - 10px + (env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) / 2)",
           transform: "translate(-50%, -50%)",
         }}
       >
@@ -2456,6 +2641,7 @@ const MemoryDetailModal: React.FC<{
           >
             <DetailCardActionGroup
               isEditing={isCardEditing}
+              className="-translate-y-[20px]"
               onEditToggle={handleCardEditToggle}
               onCloseOrCancel={(event) => {
                 event.stopPropagation();
@@ -2479,11 +2665,12 @@ const MemoryDetailModal: React.FC<{
               didDragHighlightRef.current = false;
               return;
             }
+            if (isFlipped) setLocationView("sub");
             setIsFlipped((current) => !current);
           }}
         >
           <div
-            className="absolute inset-0 rounded-[24px] bg-[#E9E6E1] overflow-visible px-[22px] pt-[82px] pb-[34px] flex flex-col items-center"
+            className="absolute inset-0 rounded-[36px] bg-[#E9E6E1] overflow-visible px-[22px] pt-[82px] pb-[34px] flex flex-col items-center"
             style={{
               backfaceVisibility: "hidden",
               WebkitBackfaceVisibility: "hidden",
@@ -2495,7 +2682,7 @@ const MemoryDetailModal: React.FC<{
             }}
           >
             <MatrixDotBackground rounded />
-            <div className="absolute inset-0 z-[1] overflow-hidden rounded-[24px] pointer-events-none">
+            <div className="absolute inset-0 z-[1] overflow-hidden rounded-[36px] pointer-events-none">
               <div className="absolute left-1/2 top-[220px] aspect-square w-full max-w-none -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none">
                 <img
                   src={COLOR_BLUR_IMAGE_URL}
@@ -2511,23 +2698,35 @@ const MemoryDetailModal: React.FC<{
             <PriceTag price={item.price} className="absolute left-[44px] top-[124px] z-20 rotate-[-14deg]" />
 
             <div className="relative z-10 flex h-[270px] w-full items-center justify-center">
-              <div className="relative z-10 flex w-full justify-center">
+              <div className="relative z-10 flex w-full translate-x-[25px] translate-y-[26px] justify-center">
                 <ItemSticker
-                  item={item}
+                  item={displayItem}
                   size={196}
                   title={itemTitle}
                   onTitleClick={isCardEditing && !isFlipped ? handleEditStart("title") : undefined}
                   isTitleEditing={isCardEditing && !isFlipped && editingField === "title"}
+                  titleTrailingAction={isCardEditing && !isFlipped ? (
+                    <button
+                      type="button"
+                      onClick={handleEditStart("title")}
+                      className="flex h-full w-full items-center justify-center active:scale-95"
+                      aria-label="Edit item title"
+                      title="Edit item title"
+                    >
+                      <EditPencilIcon />
+                    </button>
+                  ) : undefined}
                 />
                 {isCardEditing && !isFlipped && (
                   <button
                     type="button"
-                    onClick={handleEditStart("title")}
-                    className="absolute bottom-[34px] right-[-10px] z-30 flex h-[24px] w-[24px] items-center justify-center active:scale-95"
-                    aria-label="Edit item title"
-                    title="Edit item title"
+                    onClick={openItemImageEditor}
+                    className="absolute left-1/2 top-[76px] z-30 flex h-[44px] w-[44px] items-center justify-center rounded-full bg-black/60 text-white active:scale-95"
+                    style={{ transform: "translateX(calc(-50% - 25px))" }}
+                    aria-label="Reset item image"
+                    title="Reset item image"
                   >
-                    <EditPencilIcon />
+                    <RestartIcon className="h-[22px] w-[22px]" color="#FFFFFF" />
                   </button>
                 )}
               </div>
@@ -2593,7 +2792,7 @@ const MemoryDetailModal: React.FC<{
           </div>
 
           <div
-            className="absolute inset-0 rounded-[24px] bg-[#E9E6E1] overflow-hidden px-[15px] pt-[18px] pb-[26px] flex flex-col items-center"
+            className="absolute inset-0 rounded-[36px] bg-[#E9E6E1] overflow-hidden px-[15px] pt-[18px] pb-[26px] flex flex-col items-center"
             style={{
               backfaceVisibility: "hidden",
               WebkitBackfaceVisibility: "hidden",
@@ -2609,72 +2808,18 @@ const MemoryDetailModal: React.FC<{
               ref={locationPhotoRef}
               className="relative z-10 h-[390px] w-[320px] shrink-0 rounded-[36px] bg-[rgba(204,196,190,0.5)]"
             >
-              <button
-                type="button"
-                className={`absolute left-0 top-0 h-[390px] w-[320px] overflow-hidden rounded-[36px] border-0 p-0 ${parentIsEmoji ? "bg-[#E9E6E1]" : "bg-neutral-200"} ${locationView === "parent" ? "z-20" : "z-[1]"}`}
-                onClick={(event) => { event.stopPropagation(); setLocationView("parent"); }}
-                aria-label="Show parent location"
+              <div
+                className={`absolute inset-0 z-10 overflow-hidden rounded-[36px] ${activeLocationIsEmoji ? "bg-[#E9E6E1]" : "bg-neutral-200"}`}
               >
-                {parentIsEmoji ? (
-                  <SkeletonImage
-                    src={parentDisplayImage}
-                    alt={parentLocationName || "Parent location"}
-                    className="absolute left-1/2 top-[52px] block h-[186px] w-[186px] -translate-x-1/2 object-contain"
-                    referrerPolicy="no-referrer"
-                    loading="eager"
-                  />
-                ) : (
-                  <SkeletonImage
-                    src={parentDisplayImage}
-                    alt={parentLocationName || "Parent location"}
-                    className="block h-full w-full object-cover"
-                    referrerPolicy="no-referrer"
-                    loading="eager"
-                  />
-                )}
-                {locationView === "parent" && (
-                  <div className="pointer-events-none absolute inset-0 bg-black/5" />
-                )}
-              </button>
-
-              <button
-                type="button"
-                className={`absolute z-30 overflow-hidden border-0 p-0 shadow-[0_10px_26px_rgba(35,33,33,0.16)] ${locationView === "sub" ? "left-[24px] top-[74px] h-[292px] w-[272px] rounded-[36px] bg-white" : "left-[24px] top-[294px] h-[84px] w-[272px] rounded-[42px] bg-white/85 backdrop-blur-[18px]"}`}
-                onClick={(event) => { event.stopPropagation(); setLocationView("sub"); }}
-                aria-label="Show sub-location"
-              >
-                {locationView === "sub" ? (
-                  subIsEmoji ? (
-                    <SkeletonImage
-                      src={subDisplayImage}
-                      alt={subLocationName || "Sub-location"}
-                      className="absolute left-1/2 top-1/2 block h-[186px] w-[186px] -translate-x-1/2 -translate-y-1/2 object-contain"
-                      referrerPolicy="no-referrer"
-                      loading="eager"
-                    />
-                  ) : (
-                    <SkeletonImage
-                      src={subDisplayImage}
-                      alt={subLocationName || "Sub-location"}
-                      className="block h-full w-full object-cover"
-                      referrerPolicy="no-referrer"
-                      loading="eager"
-                    />
-                  )
-                ) : (
-                  <>
-                    <SkeletonImage
-                      src={subDisplayImage}
-                      alt={subLocationName || "Sub-location"}
-                      className={`absolute left-[16px] top-[18px] block h-[48px] w-[48px] rounded-[8px] ${subIsEmoji ? "object-contain" : "object-cover"}`}
-                      referrerPolicy="no-referrer"
-                      loading="eager"
-                    />
-                    <span className="absolute left-[82px] top-1/2 flex h-[42px] w-[170px] -translate-y-1/2 items-center justify-center overflow-hidden pr-[8px] text-center text-[18px] font-sans font-semibold leading-tight text-[#232121]">
-                      {subLocationName || "New Sub-Space"}
-                    </span>
-                  </>
-                )}
+                <SkeletonImage
+                  src={activeLocationImage}
+                  alt={activeLocationName || (locationView === "sub" ? "Sub-location" : "Parent location")}
+                  className={activeLocationIsEmoji
+                    ? "absolute left-1/2 top-1/2 block h-[186px] w-[186px] -translate-x-1/2 -translate-y-1/2 object-contain"
+                    : "block h-full w-full object-cover"}
+                  referrerPolicy="no-referrer"
+                  loading="eager"
+                />
                 {locationView === "sub" && !subIsEmoji && (
                   <div
                     className={`absolute z-30 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center ${isCardEditing ? "pointer-events-auto cursor-grab touch-none active:cursor-grabbing" : "pointer-events-none"}`}
@@ -2688,7 +2833,26 @@ const MemoryDetailModal: React.FC<{
                     <img src={LIGHTSPOT_IMAGE_URL} alt="" aria-hidden="true" className="block h-[70px] w-[70px] object-contain animate-pulse" />
                   </div>
                 )}
-              </button>
+              </div>
+
+              {canToggleLocationView && (
+                <button
+                  type="button"
+                  className="absolute bottom-[16px] right-[16px] z-40 flex h-[38px] w-[38px] items-center justify-center rounded-full bg-black/55 text-white transition-transform active:scale-95"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setLocationView((current) => current === "sub" ? "parent" : "sub");
+                  }}
+                  aria-label={locationView === "sub" ? "Show parent location" : "Show sub-location"}
+                  title={locationView === "sub" ? "Show parent location" : "Show sub-location"}
+                >
+                  {locationView === "sub" ? (
+                    <ExpandLocationIcon className="h-6 w-6" />
+                  ) : (
+                    <CollapseLocationIcon className="h-6 w-6" />
+                  )}
+                </button>
+              )}
             </div>
 
             <ModalLocationTextGroup
@@ -2705,8 +2869,8 @@ const MemoryDetailModal: React.FC<{
           </motion.div>
           </div>
 
-          <div className="absolute left-0 top-[562px] z-10 h-[56px] w-[350px] flex items-center justify-center">
-            <div className="text-center text-white text-[18px] leading-[1.25] font-sans font-bold tracking-tight max-w-[250px]">
+          <div className="absolute left-0 top-[562px] z-10 flex w-[350px] flex-col items-center">
+            <div className="flex h-[56px] w-full items-center justify-center text-center text-white text-[18px] leading-[1.25] font-sans font-bold tracking-tight max-w-[250px]">
               {helperText}
             </div>
             <button
@@ -2717,7 +2881,7 @@ const MemoryDetailModal: React.FC<{
               }}
               aria-label="Delete item"
               title="Delete item"
-              className="absolute right-0 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center text-white active:scale-95 transition-transform"
+              className="mt-[20px] flex h-8 w-8 shrink-0 items-center justify-center text-white active:scale-95 transition-transform"
             >
               <DeleteActionIcon color="#FFFFFF" opacity={1} size={20} />
             </button>
@@ -2764,6 +2928,24 @@ const MemoryDetailModal: React.FC<{
           onClose={() => setLocationPickerField(null)}
         />
       )}
+
+      <AnimatePresence>
+        {isItemImageEditOpen && (
+          <LocationImageEditFlow
+            initialImage={itemImageDraft}
+            initialMode={itemImageEditMode}
+            emojiKind="item"
+            onCancel={() => {
+              resetItemImageDraft();
+              setIsItemImageEditOpen(false);
+            }}
+            onConfirm={(imageUrl) => {
+              setItemImageDraft(imageUrl);
+              setIsItemImageEditOpen(false);
+            }}
+          />
+        )}
+      </AnimatePresence>
 
       <MemoryConfirmModal
         open={isDeleteConfirmOpen}
@@ -2822,7 +3004,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
       if (existing) {
         existing.items.push(item);
         existing.itemCount += 1;
-        if (!existing.imgUrl && item.subLocationImg) existing.imgUrl = item.subLocationImg;
+        if (!existing.imgUrl && item.subLocationImg) existing.imgUrl = refreshEmojiAssetUrl(item.subLocationImg) || "";
         if (!existing.subLocationHighlight && item.subLocationHighlight) {
           existing.subLocationHighlight = item.subLocationHighlight;
         }
@@ -2832,7 +3014,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
       map.set(key, {
         name: subName,
         parentName,
-        imgUrl: item.subLocationImg || "",
+        imgUrl: refreshEmojiAssetUrl(item.subLocationImg) || "",
         parentImgUrl: item.parentLocationImg || "",
         itemCount: 1,
         items: [item],
@@ -2871,7 +3053,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
       ? []
       : subLocationList.filter((space) => space.parentName === name);
     const imgUrl = promotedSub
-      ? (spaceItems.find((item) => item.subLocationImg)?.subLocationImg || emojiAsset(classifyEmojiLocally(name, "sub-space").icon_key))
+      ? (refreshEmojiAssetUrl(spaceItems.find((item) => item.subLocationImg)?.subLocationImg) || emojiAsset(classifyEmojiLocally(name, "sub-space").icon_key))
       : (spaceItems.find((item) => item.parentLocationImg)?.parentLocationImg || emojiAsset(classifyEmojiLocally(name, "parent-space").icon_key));
     return {
       key,
@@ -3918,15 +4100,12 @@ export const MemoryList: React.FC<MemoryListProps> = ({
 
       <AnimatePresence>
         {selectedParentSpace && isParentRetakeCaptureOpen && (
-          <LocationRetakeCapture
+          <LocationImageEditFlow
             initialImage={parentImageDraft || selectedParentSpace.imgUrl}
-            onCancel={() => setIsParentRetakeCaptureOpen(false)}
+            initialMode={isEmojiImageUrl(parentImageDraft || selectedParentSpace.imgUrl) ? "emoji" : "camera"}
+            emojiKind="parent-space"
+            onCancel={() => { setParentImageDraft(selectedParentSpace.imgUrl); setIsParentRetakeCaptureOpen(false); }}
             onConfirm={handleParentRetakeConfirm}
-            titleText="Retake this parent space."
-            promptText="Use this parent photo?"
-            confirmText="Confirm parent photo"
-            captureLabel="Capture parent photo"
-            previewLabel="Retake parent photo"
           />
         )}
       </AnimatePresence>

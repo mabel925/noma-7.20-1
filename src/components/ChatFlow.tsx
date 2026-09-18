@@ -1,5 +1,5 @@
 import React from "react";
-import { Camera } from "lucide-react";
+import { Plus } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useKeyboardReset } from "../hooks/useKeyboardReset";
 import { MemoryCoreButton } from "./MemoryCoreButton";
@@ -261,15 +261,14 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
               {/* White Pill Capsule */}
               <div className="flex-1 bg-white/95 backdrop-blur-md rounded-full px-4 h-[54px] flex items-center gap-2.5 shadow-[0_6px_20px_rgba(0,0,0,0.12)] border border-white/40">
                 
-                {/* Custom Camera Icon Button */}
+                {/* Add item button */}
                 <button
                   onClick={onTriggerCamera}
                   className="w-8 h-8 flex items-center justify-center text-neutral-800 hover:text-neutral-900 active:scale-90 transition-all cursor-pointer shrink-0"
+                  aria-label="Add item"
+                  title="Add item"
                 >
-                  <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M21.2329 7.46649V8.71823H22.8276V7.46649V6.21475H21.2329V7.46649ZM25.8223 10.4611H24.5705V18.667H25.8223H27.074V10.4611H25.8223ZM21.1556 23.3337V22.0819H8.01139V23.3337V24.5854H21.1556V23.3337ZM3.34473 18.667H4.59646V10.4606H3.34473H2.09299V18.667H3.34473ZM6.33887 7.46649V8.71823H7.93311V7.46649V6.21475H6.33887V7.46649ZM10.7329 4.66669V5.91843H18.4331V4.66669V3.41495H10.7329V4.66669ZM9.33301 6.06659H10.5847C10.5847 5.98476 10.6511 5.91843 10.7329 5.91843V4.66669V3.41495C9.26845 3.41495 8.08127 4.60213 8.08127 6.06659H9.33301ZM7.93311 7.46649V8.71823C9.39757 8.71823 10.5847 7.53105 10.5847 6.06659H9.33301H8.08127C8.08127 6.14842 8.01493 6.21475 7.93311 6.21475V7.46649ZM3.34473 10.4606H4.59646C4.59646 9.49833 5.37656 8.71823 6.33887 8.71823V7.46649V6.21475C3.99393 6.21475 2.09299 8.1157 2.09299 10.4606H3.34473ZM8.01139 23.3337V22.0819C6.12538 22.0819 4.59646 20.553 4.59646 18.667H3.34473H2.09299C2.09299 21.9357 4.74275 24.5854 8.01139 24.5854V23.3337ZM25.8223 18.667H24.5705C24.5705 20.553 23.0416 22.0819 21.1556 22.0819V23.3337V24.5854C24.4242 24.5854 27.074 21.9357 27.074 18.667H25.8223ZM22.8276 7.46649V8.71823C23.7902 8.71823 24.5705 9.49855 24.5705 10.4611H25.8223H27.074C27.074 8.11592 25.1728 6.21475 22.8276 6.21475V7.46649ZM19.833 6.06659H18.5813C18.5813 7.53105 19.7684 8.71823 21.2329 8.71823V7.46649V6.21475C21.1511 6.21475 21.0847 6.14842 21.0847 6.06659H19.833ZM19.833 6.06659H21.0847C21.0847 4.60213 19.8976 3.41495 18.4331 3.41495V4.66669V5.91843C18.5149 5.91843 18.5813 5.98476 18.5813 6.06659H19.833Z" fill="#232121"/>
-                    <circle cx="14.5833" cy="14.5833" r="4.08333" stroke="#232121" strokeWidth="2.50348" strokeLinecap="round"/>
-                  </svg>
+                  <Plus className="h-7 w-7" strokeWidth={2.25} />
                 </button>
   
                 {/* Text Input with visual custom details */}

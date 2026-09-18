@@ -14,6 +14,7 @@ import { EditPencilIcon } from "./EditPencilIcon";
 import { CloseIcon } from "./CloseIcon";
 import { PhotoUploadIcon } from "./PhotoUploadIcon";
 import { CaptureShutterButton } from "./CaptureShutterButton";
+import { ITEM_CATEGORIES, normalizeItemCategory } from "../data/emojiCatalog";
 import {
   getStickerTitleStyle,
   isChineseTitle,
@@ -394,40 +395,10 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const defaultSubLocationName = isChinese ? "收纳位置" : "Storage spot";
   const defaultParentLocationName = isChinese ? "房间" : "Room";
 
-  const CATEGORIES_CN = [
-    "日用百货",
-    "衣物配饰",
-    "数码用品",
-    "书籍文档",
-    "其它"
-  ];
+  const ALL_CATEGORIES = ITEM_CATEGORIES;
 
-  const CATEGORIES_EN = [
-    "Housewares",
-    "Apparel",
-    "Electronics",
-    "Docs",
-    "Others"
-  ];
-
-  const ALL_CATEGORIES = isChinese ? CATEGORIES_CN : CATEGORIES_EN;
-
-  const getLocalizedCategory = (rawCategory: string): string => {
-    const clean = (rawCategory || "").toLowerCase().trim();
-    let targetIndex = 4; // Default to Others
-    if (clean.includes("electronic") || clean.includes("数码") || clean.includes("家电") || clean.includes("设备") || clean.includes("tech")) {
-      targetIndex = 2; // 数码用品 / Electronics
-    } else if (clean.includes("apparel") || clean.includes("衣物") || clean.includes("配饰") || clean.includes("cloth") || clean.includes("wear") || clean.includes("fashion")) {
-      targetIndex = 1; // 衣物配饰 / Apparel
-    } else if (clean.includes("daily") || clean.includes("goods") || clean.includes("essentials") || clean.includes("日用") || clean.includes("百货") || clean.includes("household") || clean.includes("life") || clean.includes("need") || clean.includes("houseware")) {
-      targetIndex = 0; // 日用百货 / Housewares
-    } else if (clean.includes("book") || clean.includes("file") || clean.includes("paper") || clean.includes("document") || clean.includes("书籍") || clean.includes("文档") || clean.includes("doc")) {
-      targetIndex = 3; // 书籍文档 / Docs
-    } else {
-      targetIndex = 4; // 其它 / Others
-    }
-    return isChinese ? CATEGORIES_CN[targetIndex] : CATEGORIES_EN[targetIndex];
-  };
+  const getLocalizedCategory = (rawCategory: string): string =>
+    normalizeItemCategory(rawCategory, preparedTitleRef.current);
 
   // Target position offsets (relative to center of the subject container) for 4 fanned-out categories
   const FAN_POSITIONS = [
@@ -1535,14 +1506,16 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       setCameraErrorMessage("");
       setCameraPermissionPending(true);
 
-      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+      const localDevelopmentOrigin = ["localhost", "127.0.0.1", "0.0.0.0"].includes(window.location.hostname);
+      const cameraContextAllowed = window.isSecureContext || localDevelopmentOrigin;
+      if (!cameraContextAllowed || !navigator.mediaDevices?.getUserMedia) {
         setCameraActive(false);
         setCameraPermissionPending(false);
         setCameraError(true);
         setCameraErrorMessage(
-          window.isSecureContext
+          cameraContextAllowed
             ? "Camera access is unavailable in this browser. You can still upload a photo."
-            : "Camera requires HTTPS on mobile browsers. Open the app from an HTTPS URL, or add the HTTPS PWA to your home screen."
+            : "Camera access is unavailable here. You can still upload a photo."
         );
       } else {
         const attachStream = async (stream: MediaStream) => {
@@ -1616,7 +1589,9 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
             setCameraErrorMessage(
               (err as DOMException)?.name === "NotAllowedError"
                 ? "Camera permission was denied. Allow camera access in browser settings, or upload a photo."
-                : "Could not start the camera. Check browser permissions or upload a photo."
+                : (err as DOMException)?.name === "SecurityError"
+                  ? "Camera is blocked on this address. Open the app at http://localhost:3000 or use HTTPS."
+                  : "Could not start the camera. Check browser permissions or upload a photo."
             );
           }
         };
@@ -1763,7 +1738,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     cutoutCompleteSentRef.current = true;
     onCutoutComplete({
       name: customName.trim() || "Scanned Item",
-      category: customCategory.trim() || "其它",
+      category: customCategory.trim() || "家居日用",
       stickerUrl: generatedStickerUrl || transparentCutoutUrl || undefined,
     });
   }, [isOpen, onCutoutComplete, storageFlowStep, scanStep, traceCompleted, customName, customCategory, generatedStickerUrl, transparentCutoutUrl]);
@@ -2958,7 +2933,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       setTempIdentifiedCategory("");
     } else if (aiCaptureAccess === "available") {
       setCustomName("");
-      setCustomCategory(isChinese ? "其它" : "Others");
+      setCustomCategory("家居日用");
       setTempIdentifiedCategory("");
       // Start classification immediately on capture!
       startImageClassification(sourceBaseUrl, "camera_capture.png", scanId!);
@@ -2966,7 +2941,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       classificationRequestIdRef.current += 1;
       classificationPromiseRef.current = null;
       commitPreparedTitle("Scanned Item");
-      setCustomCategory(isChinese ? "其它" : "Others");
+      setCustomCategory("家居日用");
       setTempIdentifiedCategory("");
       showPhotoThumbnailNotice(aiCaptureAccess);
       await startPhotoThumbnailTransition(sourceBaseUrl, width, height);
@@ -3132,7 +3107,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
     // Reset recognition state. Transparent PNG uploads are treated as finished cutouts
     // after their alpha channel has been verified below.
-    setCustomCategory(isChinese ? "其它" : "Others");
+    setCustomCategory("家居日用");
     setTempIdentifiedCategory("");
     setCustomName("");
     preparedTitleRef.current = "";
@@ -3268,7 +3243,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         const formattedPrice = priceInput.trim()
           ? `${priceCurrency}${priceInput.trim()}`
           : `${priceCurrency}25.00`;
-        const finalCategory = customCategory.trim() || "其它";
+        const finalCategory = customCategory.trim() || "家居日用";
         await onItemAdded({
           name: rawName,
           category: finalCategory,

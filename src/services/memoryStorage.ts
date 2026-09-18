@@ -51,6 +51,25 @@ type SpaceRow = {
 
 const nowIso = () => new Date().toISOString();
 
+const sameHighlight = (
+  left?: { x: number; y: number } | null,
+  right?: { x: number; y: number } | null,
+) => (left?.x ?? null) === (right?.x ?? null) && (left?.y ?? null) === (right?.y ?? null);
+
+const sameItemData = (left: MemoryItem, right: MemoryItem) => (
+  left.name === right.name
+  && left.category === right.category
+  && left.price === right.price
+  && left.date === right.date
+  && left.emoji === right.emoji
+  && (left.stickerUrl || "") === (right.stickerUrl || "")
+  && left.parentLocationName === right.parentLocationName
+  && left.subLocationName === right.subLocationName
+  && (left.parentLocationImg || "") === (right.parentLocationImg || "")
+  && (left.subLocationImg || "") === (right.subLocationImg || "")
+  && sameHighlight(left.subLocationHighlight, right.subLocationHighlight)
+);
+
 const createId = () => {
   const randomId =
     typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -122,6 +141,45 @@ const prepareItemRow = async (
     store(row.parent_location_img, "location"),
     store(row.sub_location_img, "location"),
   ]);
+  return {
+    ...row,
+    sticker_url: stickerUrl,
+    parent_location_img: parentLocationImg,
+    sub_location_img: subLocationImg,
+  };
+};
+
+const prepareChangedItemRow = async (
+  ownerId: string,
+  item: MemoryItem | StoredMemoryItem,
+  previous: MemoryItem | StoredMemoryItem | undefined,
+  existing: ItemRow | undefined,
+  cache: Map<string, Promise<string | null>>,
+): Promise<ItemRow> => {
+  const row = toItemRow(ownerId, item, existing);
+  const storeChanged = (
+    value: string | null | undefined,
+    previousValue: string | null | undefined,
+    existingValue: string | null | undefined,
+    profile: "sticker" | "location",
+    itemId?: string,
+  ) => {
+    if (existing && previous && (value || "") === (previousValue || "")) {
+      return Promise.resolve(existingValue || null);
+    }
+    if (!value) return Promise.resolve(null);
+    const cacheKey = `${profile}:${itemId || "shared"}:${value}`;
+    const pending = cache.get(cacheKey) || mediaStorage.storeImage(ownerId, value, profile, itemId);
+    cache.set(cacheKey, pending);
+    return pending;
+  };
+
+  const [stickerUrl, parentLocationImg, subLocationImg] = await Promise.all([
+    storeChanged(item.stickerUrl, previous?.stickerUrl, existing?.sticker_url, "sticker", row.id),
+    storeChanged(item.parentLocationImg, previous?.parentLocationImg, existing?.parent_location_img, "location"),
+    storeChanged(item.subLocationImg, previous?.subLocationImg, existing?.sub_location_img, "location"),
+  ]);
+
   return {
     ...row,
     sticker_url: stickerUrl,
@@ -290,6 +348,71 @@ const finalizeItemRows = async (ownerId: string, existingRows: ItemRow[], nextRo
   return retainedKeys;
 };
 
+const syncItemChanges = async (
+  ownerId: string,
+  previousItems: Array<MemoryItem | StoredMemoryItem>,
+  nextItems: Array<MemoryItem | StoredMemoryItem>,
+): Promise<MemoryItem[]> => {
+  requireOwner(ownerId);
+
+  const previousById = new Map(previousItems.map((item) => [item.id, item]));
+  const nextById = new Map(nextItems.map((item) => [item.id, item]));
+  const changedItems = nextItems.filter((item) => {
+    const previous = previousById.get(item.id);
+    return !previous || !sameItemData(previous, item);
+  });
+  const deletedIds = previousItems
+    .filter((item) => !nextById.has(item.id))
+    .map((item) => item.id);
+
+  if (!changedItems.length && !deletedIds.length) return nextItems;
+
+  const affectedIds = [...new Set([...changedItems.map((item) => item.id), ...deletedIds])];
+  const { data: existing, error: existingError } = await supabase
+    .from("items")
+    .select("*")
+    .eq("user_id", ownerId)
+    .in("id", affectedIds);
+  throwStorageError("load changed items before sync", existingError);
+
+  const existingRows = (existing || []) as ItemRow[];
+  const existingById = new Map(existingRows.map((row) => [row.id, row]));
+  const uploadCache = new Map<string, Promise<string | null>>();
+  const changedRows = await mapWithConcurrency(
+    changedItems,
+    (item) => prepareChangedItemRow(
+      ownerId,
+      item,
+      previousById.get(item.id),
+      existingById.get(item.id),
+      uploadCache,
+    ),
+  );
+
+  if (changedRows.length) {
+    const { error } = await supabase.from("items").upsert(changedRows, { onConflict: "id" });
+    throwStorageError("sync changed items", error);
+  }
+  if (deletedIds.length) {
+    const { error } = await supabase.from("items").delete().in("id", deletedIds).eq("user_id", ownerId);
+    throwStorageError("delete changed items", error);
+  }
+
+  // Spaces are currently derived from item rows. Reloading their lightweight
+  // database representation keeps relationship updates correct while avoiding
+  // reprocessing and rewriting every item and image.
+  const { data: current, error: currentError } = await supabase
+    .from("items")
+    .select("*")
+    .eq("user_id", ownerId)
+    .order("updated_at", { ascending: false });
+  throwStorageError("load items after incremental sync", currentError);
+  const currentRows = (current || []) as ItemRow[];
+  const retainedKeys = await finalizeItemRows(ownerId, existingRows, currentRows);
+  if (retainedKeys.size) await mediaStorage.ensureReadSession();
+  return currentRows.map(fromItemRow);
+};
+
 export const memoryStorage = {
   createItem(ownerId: string, input: Omit<MemoryItem, "id"> | MemoryItem): StoredMemoryItem {
     requireOwner(ownerId);
@@ -314,6 +437,14 @@ export const memoryStorage = {
     );
     if (hasPrivateImages) await mediaStorage.ensureReadSession();
     return rows.map(fromItemRow);
+  },
+
+  async syncItems(
+    ownerId: string,
+    previousItems: Array<MemoryItem | StoredMemoryItem>,
+    nextItems: Array<MemoryItem | StoredMemoryItem>,
+  ): Promise<MemoryItem[]> {
+    return syncItemChanges(ownerId, previousItems, nextItems);
   },
 
   async saveItem(ownerId: string, item: MemoryItem | StoredMemoryItem): Promise<StoredMemoryItem> {

@@ -7,6 +7,17 @@ export type EmojiCatalogEntry = {
   keywords: string[];
 };
 
+export const ITEM_CATEGORIES = [
+  "数码用品",
+  "衣物鞋包",
+  "药品健康",
+  "文具办公",
+  "家居日用",
+  "食品厨房",
+  "工具杂物",
+  "爱好运动",
+] as const;
+
 const item = (key: string, category: string, keywords: string[]): EmojiCatalogEntry => ({ key, category, kind: "item", keywords });
 const sub = (key: string, keywords: string[]): EmojiCatalogEntry => ({ key, category: "子级空间", kind: "sub-space", keywords });
 const parent = (key: string, keywords: string[]): EmojiCatalogEntry => ({ key, category: "父级空间", kind: "parent-space", keywords });
@@ -70,9 +81,77 @@ export const EMOJI_CATALOG: EmojiCatalogEntry[] = [
   parent("garage-workshop", ["garage", "workshop", "车库", "工作坊"]),
 ];
 
+const ITEM_CATEGORY_ALIASES: Record<(typeof ITEM_CATEGORIES)[number], string[]> = {
+  数码用品: ["electronics", "electronic", "digital", "tech", "appliance", "数码", "电子", "家电", "设备"],
+  衣物鞋包: ["apparel", "clothing", "fashion", "wear", "shoes", "bags", "衣物", "服装", "鞋包", "配饰"],
+  药品健康: ["medicine", "medical", "health", "pharmacy", "drug", "药品", "健康", "医疗"],
+  文具办公: ["stationery", "office", "document", "docs", "book", "school", "文具", "办公", "书籍", "文档", "证件"],
+  家居日用: ["household", "housewares", "houseware", "daily goods", "daily", "essentials", "home goods", "家居", "日用", "百货", "生活用品"],
+  食品厨房: ["food", "kitchen", "drink", "beverage", "snack", "食品", "厨房", "餐饮", "饮品", "零食"],
+  工具杂物: ["tools", "tool", "hardware", "repair", "miscellaneous", "misc", "utility", "工具", "五金", "维修", "杂物", "其它", "其他", "others"],
+  爱好运动: ["hobbies", "hobby", "sports", "sport", "outdoor", "toy", "music", "game", "爱好", "运动", "户外", "玩具", "乐器"],
+};
+
+export const normalizeItemCategory = (rawCategory: string, title = "", labels: string[] = []): string => {
+  const normalizedCategory = rawCategory.trim().toLocaleLowerCase();
+  const exactCategory = ITEM_CATEGORIES.find((category) => category.toLocaleLowerCase() === normalizedCategory);
+  if (exactCategory) return exactCategory;
+
+  let bestCategory: (typeof ITEM_CATEGORIES)[number] | null = null;
+  let bestScore = 0;
+  ITEM_CATEGORIES.forEach((category) => {
+    ITEM_CATEGORY_ALIASES[category].forEach((alias) => {
+      const normalizedAlias = alias.toLocaleLowerCase();
+      const score = normalizedCategory === normalizedAlias
+        ? 8
+        : normalizedCategory.includes(normalizedAlias)
+          ? 4
+          : 0;
+      if (score > bestScore) {
+        bestCategory = category;
+        bestScore = score;
+      }
+    });
+  });
+  const context = [title, ...labels].join(" ").trim().toLocaleLowerCase();
+  const contextTokens = new Set(context.match(/[a-z0-9-]+/g) || []);
+  EMOJI_CATALOG.filter((entry) => entry.kind === "item").forEach((entry) => {
+    const score = entry.keywords.reduce((total, keyword) => {
+      const normalizedKeyword = keyword.toLocaleLowerCase();
+      if (context === normalizedKeyword) return total + 20;
+      const matches = /^[a-z0-9-]+$/.test(normalizedKeyword)
+        ? contextTokens.has(normalizedKeyword)
+        : context.includes(normalizedKeyword);
+      if (matches) return total + normalizedKeyword.length + 5;
+      return total;
+    }, 0);
+    if (score > bestScore) {
+      bestCategory = entry.category as (typeof ITEM_CATEGORIES)[number];
+      bestScore = score;
+    }
+  });
+
+  return bestCategory || "家居日用";
+};
+
 export const EMOJI_KEYS = EMOJI_CATALOG.map((entry) => entry.key);
 export const EMOJI_KEY_SET = new Set(EMOJI_KEYS);
-export const emojiAsset = (key: string) => `/emoji/${EMOJI_KEY_SET.has(key) ? key : "box"}.png`;
+const EMOJI_ASSET_VERSIONS: Partial<Record<string, string>> = {
+  safe: "20260918-372-62",
+};
+
+export const emojiAsset = (key: string) => {
+  const resolvedKey = EMOJI_KEY_SET.has(key) ? key : "box";
+  const version = EMOJI_ASSET_VERSIONS[resolvedKey];
+  return `/emoji/${resolvedKey}.png${version ? `?v=${version}` : ""}`;
+};
+
+export const refreshEmojiAssetUrl = (imageUrl?: string) => {
+  if (!imageUrl) return imageUrl;
+  const match = imageUrl.match(/^(?:https?:\/\/[^/]+)?\/emoji\/([a-z0-9-]+)\.png(?:[?#].*)?$/i);
+  const key = match?.[1];
+  return key && EMOJI_ASSET_VERSIONS[key] ? emojiAsset(key) : imageUrl;
+};
 
 const defaultKey: Record<EmojiKind, string> = {
   item: "box",

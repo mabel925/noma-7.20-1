@@ -1,6 +1,6 @@
 import { NOMA_AI_URL } from "./backendUrls";
 import { AiAccessError, getAiAuthHeaders } from "./aiAuth";
-import { classifyEmojiLocally, EMOJI_CATALOG, EMOJI_KEY_SET, type EmojiKind } from "../data/emojiCatalog";
+import { classifyEmojiLocally, EMOJI_CATALOG, EMOJI_KEY_SET, normalizeItemCategory, type EmojiKind } from "../data/emojiCatalog";
 
 export interface RecognitionResult {
   title: string;
@@ -123,7 +123,7 @@ export async function callNomaBackend(type: "matting" | "vision" | "title" | "em
             message: {
               content: JSON.stringify({
                 title: "Aesthetic Mug",
-                category: "Daily Goods",
+                category: "家居日用",
                 labels: ["mug", "cup", "ceramic"]
               })
             }
@@ -230,11 +230,11 @@ export function parseVisionContent(content: string): { title: string; category: 
   console.log("[AI Parser] Parsing vision content string:", content);
   
   let title = "Scanned Item";
-  let category = "Daily Goods";
+  let category = "";
   let labels: string[] = ["item"];
 
   if (!content) {
-    return { title, category, labels };
+    return { title, category: "家居日用", labels };
   }
 
   const trimmed = content.trim();
@@ -263,7 +263,7 @@ export function parseVisionContent(content: string): { title: string; category: 
         labels = [parsed.labels];
       }
       
-      return { title, category, labels };
+      return { title, category: normalizeItemCategory(category, title, labels), labels };
     } catch (e) {
       console.warn("[AI Parser] Content looked like JSON but failed to parse, falling back to plain text:", e);
     }
@@ -275,60 +275,13 @@ export function parseVisionContent(content: string): { title: string; category: 
     title = lines[0].replace(/^[-*+\d\.\s]+/g, "");
   }
   
-  const lowerContent = trimmed.toLowerCase();
-  if (
-    lowerContent.includes("computer") || lowerContent.includes("laptop") || lowerContent.includes("phone") || 
-    lowerContent.includes("electronics") || lowerContent.includes("audio") || lowerContent.includes("display") || 
-    lowerContent.includes("screen") || lowerContent.includes("gadget") || lowerContent.includes("charger") || 
-    lowerContent.includes("appliance") || lowerContent.includes("television") || lowerContent.includes("camera") || 
-    lowerContent.includes("battery") || lowerContent.includes("电脑") || lowerContent.includes("手机") ||
-    lowerContent.includes("耳机") || lowerContent.includes("相机")
-  ) {
-    category = "数码家电";
-  } else if (
-    lowerContent.includes("clothing") || lowerContent.includes("apparel") || lowerContent.includes("wear") || 
-    lowerContent.includes("shirt") || lowerContent.includes("pants") || lowerContent.includes("shoe") || 
-    lowerContent.includes("boot") || lowerContent.includes("sneaker") || lowerContent.includes("bag") || 
-    lowerContent.includes("jacket") || lowerContent.includes("hat") || lowerContent.includes("accessory") || 
-    lowerContent.includes("jewelry") || lowerContent.includes("watch") || lowerContent.includes("glasses") || 
-    lowerContent.includes("wallet") || lowerContent.includes("backpack") || lowerContent.includes("衣服") ||
-    lowerContent.includes("鞋") || lowerContent.includes("帽") || lowerContent.includes("手表")
-  ) {
-    category = "衣物配饰";
-  } else if (
-    lowerContent.includes("cup") || lowerContent.includes("mug") || lowerContent.includes("bottle") || 
-    lowerContent.includes("furniture") || lowerContent.includes("table") || lowerContent.includes("chair") || 
-    lowerContent.includes("plate") || lowerContent.includes("bowl") || lowerContent.includes("soap") || 
-    lowerContent.includes("towel") || lowerContent.includes("household") || lowerContent.includes("kitchen") || 
-    lowerContent.includes("candle") || lowerContent.includes("pillow") || lowerContent.includes("blanket") || 
-    lowerContent.includes("umbrella") || lowerContent.includes("flower") || lowerContent.includes("vase") ||
-    lowerContent.includes("杯") || lowerContent.includes("瓶") || lowerContent.includes("碗") || lowerContent.includes("毛巾")
-  ) {
-    category = "日用百货";
-  } else if (
-    lowerContent.includes("book") || lowerContent.includes("document") || lowerContent.includes("paper") || 
-    lowerContent.includes("textbook") || lowerContent.includes("magazine") || lowerContent.includes("journal") || 
-    lowerContent.includes("novel") || lowerContent.includes("certificate") || lowerContent.includes("书") ||
-    lowerContent.includes("文档") || lowerContent.includes("纸")
-  ) {
-    category = "书籍文档";
-  } else if (
-    lowerContent.includes("pen") || lowerContent.includes("pencil") || lowerContent.includes("stationery") || 
-    lowerContent.includes("office supply") || lowerContent.includes("eraser") || lowerContent.includes("ruler") || 
-    lowerContent.includes("scissors") || lowerContent.includes("toy") || lowerContent.includes("sticker") || 
-    lowerContent.includes("key") || lowerContent.includes("folder") || lowerContent.includes("clip") ||
-    lowerContent.includes("笔") || lowerContent.includes("玩具") || lowerContent.includes("钥匙")
-  ) {
-    category = "文具杂货";
-  }
-
   const words = title.split(/[\s,，、]+/);
   labels = words.filter(w => w.length > 1).slice(0, 5);
   if (labels.length === 0) {
     labels = ["item"];
   }
 
-  return { title, category, labels };
+  return { title, category: normalizeItemCategory(category, title, labels), labels };
 }
 
 /**
@@ -367,10 +320,12 @@ export async function recognizeImage(
     } else {
       console.log("[AI Dispatcher] No standard content/choices found, mapping result directly if possible:", result);
       const directResult = result?.result || result?.data || result || {};
+      const title = directResult.title || directResult.name || "Scanned Item";
+      const labels = directResult.labels || directResult.tags || ["item"];
       return {
-        title: directResult.title || directResult.name || "Scanned Item",
-        category: directResult.category || "Daily Goods",
-        labels: directResult.labels || directResult.tags || ["item"]
+        title,
+        category: normalizeItemCategory(directResult.category || "", title, labels),
+        labels,
       };
     }
 
@@ -382,7 +337,7 @@ export async function recognizeImage(
     console.error("[AI Dispatcher] Failed to recognize image via unified worker:", err.message || err);
     return {
       title: "Scanned Item",
-      category: "Daily Goods",
+      category: "家居日用",
       labels: ["item", "physical object"]
     };
   }

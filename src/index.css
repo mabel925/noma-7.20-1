@@ -171,11 +171,11 @@ html, body {
     top: 50% !important;
     right: auto !important;
     bottom: auto !important;
-    width: 412px !important;
-    height: 844px !important;
-    max-width: 412px !important;
-    margin-left: -206px !important;
-    margin-top: -422px !important;
+    width: 393px !important;
+    height: 852px !important;
+    max-width: 393px !important;
+    margin-left: -196.5px !important;
+    margin-top: -426px !important;
   }
 
   .capture-drawer {
@@ -533,8 +533,8 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 
 @media (min-width: 768px) {
   .chat-back-button {
-    left: calc(50% - 186px) !important;
-    top: calc(50% - 422px + 44px) !important;
+    left: calc(50% - 176.5px) !important;
+    top: calc(50% - 426px + 44px) !important;
   }
 }
 
@@ -550,9 +550,9 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 
 @media (min-width: 768px) {
   .home-header-fixed {
-    left: calc(50% - 186px) !important;
-    right: calc(50% - 186px) !important;
-    top: calc(50% - 422px + 44px) !important;
+    left: calc(50% - 176.5px) !important;
+    right: calc(50% - 176.5px) !important;
+    top: calc(50% - 426px + 44px) !important;
   }
 }
 
@@ -589,15 +589,15 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 
 @media (min-width: 768px) {
   .home-memory-entry-fixed {
-    left: calc(50% - 192px) !important;
-    bottom: calc(50% - 384px) !important;
+    left: calc(50% - 182.5px) !important;
+    bottom: calc(50% - 388px) !important;
   }
 }
 
 @media (min-width: 768px) {
   .home-action-buttons-fixed {
-    right: calc(50% - 192px) !important;
-    bottom: calc(50% - 390px) !important;
+    right: calc(50% - 182.5px) !important;
+    bottom: calc(50% - 394px) !important;
   }
 }
 
@@ -628,10 +628,10 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
     right: auto !important;
     top: 50% !important;
     bottom: auto !important;
-    width: 412px !important;
-    height: 844px !important;
-    margin-left: -206px !important;
-    margin-top: -422px !important;
+    width: 393px !important;
+    height: 852px !important;
+    margin-left: -196.5px !important;
+    margin-top: -426px !important;
     border-radius: 36px !important;
     overflow: hidden !important;
   }
@@ -729,8 +729,8 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 
 .noma-add-screen {
   position: relative;
-  width: min(100vw, 390px);
-  height: min(var(--noma-add-height, 844px), 844px);
+  width: min(100vw, 393px);
+  height: min(var(--noma-add-height, 852px), 852px);
   overflow: hidden;
   border-radius: 40px;
   background-color: #e9e6e1;
@@ -1264,15 +1264,15 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 .noma-add-parent-visual { position: absolute; top: 0; left: 50%; width: calc(70px + var(--noma-parent-title-width, 184px)); height: 124px; transform: translateX(-50%); transition: width 420ms cubic-bezier(0.16, 1, 0.3, 1), height 420ms cubic-bezier(0.16, 1, 0.3, 1); }
 .noma-add-parent-visual img { top: 33px; left: 0; width: 58px; height: 58px; transform: none; transform-origin: center; transition: top 420ms cubic-bezier(0.16, 1, 0.3, 1), left 420ms cubic-bezier(0.16, 1, 0.3, 1), width 420ms cubic-bezier(0.16, 1, 0.3, 1), height 420ms cubic-bezier(0.16, 1, 0.3, 1); }
 .noma-add-parent-visual strong { top: 29px; left: 70px; width: max-content; height: 66px; max-width: 230px; transform: none; }
-.noma-add-space-card:not(.is-active) .noma-add-parent-visual { width: 280px; }
-.noma-add-space-card:not(.is-active) .noma-add-parent-visual strong { width: 210px; max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.noma-add-space-card:not(.is-active) .noma-add-parent-visual { left: calc(50% - 6px); width: calc(70px + var(--noma-parent-title-width, 184px)); }
+.noma-add-space-card:not(.is-active) .noma-add-parent-visual strong { width: max-content; max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .noma-add-space-card.is-active .noma-add-parent-zone { width: 350px; height: 424px; }
 .noma-add-space-card.is-active .noma-add-parent-zone .noma-add-space-placeholder-icon { top: 25px; left: 82px; width: 186px; height: 186px; }
 .noma-add-space-card.is-active .noma-add-parent-zone .noma-add-space-input-wrap input { top: 189px; left: 60px; }
 .noma-add-space-card.is-active .noma-add-parent-input-preview { top: 189px; }
 .noma-add-space-card.is-active .noma-add-space-value { padding: 0; }
 .noma-add-space-card.is-active .noma-add-parent-visual { width: 230px; height: 276px; }
-.noma-add-space-card.is-active .noma-add-parent-visual img { top: 25px; left: 22px; width: 186px; height: 186px; transform: none; }
+.noma-add-space-card.is-active .noma-add-parent-visual img { top: 25px; left: 50%; width: 186px; height: 186px; transform: translateX(-50%); }
 .noma-add-space-card.is-active .noma-add-parent-visual strong { top: 189px; left: 50%; width: max-content; height: 87px; max-width: 230px; align-items: center; justify-content: center; overflow: visible; font-size: 22px; line-height: 1.2; text-align: center; text-overflow: clip; overflow-wrap: anywhere; white-space: normal; transform: translateX(-50%); }
 .noma-add-space-card.is-active .noma-add-sub-card { top: 314px; left: 43px; width: 264px; height: 84px; overflow: visible; border-radius: 42px; background: rgba(204, 196, 190, 0.3); }
 .noma-add-space-card.is-active .noma-add-sub-value { padding: 0; }
@@ -1298,6 +1298,7 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
   width: 230px;
   max-width: 230px;
   height: 87px;
+  top: 180px;
   align-items: center;
   justify-content: center;
   overflow: hidden;
@@ -1313,8 +1314,8 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 }
 .noma-add-sub-card.is-active .noma-add-space-input-wrap { inset: 0; display: block; height: 280px; }
 .noma-add-sub-card.is-active .noma-add-space-input-wrap .noma-add-space-placeholder-icon { position: absolute; top: 16px; left: 32px; width: 186px; height: 186px; transform: none; }
-.noma-add-sub-card.is-active .noma-add-space-input-wrap input { position: absolute; top: 166px; right: auto; bottom: auto; left: 10px; width: 230px; height: 87px; line-height: 87px; }
-.noma-add-sub-card.is-active .noma-add-space-input-wrap .noma-add-sub-placeholder { top: 166px; right: 10px; bottom: auto; left: 10px; display: flex; height: 87px; align-items: center; justify-content: center; transform: none; }
+.noma-add-sub-card.is-active .noma-add-space-input-wrap input { position: absolute; top: 180px; right: auto; bottom: auto; left: 10px; width: 230px; height: 87px; font-size: 22px; line-height: 87px; }
+.noma-add-sub-card.is-active .noma-add-space-input-wrap .noma-add-sub-placeholder { top: 180px; right: 10px; bottom: auto; left: 10px; display: flex; height: 87px; align-items: center; justify-content: center; font-size: 22px; transform: none; }
 .noma-add-space-card .noma-add-space-value.is-photo .noma-add-parent-visual { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: none; }
 .noma-add-space-card .noma-add-space-value.is-photo .noma-add-parent-visual img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; border: 2.5px solid #fff; border-radius: 36px; box-sizing: border-box; transform: none; }
 .noma-add-space-card .noma-add-space-value.is-photo .noma-add-parent-visual strong { position: absolute; top: 54px; left: 0; display: block; width: 100%; height: auto; max-width: none; color: #fff; font-size: 22px; line-height: 1.2; text-align: center; text-overflow: clip; transform: none; }
@@ -1515,8 +1516,10 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 .noma-add-shared-sub-card-content { position: absolute; inset: 0; }
 .noma-add-shared-sub-card-content img { position: absolute; top: 16px; left: 32px; width: 186px; height: 186px; object-fit: contain; opacity: 1; transform: none; transform-origin: top left; transition: transform 420ms cubic-bezier(0.16, 1, 0.3, 1); }
 .noma-add-shared-sub-card-content.is-empty img { opacity: 0.4; }
-.noma-add-shared-sub-card-content strong { position: absolute; top: 166px; left: 10px; display: -webkit-box; width: 230px; max-width: 230px; height: 87px; margin: 0; align-items: center; justify-content: center; overflow: hidden; color: #232121; font-size: 18px !important; line-height: 1.2; text-align: center; text-overflow: ellipsis; white-space: normal; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-box-pack: center; -webkit-line-clamp: 2; }
+.noma-add-shared-sub-card.is-selected { background: #fff; }
+.noma-add-shared-sub-card-content strong { position: absolute; top: 166px; left: 10px; display: flex; width: 230px; max-width: 230px; height: 87px; margin: 0; align-items: center; justify-content: center; overflow: hidden; color: #232121; font-size: 18px !important; line-height: 1.2; text-align: center; text-overflow: ellipsis; white-space: normal; overflow-wrap: anywhere; }
 .noma-add-shared-sub-card-content.is-empty strong { color: rgba(35, 33, 33, 0.15); }
+.noma-add-shared-sub-card.is-selected .noma-add-shared-sub-card-content strong { top: 180px; font-size: 22px !important; }
 .noma-add-space-card.is-active > .noma-add-shared-sub-card .noma-add-shared-sub-card-content img,
 .noma-add-space-camera-wrap.is-parent .noma-add-space-camera-parent-frame > .noma-add-shared-sub-card .noma-add-shared-sub-card-content img { transform: translate3d(-32px, -20px, 0) scale(0.494624); }
 .noma-add-space-card.is-active > .noma-add-shared-sub-card .noma-add-shared-sub-card-content.is-photo img,
@@ -1525,9 +1528,13 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 .noma-add-space-camera-wrap.is-parent .noma-add-space-camera-parent-frame > .noma-add-shared-sub-card .noma-add-shared-sub-card-content strong { top: 18px; left: 86px; width: 162px; max-width: 162px; height: 48px; padding-right: 16px; font-size: 18px !important; }
 .noma-add-space-camera-title-form { position: absolute; z-index: 8; left: 50%; width: 230px; height: 48px; transform: translateX(-50%); }
 .noma-add-space-camera-title-form.is-parent { top: 42px; }
-.noma-add-space-camera-title-form.is-sub { top: 30px; }
+.noma-add-space-camera-title-form.is-sub { top: 166px; height: 87px; }
 .noma-add-space-camera-title-form input { width: 100%; height: 100%; padding: 0; color: #fff; font-size: 22px; font-weight: 600; line-height: 48px; text-align: center; border: 0; border-bottom: 1px solid rgba(255, 255, 255, 0.72); outline: 0; background: transparent; }
+.noma-add-space-camera-title-form.is-sub input { line-height: 87px; }
 .noma-add-space-camera-actions-layer { position: absolute; z-index: 40; right: 53px; bottom: 76px; left: 53px; height: 80px; pointer-events: none; }
+.noma-add-space-camera-error { position: absolute; z-index: 45; top: 50%; left: 50%; display: flex; width: min(300px, calc(100% - 48px)); flex-direction: column; align-items: center; gap: 14px; color: rgba(255, 255, 255, 0.82); text-align: center; transform: translate(-50%, -50%); pointer-events: none; }
+.noma-add-space-camera-error p { margin: 0; font-size: 16px; line-height: 1.4; }
+.noma-add-space-camera-error button { min-height: 40px; padding: 0 18px; border: 1px solid rgba(255, 255, 255, 0.42); border-radius: 20px; background: rgba(35, 33, 33, 0.4); color: #fff; font-size: 14px; pointer-events: auto; }
 .noma-add-space-camera-action-state { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: auto; }
 .noma-add-camera-controls.is-space { position: static; display: grid; width: 292px; height: 80px; grid-template-columns: 62px 80px 62px; column-gap: 44px; align-items: center; justify-content: center; }
 .noma-add-camera-controls.is-space > button:first-child { width: 48px; height: 48px; justify-self: center; }
@@ -1600,7 +1607,7 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 .noma-add-final.is-revealing .noma-add-final-actions .noma-add-final-confirm { animation: noma-add-button-pop 360ms 625ms cubic-bezier(0.16, 1, 0.3, 1) both; }
 
 @media (max-width: 767px) {
-  .noma-add-screen { width: 100vw; max-width: 390px; border-radius: 0; }
+  .noma-add-screen { width: 100vw; max-width: 393px; border-radius: 0; }
 }
 
 @media (max-height: 700px) {

@@ -23,10 +23,9 @@ import { MemoryList, MemoryItem } from "./components/MemoryList";
 import { CloseIcon } from "./components/CloseIcon";
 import { useAuth } from "./auth/AuthContext";
 import { isStandalonePwa, syncDisplayModeClasses } from "./utils/appViewport";
+import { preloadStartupAssets, subscribeStartupPreload } from "./services/startupPreload";
 
 const HOME_BACKGROUND_URL = "/home-bg.jpg";
-const HOME_LOGO_URL = "/home-logo.png";
-const HOME_AVATAR_URL = "/default-avatar.jpg";
 
 const DEFAULT_MEMORIES: MemoryItem[] = [
   {
@@ -199,6 +198,7 @@ export default function App() {
   const launchStartedAtRef = React.useRef(performance.now());
   const [areStageAssetsReady, setAreStageAssetsReady] = useState(false);
   const [areHomeChromeAssetsReady, setAreHomeChromeAssetsReady] = useState(false);
+  const [areStartupAssetsReady, setAreStartupAssetsReady] = useState(false);
   const [startupProgress, setStartupProgress] = useState(4);
   const [isHomeReady, setIsHomeReady] = useState(false);
   const handleHomeReady = React.useCallback(() => setAreStageAssetsReady(true), []);
@@ -209,34 +209,42 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
-    const preloadImage = (url: string) => new Promise<void>((resolve) => {
-      const image = new Image();
-      image.onload = () => {
-        const decode = typeof image.decode === "function" ? image.decode() : Promise.resolve();
-        decode.catch(() => undefined).finally(resolve);
-      };
-      image.onerror = () => resolve();
-      image.src = url;
+    const unsubscribe = subscribeStartupPreload(({ loaded, total }) => {
+      if (cancelled) return;
+      const progress = total > 0 ? Math.round((loaded / total) * 92) + 4 : 96;
+      setStartupProgress(Math.min(96, progress));
+      if (loaded >= total) {
+        setAreStartupAssetsReady(true);
+        setAreHomeChromeAssetsReady(true);
+      }
     });
-
-    Promise.all([HOME_LOGO_URL, HOME_AVATAR_URL].map(preloadImage)).then(() => {
-      if (!cancelled) setAreHomeChromeAssetsReady(true);
+    void preloadStartupAssets().then(() => {
+      if (!cancelled) {
+        setStartupProgress(96);
+        setAreStartupAssetsReady(true);
+        setAreHomeChromeAssetsReady(true);
+      }
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
     if (isHomeReady) return;
     const timer = window.setInterval(() => {
       setStartupProgress((current) => {
-        if (areStageAssetsReady && areHomeChromeAssetsReady) return 100;
-        const ceiling = areStageAssetsReady ? 94 : areHomeChromeAssetsReady ? 76 : 62;
+        if (areStageAssetsReady && areHomeChromeAssetsReady && areStartupAssetsReady) return 100;
+        const ceiling = areStartupAssetsReady
+          ? (areStageAssetsReady && areHomeChromeAssetsReady ? 100 : 98)
+          : 62;
         const step = Math.max(0.6, (ceiling - current) * 0.075);
         return Math.min(ceiling, current + step);
       });
     }, 140);
     return () => window.clearInterval(timer);
-  }, [areHomeChromeAssetsReady, areStageAssetsReady, isHomeReady]);
+  }, [areHomeChromeAssetsReady, areStageAssetsReady, areStartupAssetsReady, isHomeReady]);
 
   useEffect(() => {
     const splash = document.getElementById("startup-splash");
@@ -250,12 +258,12 @@ export default function App() {
   }, [startupProgress]);
 
   useEffect(() => {
-    if (!areStageAssetsReady || !areHomeChromeAssetsReady) return;
+    if (!areStageAssetsReady || !areHomeChromeAssetsReady || !areStartupAssetsReady) return;
     setStartupProgress(100);
     const elapsed = performance.now() - launchStartedAtRef.current;
     const timer = window.setTimeout(() => setIsHomeReady(true), Math.max(240, 650 - elapsed));
     return () => window.clearTimeout(timer);
-  }, [areHomeChromeAssetsReady, areStageAssetsReady]);
+  }, [areHomeChromeAssetsReady, areStageAssetsReady, areStartupAssetsReady]);
 
   useEffect(() => {
     if (isHomeReady) return;
@@ -313,16 +321,41 @@ export default function App() {
   const [customMemories, setCustomMemories] = useState<MemoryItem[]>([]);
   const [isMemoryHydrated, setIsMemoryHydrated] = useState(false);
   const [hydratedUserId, setHydratedUserId] = useState<string | null>(null);
+  const customMemoriesRef = React.useRef<MemoryItem[]>([]);
+  const memorySnapshotRef = React.useRef<MemoryItem[]>([]);
+  const persistedMemorySnapshotsRef = React.useRef(new Map<string, MemoryItem[]>());
+  const memorySyncQueueRef = React.useRef<Promise<void>>(Promise.resolve());
+  customMemoriesRef.current = customMemories;
+
+  const enqueueMemorySync = React.useCallback((
+    ownerId: string,
+    nextItems: MemoryItem[],
+  ) => {
+    const operation = memorySyncQueueRef.current.then(async () => {
+      const previousItems = persistedMemorySnapshotsRef.current.get(ownerId) || [];
+      const persistedItems = await memoryStorage.syncItems(ownerId, previousItems, nextItems);
+      // Keep the successful local snapshot as the comparison baseline. It may
+      // contain data URLs, and preserving those values prevents an unchanged
+      // image from being compressed and uploaded again on a later text edit.
+      persistedMemorySnapshotsRef.current.set(ownerId, nextItems);
+      return persistedItems;
+    });
+    memorySyncQueueRef.current = operation.then(() => undefined, () => undefined);
+    return operation;
+  }, []);
 
   // Only hydrate data after a user exists. Signed-out sessions intentionally
   // never read the old test database or any account-scoped data.
   useEffect(() => {
     let cancelled = false;
 
+    customMemoriesRef.current = [];
+    memorySnapshotRef.current = [];
     setCustomMemories([]);
     setIsMemoryHydrated(false);
     setHydratedUserId(null);
     if (!user) return () => { cancelled = true; };
+    persistedMemorySnapshotsRef.current.delete(user.id);
     if (user.isMock) {
       setIsMemoryHydrated(true);
       setHydratedUserId(user.id);
@@ -334,9 +367,14 @@ export default function App() {
       .then((items) => {
         if (cancelled) return;
         setCustomMemories((currentItems) => {
-          if (currentItems.length === 0) return items;
           const currentIds = new Set(currentItems.map((item) => item.id));
-          return [...currentItems, ...items.filter((item) => !currentIds.has(item.id))];
+          const mergedItems = currentItems.length === 0
+            ? items
+            : [...currentItems, ...items.filter((item) => !currentIds.has(item.id))];
+          memorySnapshotRef.current = items;
+          persistedMemorySnapshotsRef.current.set(user.id, items);
+          customMemoriesRef.current = mergedItems;
+          return mergedItems;
         });
         setIsMemoryHydrated(true);
         setHydratedUserId(user.id);
@@ -353,15 +391,19 @@ export default function App() {
     };
   }, [user?.id, user?.isMock]);
 
-  // Persist edits and deletes only after the signed-in account has hydrated,
-  // so an initial empty render can never overwrite cloud data.
+  // Persist only the delta between local snapshots. Writes are serialized so
+  // a slower, older request cannot finish after and overwrite a newer edit.
   useEffect(() => {
     if (!isMemoryHydrated || !user || user.isMock || hydratedUserId !== user.id) return;
 
-    memoryStorage.saveItems(user.id, customMemories).catch((error) => {
+    const previousItems = memorySnapshotRef.current;
+    const nextItems = customMemories;
+    memorySnapshotRef.current = nextItems;
+    if (previousItems === nextItems) return;
+    enqueueMemorySync(user.id, nextItems).catch((error) => {
       console.error("[App] Failed to persist cloud memories:", error);
     });
-  }, [customMemories, isMemoryHydrated, hydratedUserId, user?.id, user?.isMock]);
+  }, [customMemories, enqueueMemorySync, isMemoryHydrated, hydratedUserId, user?.id, user?.isMock]);
   const [toast, setToast] = useState<string | null>(null);
   const [currentInfoObj, setCurrentInfoObj] = useState<string | null>(null);
 
@@ -710,12 +752,35 @@ export default function App() {
       });
     }
 
-    if (!currentUser.isMock) {
-      const savedItem = await memoryStorage.saveItem(currentUser.id, newItem);
-      newItem = savedItem;
-    }
+    // A sub-space created before its parent is represented as a top-level
+    // space in Memory. Once a parent is supplied, move the existing records
+    // under that parent so the sub-space remains a child card and keeps all
+    // of its item relationships.
+    const nextParentName = newItem.parentLocationName?.trim() || "";
+    const nextSubName = newItem.subLocationName?.trim() || "";
+    const previousItems = customMemoriesRef.current;
+    const migrated = nextParentName && nextSubName
+      ? previousItems.map((existingItem) => {
+            const existingParentName = existingItem.parentLocationName?.trim() || "";
+            const existingSubName = existingItem.subLocationName?.trim() || "";
+            if (existingParentName || existingSubName !== nextSubName) return existingItem;
+            return {
+              ...existingItem,
+              parentLocationName: nextParentName,
+              parentLocationImg: existingItem.parentLocationImg || newItem.parentLocationImg,
+            };
+          })
+      : previousItems;
+    const nextItems = [newItem, ...migrated.filter((item) => item.id !== newItem.id)];
 
-    setCustomMemories((prev) => [newItem, ...prev.filter((item) => item.id !== newItem.id)]);
+    const persistedItems = currentUser.isMock
+      ? nextItems
+      : await enqueueMemorySync(currentUser.id, nextItems);
+    newItem = persistedItems.find((item) => item.id === newItem.id) || newItem;
+    memorySnapshotRef.current = persistedItems;
+    persistedMemorySnapshotsRef.current.set(currentUser.id, persistedItems);
+    customMemoriesRef.current = persistedItems;
+    setCustomMemories(persistedItems);
     setToast("保存成功");
     
     // Smooth transition message from Noma
@@ -738,7 +803,7 @@ export default function App() {
       className="home-container w-full h-[100vh] flex items-center justify-center p-0 md:py-6 md:px-4 no-scrollbar relative overflow-hidden select-none"
     >
       {/* 共享动画和布局父容器，不指定 z-index 避免形成层叠上下文，使内部子元素保持原生的层叠深度 */}
-      <div className="keyboard-bg-sync-parent absolute inset-0 pointer-events-none md:fixed md:left-1/2 md:top-1/2 md:w-[412px] md:h-[844px] md:-ml-[206px] md:-mt-[422px] md:overflow-hidden md:rounded-[36px]">
+      <div className="keyboard-bg-sync-parent absolute inset-0 pointer-events-none md:fixed md:left-1/2 md:top-1/2 md:w-[393px] md:h-[852px] md:-ml-[196.5px] md:-mt-[426px] md:overflow-hidden md:rounded-[36px]">
         <motion.div
           id="app-bg"
           initial={isCustomKeyboardVisible ? "visible" : "hidden"}
@@ -786,7 +851,7 @@ export default function App() {
       <div
         id="noma-iphone-frame"
         onClick={handleEasterEggClick}
-        className="fixed inset-0 md:relative md:inset-auto w-full max-w-none md:max-w-[412px] h-[100vh] md:h-[844px] rounded-none md:rounded-[36px] bg-transparent border-none md:border md:border-white/10 shadow-none md:shadow-[0_24px_64px_rgba(0,0,0,0.85)] flex flex-col overflow-hidden will-change-transform z-10"
+        className="fixed inset-0 md:relative md:inset-auto w-full max-w-none md:max-w-[393px] h-[100vh] md:h-[852px] rounded-none md:rounded-[36px] bg-transparent border-none md:border md:border-white/10 shadow-none md:shadow-[0_24px_64px_rgba(0,0,0,0.85)] flex flex-col overflow-hidden will-change-transform z-10"
       >
 
 

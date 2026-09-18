@@ -6,6 +6,7 @@ const EMOJI_KEYS_BY_KIND = {
   "sub-space": ["box", "drawer", "wardrobe", "shelf", "suitcase", "safe", "trash"],
   "parent-space": ["home", "living-room", "bedroom", "kitchen", "bathroom", "balcony-garden", "office", "library-study", "car", "garage-workshop"],
 };
+const ITEM_CATEGORIES = ["数码用品", "衣物鞋包", "药品健康", "文具办公", "家居日用", "食品厨房", "工具杂物", "爱好运动"];
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -180,7 +181,7 @@ async function callQwen(env, content, jsonMode = false) {
 async function vision(env, body) {
   if (!body.image_base64) return json({ error: "image_base64 is required" }, 400);
   const mimeType = body.mime_type || "image/jpeg";
-  const prompt = "Identify the main object or storage location. Return only JSON: {\"title\":\"short English name\",\"category\":\"category\",\"labels\":[\"tag\"]}.";
+  const prompt = `Identify the main physical object. Choose exactly one category from this whitelist: ${ITEM_CATEGORIES.join(", ")}. Return only JSON: {"title":"short English name","category":"one whitelisted category","labels":["semantic tag"]}.`;
   const failures = [];
   // Prefer Qwen for users in China. Gemini remains a fallback when Qwen is
   // unavailable or returns an invalid response.
