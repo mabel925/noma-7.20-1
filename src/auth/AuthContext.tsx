@@ -139,7 +139,12 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
     setAiAccess(null);
     setAiAccessLoading(true);
     setAiAccessUnavailable(false);
-    readAiAccess()
+    const loadAccountAccess = async () => {
+      const { error } = await supabase.rpc("bootstrap_my_account");
+      if (error) throw error;
+      return readAiAccess();
+    };
+    loadAccountAccess()
       .then((access) => {
         if (cancelled) return;
         setAiAccess(access);
@@ -195,6 +200,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       email: normalizedEmail,
       options: {
         shouldCreateUser: true,
+        data: normalizedName ? { display_name: normalizedName } : undefined,
       },
     });
     if (error) {
@@ -226,6 +232,11 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
         throw updateError;
       }
     }
+
+    const { error: bootstrapError } = await supabase.rpc("bootstrap_my_account", {
+      preferred_display_name: normalizeDisplayName(displayName),
+    });
+    if (bootstrapError) throw bootstrapError;
 
     const pendingAction = pendingActionRef.current;
     pendingActionRef.current = null;

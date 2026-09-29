@@ -26,10 +26,72 @@ const readBearer = (request) => {
   return authorization.toLowerCase().startsWith("bearer ") ? authorization.slice(7).trim() : "";
 };
 
-const getToken = (request, allowCookie) => readBearer(request) || (allowCookie ? readCookie(request, MEDIA_COOKIE) : "");
+const textEncoder = new TextEncoder();
+const base64UrlEncode = (bytes) => {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+};
+const base64UrlDecode = (value) => {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const binary = atob(normalized + "=".repeat((4 - normalized.length % 4) % 4));
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+};
+
+const mediaSigningKey = async (env) => {
+  const secret = String(env.MEDIA_SESSION_SECRET || "");
+  if (!secret) return null;
+  return crypto.subtle.importKey(
+    "raw",
+    textEncoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"],
+  );
+};
+
+const createMediaSession = async (userId, env, maxAgeSeconds) => {
+  const key = await mediaSigningKey(env);
+  if (!key) return null;
+  const payload = `${userId}.${Math.floor(Date.now() / 1000) + maxAgeSeconds}`;
+  const signature = await crypto.subtle.sign("HMAC", key, textEncoder.encode(payload));
+  return `${payload}.${base64UrlEncode(new Uint8Array(signature))}`;
+};
+
+const verifyMediaSession = async (value, env) => {
+  const key = await mediaSigningKey(env);
+  if (!key || !value) return null;
+  const [userId, expiresAtValue, signatureValue, ...rest] = value.split(".");
+  const expiresAt = Number(expiresAtValue);
+  if (rest.length || !userId || !Number.isFinite(expiresAt) || expiresAt <= Math.floor(Date.now() / 1000)) return null;
+  let signature;
+  try {
+    signature = base64UrlDecode(signatureValue || "");
+  } catch {
+    return null;
+  }
+  const valid = await crypto.subtle.verify(
+    "HMAC",
+    key,
+    signature,
+    textEncoder.encode(`${userId}.${expiresAtValue}`),
+  );
+  return valid ? { id: userId } : null;
+};
 
 const authenticate = async (request, env, allowCookie = false) => {
-  const token = getToken(request, allowCookie);
+  const bearer = readBearer(request);
+  const cookieValue = allowCookie ? readCookie(request, MEDIA_COOKIE) : "";
+  if (!bearer && cookieValue) {
+    const signedUser = await verifyMediaSession(cookieValue, env);
+    if (signedUser) return { user: signedUser, token: "" };
+  }
+
+  // Until MEDIA_SESSION_SECRET is configured, retain the previous remote
+  // validation path so deploying the code before the secret does not break
+  // existing images. Once configured, cookies are signed user sessions and
+  // only one Supabase call is made when the session is created.
+  const token = bearer || (!env.MEDIA_SESSION_SECRET && cookieValue ? cookieValue : "");
   if (!token) throw new Response("Unauthorized", { status: 401 });
 
   const authBase = String(env.SUPABASE_AUTH_PROXY_URL || AUTH_PROXY_URL).replace(/\/+$/, "");
@@ -76,8 +138,10 @@ const handleSession = async (request, env) => {
   }
   if (request.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
 
-  const { token } = await authenticate(request, env, false);
-  return json({ ok: true }, 200, { "Set-Cookie": sessionCookie(token, 3600) });
+  const { user, token } = await authenticate(request, env, false);
+  const maxAge = 30 * 60;
+  const signedSession = await createMediaSession(user.id, env, maxAge);
+  return json({ ok: true }, 200, { "Set-Cookie": sessionCookie(signedSession || token, maxAge) });
 };
 
 const handleObject = async (request, env, key) => {
@@ -178,8 +242,12 @@ export async function onRequest({ request, env }) {
   try {
     const pathname = new URL(request.url).pathname;
     if (pathname === "/api/media/session") return await handleSession(request, env);
-    if (pathname === "/api/media/delete") return await handleDeleteMany(request, env);
-    if (pathname === "/api/media/reconcile") return await handleReconcile(request, env);
+    // v5 never accepts a client-provided "complete" key list. With pagination,
+    // absence from that list cannot prove an object is unused. Cleanup is now
+    // driven by media_objects.ref_count and a future server-side GC worker.
+    if (pathname === "/api/media/delete" || pathname === "/api/media/reconcile") {
+      return json({ error: "Client-managed media cleanup is retired" }, 410);
+    }
 
     const key = objectKeyFromPath(pathname);
     if (key) return await handleObject(request, env, key);

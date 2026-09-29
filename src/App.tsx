@@ -7,7 +7,7 @@ import { ChatFlow } from "./components/ChatFlow";
 import { VirtualKeyboard } from "./components/VirtualKeyboard";
 import { AddItemFlowV13 } from "./components/AddItemFlowV13";
 import { useKeyboardReset } from "./hooks/useKeyboardReset";
-import { memoryStorage } from "./services/memoryStorage";
+import { memoryStorage, type MemoryPageCursor } from "./services/memoryStorage";
 import { NOMA_AI_URL } from "./services/backendUrls";
 import { isApiEnabled } from "./services/aiService";
 
@@ -321,6 +321,9 @@ export default function App() {
   const [customMemories, setCustomMemories] = useState<MemoryItem[]>([]);
   const [isMemoryHydrated, setIsMemoryHydrated] = useState(false);
   const [hydratedUserId, setHydratedUserId] = useState<string | null>(null);
+  const [memoryNextCursor, setMemoryNextCursor] = useState<MemoryPageCursor | null>(null);
+  const [hasMoreMemories, setHasMoreMemories] = useState(false);
+  const [isLoadingMoreMemories, setIsLoadingMoreMemories] = useState(false);
   const customMemoriesRef = React.useRef<MemoryItem[]>([]);
   const memorySnapshotRef = React.useRef<MemoryItem[]>([]);
   const persistedMemorySnapshotsRef = React.useRef(new Map<string, MemoryItem[]>());
@@ -334,10 +337,9 @@ export default function App() {
     const operation = memorySyncQueueRef.current.then(async () => {
       const previousItems = persistedMemorySnapshotsRef.current.get(ownerId) || [];
       const persistedItems = await memoryStorage.syncItems(ownerId, previousItems, nextItems);
-      // Keep the successful local snapshot as the comparison baseline. It may
-      // contain data URLs, and preserving those values prevents an unchanged
-      // image from being compressed and uploaded again on a later text edit.
-      persistedMemorySnapshotsRef.current.set(ownerId, nextItems);
+      // The server response contains authoritative versions and permanent R2
+      // references. It becomes the next explicit-CRUD comparison baseline.
+      persistedMemorySnapshotsRef.current.set(ownerId, persistedItems);
       return persistedItems;
     });
     memorySyncQueueRef.current = operation.then(() => undefined, () => undefined);
@@ -354,6 +356,8 @@ export default function App() {
     setCustomMemories([]);
     setIsMemoryHydrated(false);
     setHydratedUserId(null);
+    setMemoryNextCursor(null);
+    setHasMoreMemories(false);
     if (!user) return () => { cancelled = true; };
     persistedMemorySnapshotsRef.current.delete(user.id);
     if (user.isMock) {
@@ -363,9 +367,10 @@ export default function App() {
     }
 
     memoryStorage
-      .listItems(user.id)
-      .then((items) => {
+      .listItemsPage(user.id)
+      .then((page) => {
         if (cancelled) return;
+        const items = page.items;
         setCustomMemories((currentItems) => {
           const currentIds = new Set(currentItems.map((item) => item.id));
           const mergedItems = currentItems.length === 0
@@ -378,6 +383,8 @@ export default function App() {
         });
         setIsMemoryHydrated(true);
         setHydratedUserId(user.id);
+        setMemoryNextCursor(page.nextCursor);
+        setHasMoreMemories(page.hasMore);
       })
       .catch((error) => {
         console.error("[App] Failed to load cloud memories:", error);
@@ -400,10 +407,45 @@ export default function App() {
     const nextItems = customMemories;
     memorySnapshotRef.current = nextItems;
     if (previousItems === nextItems) return;
-    enqueueMemorySync(user.id, nextItems).catch((error) => {
-      console.error("[App] Failed to persist cloud memories:", error);
-    });
+    enqueueMemorySync(user.id, nextItems)
+      .then((persistedItems) => {
+        if (customMemoriesRef.current !== nextItems) return;
+        memorySnapshotRef.current = persistedItems;
+        customMemoriesRef.current = persistedItems;
+        setCustomMemories(persistedItems);
+      })
+      .catch((error) => {
+        console.error("[App] Failed to persist cloud memories:", error);
+        const rollbackItems = persistedMemorySnapshotsRef.current.get(user.id) || [];
+        memorySnapshotRef.current = rollbackItems;
+        customMemoriesRef.current = rollbackItems;
+        setCustomMemories(rollbackItems);
+        setToast(/VERSION_CONFLICT|40001/i.test(String(error)) ? "该物品已在其他设备修改，请重试" : "保存失败，已恢复上一次数据");
+      });
   }, [customMemories, enqueueMemorySync, isMemoryHydrated, hydratedUserId, user?.id, user?.isMock]);
+
+  const loadMoreMemories = React.useCallback(async () => {
+    const currentUser = userRef.current;
+    if (!currentUser || currentUser.isMock || !memoryNextCursor || isLoadingMoreMemories) return;
+    setIsLoadingMoreMemories(true);
+    try {
+      await memorySyncQueueRef.current;
+      const page = await memoryStorage.listItemsPage(currentUser.id, memoryNextCursor);
+      const currentItems = customMemoriesRef.current;
+      const currentIds = new Set(currentItems.map((item) => item.id));
+      const mergedItems = [...currentItems, ...page.items.filter((item) => !currentIds.has(item.id))];
+      memorySnapshotRef.current = mergedItems;
+      persistedMemorySnapshotsRef.current.set(currentUser.id, mergedItems);
+      customMemoriesRef.current = mergedItems;
+      setCustomMemories(mergedItems);
+      setMemoryNextCursor(page.nextCursor);
+      setHasMoreMemories(page.hasMore);
+    } catch (error) {
+      console.error("[App] Failed to load the next memory page:", error);
+    } finally {
+      setIsLoadingMoreMemories(false);
+    }
+  }, [isLoadingMoreMemories, memoryNextCursor]);
   const [toast, setToast] = useState<string | null>(null);
   const [currentInfoObj, setCurrentInfoObj] = useState<string | null>(null);
 
@@ -882,6 +924,9 @@ export default function App() {
             isAuthenticated={Boolean(user)}
             onRequireAuth={(action) => requireAuth(action)}
             onLogin={openLogin}
+            hasMore={hasMoreMemories}
+            isLoadingMore={isLoadingMoreMemories}
+            onLoadMore={() => void loadMoreMemories()}
           />
         )}
 

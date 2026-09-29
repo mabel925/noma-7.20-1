@@ -166,13 +166,15 @@ const PersistentImage: React.FC<PersistentImageProps> = ({
   src,
   alt = "",
   className = "",
-  loading = "eager",
+  loading = "lazy",
   showSkeleton = false,
   onLoad,
   onError,
   ...props
 }) => {
   const imageSrc = typeof src === "string" ? src : "";
+  const loadSentinelRef = React.useRef<HTMLSpanElement | null>(null);
+  const [shouldLoad, setShouldLoad] = React.useState(loading === "eager");
   const initialResource = imageSrc ? persistentImageCache.get(imageSrc) : undefined;
   const [state, setState] = React.useState<{
     source: string;
@@ -185,9 +187,33 @@ const PersistentImage: React.FC<PersistentImageProps> = ({
   }));
 
   React.useEffect(() => {
+    if (loading === "eager" || !imageSrc || persistentImageCache.has(imageSrc)) {
+      setShouldLoad(true);
+      return;
+    }
+    const target = loadSentinelRef.current;
+    if (!target || !("IntersectionObserver" in window)) {
+      setShouldLoad(true);
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      setShouldLoad(true);
+      observer.disconnect();
+    }, { rootMargin: "300px" });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [imageSrc, loading]);
+
+  React.useEffect(() => {
     let cancelled = false;
     if (!imageSrc) {
       setState({ source: "", displaySrc: "", status: "error" });
+      return () => { cancelled = true; };
+    }
+
+    if (!shouldLoad) {
+      setState({ source: imageSrc, displaySrc: "", status: "loading" });
       return () => { cancelled = true; };
     }
 
@@ -206,7 +232,7 @@ const PersistentImage: React.FC<PersistentImageProps> = ({
         if (!cancelled) setState({ source: imageSrc, displaySrc: "", status: "error" });
       });
     return () => { cancelled = true; };
-  }, [imageSrc]);
+  }, [imageSrc, shouldLoad]);
 
   const cached = imageSrc ? persistentImageCache.get(imageSrc) : undefined;
   const stateMatches = state.source === imageSrc;
@@ -215,6 +241,7 @@ const PersistentImage: React.FC<PersistentImageProps> = ({
 
   return (
     <>
+      <span ref={loadSentinelRef} className="pointer-events-none absolute inset-0" aria-hidden="true" />
       {showSkeleton && status === "loading" && <div className="noma-image-skeleton absolute inset-0 z-0" aria-hidden="true" />}
       {showSkeleton && status === "error" && (
         <div className="absolute inset-0 z-0 flex items-center justify-center bg-[#DDDAD5] text-[#232121]/25" aria-hidden="true">
@@ -246,6 +273,7 @@ const SkeletonImage: React.FC<React.ImgHTMLAttributes<HTMLImageElement>> = (prop
 
 export interface MemoryItem {
   id: string;
+  version?: number;
   name: string;
   category: string;
   price: string;
@@ -267,6 +295,9 @@ interface MemoryListProps {
   isAuthenticated?: boolean;
   onRequireAuth?: (action?: () => void) => boolean;
   onLogin?: () => void;
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
 }
 
 const normalizeCategory = (cat: string): string => {
@@ -2969,6 +3000,9 @@ export const MemoryList: React.FC<MemoryListProps> = ({
   isAuthenticated = false,
   onRequireAuth,
   onLogin,
+  hasMore = false,
+  isLoadingMore = false,
+  onLoadMore,
 }) => {
   const [activeTab, setActiveTab] = useState<"spaces" | "items">("spaces");
   const [activeCategory, setActiveCategory] = useState<string>("All");
@@ -4080,6 +4114,18 @@ export const MemoryList: React.FC<MemoryListProps> = ({
                 ))}
               </div>
             )}
+          </div>
+        )}
+        {hasMore && (
+          <div className="flex justify-center pb-8 pt-7">
+            <button
+              type="button"
+              onClick={() => onLoadMore?.()}
+              disabled={isLoadingMore}
+              className="rounded-full bg-white px-5 py-2 text-[13px] font-sans font-semibold text-[#232121] shadow-sm disabled:cursor-wait disabled:opacity-55"
+            >
+              {isLoadingMore ? "Loading…" : "Load more memories"}
+            </button>
           </div>
         )}
         </>

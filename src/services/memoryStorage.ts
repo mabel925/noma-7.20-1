@@ -1,7 +1,6 @@
 import type { MemoryItem } from "../components/MemoryList";
-import { displayMediaValue, mediaKeyFromValue, mediaStorage } from "./mediaStorage";
+import { displayMediaValue, mediaKeyFromValue, mediaStorage, storedMediaValue } from "./mediaStorage";
 import { supabase } from "./supabaseClient";
-import { readAiAccess } from "./aiAuth";
 
 export type SyncStatus = "local" | "pending" | "synced" | "conflict";
 
@@ -12,6 +11,18 @@ export type StoredMemoryItem = MemoryItem & {
   deletedAt?: string | null;
   syncStatus: SyncStatus;
   schemaVersion: 4;
+  version: number;
+};
+
+export type MemoryPageCursor = {
+  updatedAt: string;
+  id: string;
+};
+
+export type MemoryItemPage = {
+  items: StoredMemoryItem[];
+  nextCursor: MemoryPageCursor | null;
+  hasMore: boolean;
 };
 
 type ItemRow = {
@@ -34,22 +45,15 @@ type ItemRow = {
   space_id?: string | null;
   created_at: string;
   updated_at: string;
-};
-
-type SpaceRow = {
-  id: string;
-  user_id: string;
-  name: string;
-  kind: "parent" | "sub";
-  parent_id?: string | null;
-  parent_name?: string | null;
-  image_url?: string | null;
-  metadata?: Record<string, unknown> | null;
-  created_at?: string;
-  updated_at?: string;
+  version?: number;
+  deleted_at?: string | null;
 };
 
 const nowIso = () => new Date().toISOString();
+const persistenceMediaValue = (value?: string | null) => {
+  const key = mediaKeyFromValue(value);
+  return key ? storedMediaValue(key) : value || null;
+};
 
 const sameHighlight = (
   left?: { x: number; y: number } | null,
@@ -110,42 +114,17 @@ const toItemRow = (ownerId: string, item: MemoryItem | StoredMemoryItem, existin
     price: item.price,
     date: item.date,
     emoji: item.emoji,
-    sticker_url: item.stickerUrl || null,
+    sticker_url: persistenceMediaValue(item.stickerUrl),
     parent_location_name: parentLocationName,
     sub_location_name: subLocationName,
-    parent_location_img: item.parentLocationImg || null,
-    sub_location_img: item.subLocationImg || null,
+    parent_location_img: persistenceMediaValue(item.parentLocationImg),
+    sub_location_img: persistenceMediaValue(item.subLocationImg),
     sub_location_highlight: item.subLocationHighlight || null,
     space_id: subLocationName ? subId : parentLocationName ? parentId : null,
     created_at: existing?.created_at || (item as Partial<StoredMemoryItem>).createdAt || nowIso(),
     updated_at: nowIso(),
-  };
-};
-
-const prepareItemRow = async (
-  ownerId: string,
-  item: MemoryItem | StoredMemoryItem,
-  existing?: ItemRow,
-  cache?: Map<string, Promise<string | null>>,
-): Promise<ItemRow> => {
-  const row = toItemRow(ownerId, item, existing);
-  const store = (value: string | null | undefined, profile: "sticker" | "location", itemId?: string) => {
-    if (!value) return Promise.resolve(null);
-    const cacheKey = `${profile}:${itemId || "shared"}:${value}`;
-    const pending = cache?.get(cacheKey) || mediaStorage.storeImage(ownerId, value, profile, itemId);
-    cache?.set(cacheKey, pending);
-    return pending;
-  };
-  const [stickerUrl, parentLocationImg, subLocationImg] = await Promise.all([
-    store(row.sticker_url, "sticker", row.id),
-    store(row.parent_location_img, "location"),
-    store(row.sub_location_img, "location"),
-  ]);
-  return {
-    ...row,
-    sticker_url: stickerUrl,
-    parent_location_img: parentLocationImg,
-    sub_location_img: subLocationImg,
+    version: existing?.version || (item.version ?? 0),
+    deleted_at: null,
   };
 };
 
@@ -225,59 +204,8 @@ const fromItemRow = (row: ItemRow): StoredMemoryItem => ({
   deletedAt: null,
   syncStatus: "synced",
   schemaVersion: 4,
+  version: Number(row.version || 1),
 });
-
-const toSpaceRows = (ownerId: string, items: ItemRow[]): SpaceRow[] => {
-  const parents = new Map<string, SpaceRow>();
-  const subs = new Map<string, SpaceRow>();
-  const timestamp = nowIso();
-
-  items.forEach((item) => {
-    const parentKey = item.parent_location_name?.trim() || "";
-    const subName = item.sub_location_name?.trim() || "";
-    const { parentId, subId } = spaceIdsForLocation(ownerId, parentKey, subName);
-    if (parentKey && !parents.has(parentKey)) {
-      parents.set(parentKey, {
-        id: parentId,
-        user_id: ownerId,
-        name: parentKey,
-        kind: "parent",
-        parent_id: null,
-        image_url: item.parent_location_img || null,
-        metadata: { item_count: 0 },
-        updated_at: timestamp,
-      });
-    }
-
-    if (parentKey) {
-      const parent = parents.get(parentKey)!;
-      parent.metadata = { ...(parent.metadata || {}), item_count: Number(parent.metadata?.item_count || 0) + 1 };
-      if (!parent.image_url && item.parent_location_img) parent.image_url = item.parent_location_img;
-    }
-
-    const subKey = `${parentKey}::${subName}`;
-    if (subName && !subs.has(subKey)) {
-      subs.set(subKey, {
-        id: subId,
-        user_id: ownerId,
-        name: subName,
-        kind: "sub",
-        parent_id: parentKey ? parentId : null,
-        parent_name: parentKey || null,
-        image_url: item.sub_location_img || null,
-        metadata: { item_count: 0 },
-        updated_at: timestamp,
-      });
-    }
-    if (subName) {
-      const sub = subs.get(subKey)!;
-      sub.metadata = { ...(sub.metadata || {}), item_count: Number(sub.metadata?.item_count || 0) + 1 };
-      if (!sub.image_url && item.sub_location_img) sub.image_url = item.sub_location_img;
-    }
-  });
-
-  return [...parents.values(), ...subs.values()];
-};
 
 const throwStorageError = (operation: string, error: { code?: string; message?: string; details?: string; hint?: string } | null) => {
   if (!error) return;
@@ -286,66 +214,6 @@ const throwStorageError = (operation: string, error: { code?: string; message?: 
   const code = error.code ? ` [${error.code}]` : "";
   const details = error.details || error.hint;
   throw new Error(`[Cloud memory ${operation}]${code} ${error.message || "Request failed"}${details ? `: ${details}` : ""}`);
-};
-
-const syncSpaces = async (ownerId: string, itemRows: ItemRow[]) => {
-  const { data: existing, error: existingError } = await supabase
-    .from("spaces")
-    .select("id")
-    .eq("user_id", ownerId);
-  throwStorageError("load spaces before sync", existingError);
-
-  const spaces = toSpaceRows(ownerId, itemRows);
-  if (spaces.length) {
-    const { error } = await supabase.from("spaces").upsert(spaces, { onConflict: "id" });
-    throwStorageError("upsert spaces", error);
-  }
-
-  const retainedIds = new Set(spaces.map((space) => space.id));
-  const staleIds = ((existing || []) as Array<{ id: string }>)
-    .map((space) => space.id)
-    .filter((id) => !retainedIds.has(id));
-  if (staleIds.length) {
-    const { error } = await supabase.from("spaces").delete().in("id", staleIds).eq("user_id", ownerId);
-    throwStorageError("delete stale spaces", error);
-  }
-};
-
-const cleanupReplacedMedia = async (existingRows: ItemRow[], nextRows: ItemRow[]) => {
-  const existingMedia = existingRows.flatMap((row) => [row.sticker_url, row.parent_location_img, row.sub_location_img]);
-  const nextMedia = nextRows.flatMap((row) => [row.sticker_url, row.parent_location_img, row.sub_location_img]);
-  const retainedKeys = new Set(
-    nextMedia.map(mediaKeyFromValue)
-      .filter((key): key is string => Boolean(key)),
-  );
-  await mediaStorage.deleteKeys(existingMedia.filter((value) => {
-    const key = mediaKeyFromValue(value);
-    return Boolean(key && !retainedKeys.has(key));
-  }));
-  await mediaStorage.reconcileKeys(nextMedia);
-  return retainedKeys;
-};
-
-const finalizeItemRows = async (ownerId: string, existingRows: ItemRow[], nextRows: ItemRow[]) => {
-  let spaceSyncError: unknown;
-  try {
-    await syncSpaces(ownerId, nextRows);
-  } catch (error) {
-    spaceSyncError = error;
-  }
-
-  let retainedKeys: Set<string>;
-  try {
-    retainedKeys = await cleanupReplacedMedia(existingRows, nextRows);
-  } catch (cleanupError) {
-    if (spaceSyncError) {
-      throw new AggregateError([spaceSyncError, cleanupError], "Space sync and R2 image cleanup both failed.");
-    }
-    throw cleanupError;
-  }
-
-  if (spaceSyncError) throw spaceSyncError;
-  return retainedKeys;
 };
 
 const syncItemChanges = async (
@@ -367,50 +235,46 @@ const syncItemChanges = async (
 
   if (!changedItems.length && !deletedIds.length) return nextItems;
 
-  const affectedIds = [...new Set([...changedItems.map((item) => item.id), ...deletedIds])];
-  const { data: existing, error: existingError } = await supabase
-    .from("items")
-    .select("*")
-    .eq("user_id", ownerId)
-    .in("id", affectedIds);
-  throwStorageError("load changed items before sync", existingError);
+  // A missing record only means delete when it was present in this client's
+  // loaded baseline. Unloaded pages never enter previousItems, so pagination
+  // cannot accidentally delete them.
+  for (const itemId of deletedIds) {
+    const previous = previousById.get(itemId) as StoredMemoryItem | undefined;
+    const { error } = await supabase.rpc("delete_my_item", {
+      p_item_id: itemId,
+      p_expected_version: Math.max(1, Number(previous?.version || 1)),
+    });
+    throwStorageError("soft delete item", error);
+  }
 
-  const existingRows = (existing || []) as ItemRow[];
-  const existingById = new Map(existingRows.map((row) => [row.id, row]));
   const uploadCache = new Map<string, Promise<string | null>>();
-  const changedRows = await mapWithConcurrency(
-    changedItems,
-    (item) => prepareChangedItemRow(
-      ownerId,
-      item,
-      previousById.get(item.id),
-      existingById.get(item.id),
-      uploadCache,
-    ),
-  );
+  const persistedById = new Map<string, StoredMemoryItem>();
+  const changedRows = await mapWithConcurrency(changedItems, async (item) => {
+    const previous = previousById.get(item.id) as StoredMemoryItem | undefined;
+    const existingRow = previous ? toItemRow(ownerId, previous) : undefined;
+    const row = await prepareChangedItemRow(ownerId, item, previous, existingRow, uploadCache);
 
-  if (changedRows.length) {
-    const { error } = await supabase.from("items").upsert(changedRows, { onConflict: "id" });
-    throwStorageError("sync changed items", error);
-  }
-  if (deletedIds.length) {
-    const { error } = await supabase.from("items").delete().in("id", deletedIds).eq("user_id", ownerId);
-    throwStorageError("delete changed items", error);
+    if (!previous || Number(previous.version || 0) <= 0) {
+      const { data, error } = await supabase.rpc("create_my_item", { p_item: row });
+      throwStorageError("create item", error);
+      return fromItemRow(data as ItemRow);
+    }
+
+    const { data, error } = await supabase.rpc("update_my_item", {
+      p_item_id: item.id,
+      p_expected_version: Math.max(1, Number(previous.version || 1)),
+      p_patch: row,
+    });
+    throwStorageError("update item", error);
+    return fromItemRow(data as ItemRow);
+  });
+  changedRows.forEach((item) => persistedById.set(item.id, item));
+
+  if (changedRows.some((item) => Boolean(mediaKeyFromValue(item.stickerUrl) || mediaKeyFromValue(item.parentLocationImg) || mediaKeyFromValue(item.subLocationImg)))) {
+    await mediaStorage.ensureReadSession();
   }
 
-  // Spaces are currently derived from item rows. Reloading their lightweight
-  // database representation keeps relationship updates correct while avoiding
-  // reprocessing and rewriting every item and image.
-  const { data: current, error: currentError } = await supabase
-    .from("items")
-    .select("*")
-    .eq("user_id", ownerId)
-    .order("updated_at", { ascending: false });
-  throwStorageError("load items after incremental sync", currentError);
-  const currentRows = (current || []) as ItemRow[];
-  const retainedKeys = await finalizeItemRows(ownerId, existingRows, currentRows);
-  if (retainedKeys.size) await mediaStorage.ensureReadSession();
-  return currentRows.map(fromItemRow);
+  return nextItems.map((item) => persistedById.get(item.id) || item);
 };
 
 export const memoryStorage = {
@@ -423,20 +287,46 @@ export const memoryStorage = {
     return fromItemRow(row);
   },
 
-  async listItems(ownerId: string): Promise<StoredMemoryItem[]> {
+  async listItemsPage(
+    ownerId: string,
+    cursor: MemoryPageCursor | null = null,
+    limit = 30,
+  ): Promise<MemoryItemPage> {
     requireOwner(ownerId);
-    const { data, error } = await supabase
-      .from("items")
-      .select("*")
-      .eq("user_id", ownerId)
-      .order("updated_at", { ascending: false });
-    throwStorageError("list items", error);
-    const rows = (data || []) as ItemRow[];
+    const pageSize = Math.min(100, Math.max(1, limit));
+    const { data, error } = await supabase.rpc("list_my_items", {
+      p_cursor_updated_at: cursor?.updatedAt || null,
+      p_cursor_id: cursor?.id || null,
+      p_limit: pageSize,
+      p_query: null,
+      p_category: null,
+      p_space_id: null,
+    });
+    throwStorageError("list paginated items", error);
+    const fetchedRows = (data || []) as ItemRow[];
+    const hasMore = fetchedRows.length > pageSize;
+    const rows = fetchedRows.slice(0, pageSize);
     const hasPrivateImages = rows.some((row) =>
       [row.sticker_url, row.parent_location_img, row.sub_location_img].some((value) => Boolean(mediaKeyFromValue(value)))
     );
     if (hasPrivateImages) await mediaStorage.ensureReadSession();
-    return rows.map(fromItemRow);
+    const lastRow = rows.at(-1);
+    return {
+      items: rows.map(fromItemRow),
+      hasMore,
+      nextCursor: hasMore && lastRow ? { updatedAt: lastRow.updated_at, id: lastRow.id } : null,
+    };
+  },
+
+  async listItems(ownerId: string): Promise<StoredMemoryItem[]> {
+    const items: StoredMemoryItem[] = [];
+    let cursor: MemoryPageCursor | null = null;
+    do {
+      const page = await this.listItemsPage(ownerId, cursor, 100);
+      items.push(...page.items);
+      cursor = page.nextCursor;
+    } while (cursor);
+    return items;
   },
 
   async syncItems(
@@ -447,76 +337,4 @@ export const memoryStorage = {
     return syncItemChanges(ownerId, previousItems, nextItems);
   },
 
-  async saveItem(ownerId: string, item: MemoryItem | StoredMemoryItem): Promise<StoredMemoryItem> {
-    requireOwner(ownerId);
-    const { data: existing, error: existingError } = await supabase
-      .from("items")
-      .select("*")
-      .eq("user_id", ownerId);
-    throwStorageError("load items before save", existingError);
-
-    const existingRows = (existing || []) as ItemRow[];
-    const existingRow = existingRows.find((row) => row.id === item.id);
-    if (!existingRow) {
-      const access = await readAiAccess();
-      if (access.itemLimit !== null && access.itemCount >= access.itemLimit) {
-        throw new MemoryItemLimitError(access.itemLimit);
-      }
-    }
-    const row = await prepareItemRow(ownerId, item, existingRow);
-    const { error } = await supabase.from("items").upsert(row, { onConflict: "id" });
-    throwStorageError("save item", error);
-
-    const nextRows = [row, ...existingRows.filter((existingItem) => existingItem.id !== row.id)];
-    const retainedKeys = await finalizeItemRows(ownerId, existingRows, nextRows);
-    if (retainedKeys.size) {
-      await mediaStorage.ensureReadSession();
-    }
-    return fromItemRow(row);
-  },
-
-  async saveItems(ownerId: string, items: Array<MemoryItem | StoredMemoryItem>): Promise<StoredMemoryItem[]> {
-    requireOwner(ownerId);
-
-    const { data: existing, error: existingError } = await supabase
-      .from("items")
-      .select("*")
-      .eq("user_id", ownerId);
-    throwStorageError("load items before save", existingError);
-
-    const existingRows = (existing || []) as ItemRow[];
-    const existingById = new Map(existingRows.map((row) => [row.id, row]));
-    const hasNewItems = items.some((item) => !existingById.has(item.id));
-    if (hasNewItems) {
-      const access = await readAiAccess();
-      const nextCount = existingRows.length + items.filter((item) => !existingById.has(item.id)).length;
-      if (access.itemLimit !== null && nextCount > access.itemLimit) {
-        throw new MemoryItemLimitError(access.itemLimit);
-      }
-    }
-    const uploadCache = new Map<string, Promise<string | null>>();
-    const rows = await mapWithConcurrency(
-      items,
-      (item) => prepareItemRow(ownerId, item, existingById.get(item.id), uploadCache),
-    );
-    const itemIds = new Set(rows.map((row) => row.id));
-    const staleIds = existingRows.filter((row) => !itemIds.has(row.id)).map((row) => row.id);
-
-    if (rows.length) {
-      const { error } = await supabase.from("items").upsert(rows, { onConflict: "id" });
-      throwStorageError("upsert items", error);
-    }
-    if (staleIds.length) {
-      const { error } = await supabase.from("items").delete().in("id", staleIds).eq("user_id", ownerId);
-      throwStorageError("delete items", error);
-    }
-
-    // Items are the source of truth. Space refresh and old-image cleanup are
-    // attempted independently so one failure cannot silently skip the other.
-    const retainedKeys = await finalizeItemRows(ownerId, existingRows, rows);
-
-    if (retainedKeys.size) await mediaStorage.ensureReadSession();
-
-    return rows.map(fromItemRow);
-  },
 };
