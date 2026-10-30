@@ -3048,10 +3048,11 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     } catch (err: any) {
       const accessError = reportAiAccessError(err);
       if (!accessError) {
+        const detail = err instanceof Error ? err.message : String(err);
         setAiAccessNotice(
           isChinese
-            ? "识物暂时失败，已保留照片，可手动修改名称"
-            : "Object recognition failed. The photo was kept; you can edit the name.",
+            ? `识物失败：${detail.slice(0, 90)}`
+            : `Object recognition failed: ${detail.slice(0, 90)}`,
         );
       }
       console.warn("[Classifier] Handled exception or rate-limit in auto-recognize item:", err.message || err);

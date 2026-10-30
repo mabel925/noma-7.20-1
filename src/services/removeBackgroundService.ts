@@ -5,7 +5,7 @@
 
 import { NOMA_AI_URL } from "./backendUrls";
 import { AiAccessError, getAiAuthHeaders } from "./aiAuth";
-import { isApiEnabled } from "./aiService";
+import { isApiEnabled, prepareImage } from "./aiService";
 
 export type CutoutMode = "api" | "local";
 
@@ -51,19 +51,13 @@ const DEFAULT_CONFIG: RemoveBgConfig = {
   }
 };
 
-const MATTING_MAX_DIMENSION = 768;
-const MOBILE_MATTING_MAX_DIMENSION = 640;
-const MATTING_JPEG_QUALITY = 0.7;
-const MATTING_REQUEST_TIMEOUT_MS = 20_000;
+const MATTING_MAX_DIMENSION = 512;
+const MATTING_REQUEST_TIMEOUT_MS = 30_000;
 
 type PreparedMattingInput = {
   base64: string;
   originalBytes: number;
   uploadBytes: number;
-  originalWidth: number;
-  originalHeight: number;
-  uploadWidth: number;
-  uploadHeight: number;
 };
 
 const stripDataUrlPrefix = (value: string): string => {
@@ -71,101 +65,23 @@ const stripDataUrlPrefix = (value: string): string => {
   return commaIndex >= 0 ? value.slice(commaIndex + 1) : value;
 };
 
-const loadImageElement = (imageSrc: string): Promise<HTMLImageElement> => {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    if (!imageSrc.startsWith("data:") && !imageSrc.startsWith("blob:")) {
-      img.crossOrigin = "anonymous";
-    }
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error("Failed to decode image before matting upload"));
-    img.src = imageSrc;
-  });
+const estimateBase64Bytes = (base64: string): number => {
+  if (!base64) return 0;
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
 };
 
-const blobToDataUrl = (blob: Blob): Promise<string> => new Promise((resolve, reject) => {
-  const reader = new FileReader();
-  reader.onload = () => resolve(String(reader.result || ""));
-  reader.onerror = () => reject(new Error("Failed to convert image blob to base64"));
-  reader.readAsDataURL(blob);
-});
-
-const canvasToBlob = (canvas: HTMLCanvasElement): Promise<Blob | null> => new Promise((resolve) => {
-  canvas.toBlob(resolve, "image/jpeg", MATTING_JPEG_QUALITY);
-});
-
-const isMobileCaptureDevice = () =>
-  typeof window !== "undefined" &&
-  (window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0) &&
-  Math.min(window.screen.width, window.screen.height) <= 820;
-
 async function prepareMattingInput(imageSrc: string | Blob): Promise<PreparedMattingInput> {
-  const originalBlob = typeof imageSrc === "string" ? await getBlobFromImageSrc(imageSrc) : imageSrc;
-  let bitmap: ImageBitmap | null = null;
-  let imageElement: HTMLImageElement | null = null;
-
-  if (typeof createImageBitmap === "function") {
-    try {
-      bitmap = await createImageBitmap(originalBlob, { imageOrientation: "from-image" });
-    } catch {
-      // Older iOS releases can expose createImageBitmap but reject some HEIC/JPEG inputs.
-    }
-  }
-
-  if (!bitmap) {
-    const fallbackSrc = typeof imageSrc === "string" ? imageSrc : URL.createObjectURL(originalBlob);
-    try {
-      imageElement = await loadImageElement(fallbackSrc);
-    } finally {
-      if (typeof imageSrc !== "string") URL.revokeObjectURL(fallbackSrc);
-    }
-  }
-
-  const originalWidth = bitmap?.width || imageElement?.naturalWidth || imageElement?.width || 1;
-  const originalHeight = bitmap?.height || imageElement?.naturalHeight || imageElement?.height || 1;
-  const maxDimension = isMobileCaptureDevice() ? MOBILE_MATTING_MAX_DIMENSION : MATTING_MAX_DIMENSION;
-  const scale = Math.min(1, maxDimension / Math.max(originalWidth, originalHeight));
-  const uploadWidth = Math.max(1, Math.round(originalWidth * scale));
-  const uploadHeight = Math.max(1, Math.round(originalHeight * scale));
-
-  const canvas = document.createElement("canvas");
-  canvas.width = uploadWidth;
-  canvas.height = uploadHeight;
-  const ctx = canvas.getContext("2d", { alpha: false });
-  if (!ctx) {
-    bitmap?.close();
-    const originalBase64 = stripDataUrlPrefix(await blobToDataUrl(originalBlob));
-    return {
-      base64: originalBase64,
-      originalBytes: originalBlob.size,
-      uploadBytes: originalBlob.size,
-      originalWidth,
-      originalHeight,
-      uploadWidth: originalWidth,
-      uploadHeight: originalHeight,
-    };
-  }
-
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, uploadWidth, uploadHeight);
-  ctx.drawImage(bitmap || imageElement!, 0, 0, uploadWidth, uploadHeight);
-  bitmap?.close();
-
-  const optimizedBlob = await canvasToBlob(canvas);
-  const shouldUseOptimized = Boolean(optimizedBlob && (scale < 1 || optimizedBlob.size < originalBlob.size));
-  const uploadBlob = shouldUseOptimized ? optimizedBlob! : originalBlob;
-  const selectedBase64 = stripDataUrlPrefix(await blobToDataUrl(uploadBlob));
+  const optimizedDataUrl = await prepareImage(imageSrc, MATTING_MAX_DIMENSION);
+  const selectedBase64 = stripDataUrlPrefix(optimizedDataUrl);
+  const originalBase64 = typeof imageSrc === "string" && imageSrc.startsWith("data:")
+    ? stripDataUrlPrefix(imageSrc)
+    : "";
 
   return {
     base64: selectedBase64,
-    originalBytes: originalBlob.size,
-    uploadBytes: uploadBlob.size,
-    originalWidth,
-    originalHeight,
-    uploadWidth: shouldUseOptimized ? uploadWidth : originalWidth,
-    uploadHeight: shouldUseOptimized ? uploadHeight : originalHeight,
+    originalBytes: imageSrc instanceof Blob ? imageSrc.size : estimateBase64Bytes(originalBase64),
+    uploadBytes: estimateBase64Bytes(selectedBase64),
   };
 }
 
@@ -219,20 +135,6 @@ export function saveRemoveBgConfig(config: RemoveBgConfig) {
 export const REMOVE_BG_CONFIG: RemoveBgConfig = loadRemoveBgConfig();
 
 /**
- * Utility to convert any image source (Base64 data URL, blob URL, or standard URL)
- * into a standard binary Blob file ready for form data upload.
- */
-async function getBlobFromImageSrc(imageSrc: string): Promise<Blob> {
-  if (imageSrc.startsWith("data:") || imageSrc.startsWith("blob:")) {
-    const res = await fetch(imageSrc);
-    return await res.blob();
-  }
-  // Standard URL fetch (may have CORS limitations depending on the asset origin)
-  const res = await fetch(imageSrc);
-  return await res.blob();
-}
-
-/**
  * Unified decoupled Background Removal API.
  * Dispatches to local python rembg or custom APIs depending on active configuration mode.
  * Throws when cloud matting is unavailable so the caller can use the original photo thumbnail.
@@ -267,8 +169,7 @@ export async function remove_background(
       ? Math.max(0, 1 - preparedInput.uploadBytes / preparedInput.originalBytes)
       : 0;
     console.info(
-      `[RemoveBgTiming] Prepared ${preparedInput.originalWidth}x${preparedInput.originalHeight} -> ` +
-      `${preparedInput.uploadWidth}x${preparedInput.uploadHeight} in ${preparationMs.toFixed(0)}ms; ` +
+      `[RemoveBgTiming] Prepared shared ${MATTING_MAX_DIMENSION}px input in ${preparationMs.toFixed(0)}ms; ` +
       `${(preparedInput.originalBytes / 1024).toFixed(0)}KB -> ` +
       `${(preparedInput.uploadBytes / 1024).toFixed(0)}KB (${(reduction * 100).toFixed(0)}% smaller).`
     );

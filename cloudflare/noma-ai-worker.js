@@ -146,7 +146,7 @@ function extractText(data) {
   );
 }
 
-async function callGemini(env, parts, { jsonMode = false, imageMode = false, model } = {}) {
+async function callGemini(env, parts, { jsonMode = false, imageMode = false, model, timeoutMs = 12000 } = {}) {
   if (!env.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not configured");
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model || env.GEMINI_MODEL || "gemini-3.5-flash")}:generateContent?key=${encodeURIComponent(env.GEMINI_API_KEY)}`;
   const generationConfig = { temperature: 0.15 };
@@ -156,11 +156,11 @@ async function callGemini(env, parts, { jsonMode = false, imageMode = false, mod
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ contents: [{ role: "user", parts }], generationConfig }),
-  });
+  }, timeoutMs);
   return readJsonResponse(response, "Gemini");
 }
 
-async function callQwen(env, content, jsonMode = false) {
+async function callQwen(env, content, jsonMode = false, timeoutMs = 12000) {
   if (!env.QWEN_API_KEY) throw new Error("QWEN_API_KEY is not configured");
   const response = await fetchWithTimeout(env.QWEN_ENDPOINT || DEFAULT_QWEN_ENDPOINT, {
     method: "POST",
@@ -174,7 +174,7 @@ async function callQwen(env, content, jsonMode = false) {
       temperature: 0.15,
       ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
     }),
-  });
+  }, timeoutMs);
   return readJsonResponse(response, "Qwen");
 }
 
@@ -190,7 +190,7 @@ async function vision(env, body) {
     const data = await callQwen(env, [
       { type: "image_url", image_url: { url: dataUrl } },
       { type: "text", text: prompt },
-    ], true);
+    ], false, 8000);
     const content = extractText(data);
     if (!content) throw new Error("Qwen returned empty vision content");
     return json({ choices: [{ message: { content } }] });
@@ -201,7 +201,7 @@ async function vision(env, body) {
     const data = await callGemini(env, [
       { inlineData: { mimeType, data: body.image_base64 } },
       { text: prompt },
-    ], { jsonMode: true });
+    ], { jsonMode: true, timeoutMs: 10000 });
     const content = extractText(data);
     if (!content) throw new Error("Gemini returned empty vision content");
     return json({ choices: [{ message: { content } }] });
@@ -268,7 +268,7 @@ async function matting(env, body) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ mode: "sync", base64: body.image_base64, crop: 0 }),
-    }, 55000);
+    }, 25000);
     const data = await readJsonResponse(response, "Matting");
     if (data.code !== undefined && Number(data.code) !== 0) {
       throw new Error(`code=${data.code} message=${data.msg_cn || data.msg || "unknown error"}`);
@@ -300,7 +300,15 @@ async function generateImage(env, body) {
 export default {
   async fetch(request, env) {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
-    if (request.method === "GET") return json({ ok: true, service: "noma-ai", version: "3" });
+    if (request.method === "GET") return json({
+      ok: true,
+      service: "noma-ai",
+      version: "4",
+      capabilities: {
+        vision: Boolean(env.QWEN_API_KEY || env.GEMINI_API_KEY),
+        matting: Boolean(env.SHILIU_API_KEY || env.MATTING_API_KEY),
+      },
+    });
     if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
     const contentLength = Number(request.headers.get("content-length") || 0);
     if (contentLength > 8 * 1024 * 1024) return json({ error: "Request body is too large" }, 413);

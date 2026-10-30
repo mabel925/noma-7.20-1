@@ -35,7 +35,13 @@ export function stripBase64Prefix(base64Str: string): string {
  * Compress image using canvas to a maximum width (800) and 0.7 quality to minimize data size for Worker API.
  * This satisfies user request to reduce token consumption significantly.
  */
-export async function prepareImage(imageInput: File | Blob | string, maxWidth = 800): Promise<string> {
+let recentImagePreparation: {
+  input: File | Blob | string;
+  maxWidth: number;
+  promise: Promise<string>;
+} | null = null;
+
+async function compressImage(imageInput: File | Blob | string, maxWidth: number): Promise<string> {
   console.log(`[Image Compressor] Compressing image with maxWidth ${maxWidth}, quality 0.7...`);
   const source = imageInput instanceof Blob
     ? imageInput
@@ -93,6 +99,23 @@ export async function prepareImage(imageInput: File | Blob | string, maxWidth = 
   });
   console.log(`[Image Compressor] Compression done. Original dimensions: ${sourceWidth}x${sourceHeight}, New dimensions: ${canvas.width}x${canvas.height}`);
   return compressed;
+}
+
+export function prepareImage(imageInput: File | Blob | string, maxWidth = 800): Promise<string> {
+  if (
+    recentImagePreparation &&
+    recentImagePreparation.input === imageInput &&
+    recentImagePreparation.maxWidth === maxWidth
+  ) {
+    return recentImagePreparation.promise;
+  }
+
+  const promise = compressImage(imageInput, maxWidth);
+  recentImagePreparation = { input: imageInput, maxWidth, promise };
+  promise.catch(() => {
+    if (recentImagePreparation?.promise === promise) recentImagePreparation = null;
+  });
+  return promise;
 }
 
 /**
@@ -314,7 +337,7 @@ export async function recognizeImage(
   try {
     // Object recognition does not need the larger matting input. Keep this
     // request small so it can finish while the cutout is still processing.
-    const compressedBase64WithPrefix = await prepareImage(imageInput, 640);
+    const compressedBase64WithPrefix = await prepareImage(imageInput, 512);
     const pureBase64 = stripBase64Prefix(compressedBase64WithPrefix);
     if (!pureBase64) throw new Error("Vision image preparation returned no data");
     const result = await callNomaBackend("vision", {

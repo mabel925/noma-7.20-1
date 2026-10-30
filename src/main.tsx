@@ -20,9 +20,19 @@ createRoot(document.getElementById('root')!).render(
 );
 
 if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  let reloadingForUpdate = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (reloadingForUpdate) return;
+    reloadingForUpdate = true;
+    window.location.reload();
+  });
+
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js").catch((error) => {
-      console.warn("[PWA] Service worker registration failed:", error);
-    });
+    navigator.serviceWorker
+      .register("/sw.js")
+      .then((registration) => registration.update())
+      .catch((error) => {
+        console.warn("[PWA] Service worker registration failed:", error);
+      });
   });
 }
