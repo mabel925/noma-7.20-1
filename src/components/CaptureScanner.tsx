@@ -696,25 +696,6 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     setCustomName(title);
   };
 
-  const waitForPreparedTitle = async () => {
-    if (preparedTitleRef.current) return;
-    const pendingClassification = classificationPromiseRef.current;
-
-    if (pendingClassification) {
-      await new Promise<void>((resolve) => {
-        const timeout = window.setTimeout(resolve, 6500);
-        pendingClassification.finally(() => {
-          window.clearTimeout(timeout);
-          resolve();
-        });
-      });
-    }
-
-    if (!preparedTitleRef.current) {
-      commitPreparedTitle("Scanned Item");
-    }
-  };
-
   const getCoverLayoutFromDimensions = (sourceWidth?: number, sourceHeight?: number) => {
     if (!sourceWidth || !sourceHeight) return layout;
 
@@ -742,7 +723,15 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     cutoutBounds?: CutoutBounds | null,
     directThumbnail: boolean = false,
   ) => {
-    await waitForPreparedTitle();
+    // Matting and recognition start together. Present the result only after
+    // both have settled so the title and cutout appear as one finished result.
+    const pendingClassification = classificationPromiseRef.current;
+    if (pendingClassification) {
+      if (!preparedTitleRef.current) {
+        setAiProgress(isChinese ? "正在识别物品..." : "Recognizing item...");
+      }
+      await pendingClassification;
+    }
     const sourceLayout = getCoverLayoutFromDimensions(sourceWidth, sourceHeight);
     const boundsSourceWidth = cutoutBounds?.sourceWidth || sourceWidth || sourceLayout.width;
     const boundsSourceHeight = cutoutBounds?.sourceHeight || sourceHeight || sourceLayout.height;
@@ -3039,7 +3028,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         const cleanTitle = cleanAndShortenTitle(result.title);
         commitPreparedTitle(cleanTitle);
       } else if (!itemNameEditedRef.current) {
-        commitPreparedTitle("Scanned Item");
+        throw new Error("Object recognition returned no title");
       }
       if (result.category) {
         setTempIdentifiedCategory(result.category);

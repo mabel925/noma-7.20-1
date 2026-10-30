@@ -12,7 +12,7 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Client-Info, X-Noma-Scan-Id",
-  "Access-Control-Expose-Headers": "X-Noma-AI-Limit, X-Noma-AI-Remaining, X-Noma-Plan",
+  "Access-Control-Expose-Headers": "X-Noma-AI-Limit, X-Noma-AI-Remaining, X-Noma-Plan, Server-Timing",
   "Access-Control-Max-Age": "86400",
 };
 
@@ -103,9 +103,13 @@ function quotaHeaders(access) {
   };
 }
 
-function withQuota(response, access) {
+function withQuota(response, access, timings = {}) {
   const headers = new Headers(response.headers);
   Object.entries(quotaHeaders(access)).forEach(([name, value]) => headers.set(name, value));
+  const serverTiming = Object.entries(timings)
+    .map(([name, duration]) => `${name};dur=${Math.max(0, Number(duration) || 0)}`)
+    .join(", ");
+  if (serverTiming) headers.set("Server-Timing", serverTiming);
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -160,7 +164,7 @@ async function callGemini(env, parts, { jsonMode = false, imageMode = false, mod
   return readJsonResponse(response, "Gemini");
 }
 
-async function callQwen(env, content, jsonMode = false, timeoutMs = 12000) {
+async function callQwen(env, content, jsonMode = false, timeoutMs = 12000, modelOverride = "") {
   if (!env.QWEN_API_KEY) throw new Error("QWEN_API_KEY is not configured");
   const response = await fetchWithTimeout(env.QWEN_ENDPOINT || DEFAULT_QWEN_ENDPOINT, {
     method: "POST",
@@ -169,13 +173,17 @@ async function callQwen(env, content, jsonMode = false, timeoutMs = 12000) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: env.QWEN_MODEL || "qwen-vl-plus",
+      model: modelOverride || env.QWEN_MODEL || "qwen-vl-plus",
       messages: [{ role: "user", content }],
       temperature: 0.15,
       ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
     }),
   }, timeoutMs);
   return readJsonResponse(response, "Qwen");
+}
+
+function isUnsupportedQwenModel(error) {
+  return /HTTP (?:400|404):.*model.*(?:not exist|not found|does not exist)/i.test(errorMessage(error));
 }
 
 async function vision(env, body) {
@@ -185,27 +193,51 @@ async function vision(env, body) {
   const failures = [];
   // Prefer Qwen for users in China. Gemini remains a fallback when Qwen is
   // unavailable or returns an invalid response.
+  const visionStartedAt = Date.now();
   try {
+    const providerStartedAt = Date.now();
     const dataUrl = `data:${mimeType};base64,${body.image_base64}`;
-    const data = await callQwen(env, [
-      { type: "image_url", image_url: { url: dataUrl } },
-      { type: "text", text: prompt },
-    ], false, 8000);
-    const content = extractText(data);
-    if (!content) throw new Error("Qwen returned empty vision content");
-    return json({ choices: [{ message: { content } }] });
+    const qwenModels = [...new Set([
+      env.QWEN_MODEL || "qwen-vl-plus",
+      "qwen3-vl-plus",
+      "qwen-vl-max",
+    ])];
+    const modelFailures = [];
+
+    for (const model of qwenModels) {
+      try {
+        const data = await callQwen(env, [
+          { type: "image_url", image_url: { url: dataUrl } },
+          { type: "text", text: prompt },
+        ], false, 8000, model);
+        const content = extractText(data);
+        if (!content) throw new Error("Qwen returned empty vision content");
+        console.log(`[AiTiming] feature=vision provider=qwen model=${model} provider_ms=${Date.now() - providerStartedAt} total_ms=${Date.now() - visionStartedAt} outcome=success`);
+        return json({ choices: [{ message: { content } }] });
+      } catch (error) {
+        modelFailures.push(`${model}: ${errorMessage(error)}`);
+        if (!isUnsupportedQwenModel(error)) throw error;
+        console.log(`[AiTiming] feature=vision provider=qwen model=${model} outcome=model_unavailable`);
+      }
+    }
+
+    throw new Error(modelFailures.join(" | "));
   } catch (error) {
+    console.log(`[AiTiming] feature=vision provider=qwen total_ms=${Date.now() - visionStartedAt} outcome=fallback error=${errorMessage(error).slice(0, 240)}`);
     failures.push(errorMessage(error));
   }
   try {
+    const providerStartedAt = Date.now();
     const data = await callGemini(env, [
       { inlineData: { mimeType, data: body.image_base64 } },
       { text: prompt },
     ], { jsonMode: true, timeoutMs: 10000 });
     const content = extractText(data);
     if (!content) throw new Error("Gemini returned empty vision content");
+    console.log(`[AiTiming] feature=vision provider=gemini provider_ms=${Date.now() - providerStartedAt} total_ms=${Date.now() - visionStartedAt} outcome=success`);
     return json({ choices: [{ message: { content } }] });
   } catch (error) {
+    console.log(`[AiTiming] feature=vision provider=gemini total_ms=${Date.now() - visionStartedAt} outcome=failed error=${errorMessage(error).slice(0, 160)}`);
     failures.push(errorMessage(error));
   }
   return json({ error: `Vision providers failed: ${failures.join(" | ")}` }, 502);
@@ -260,6 +292,7 @@ async function matting(env, body) {
   if (!body.image_base64) return json({ error: "image_base64 is required" }, 400);
   const mattingApiKey = env.SHILIU_API_KEY || env.MATTING_API_KEY;
   if (!mattingApiKey) return json({ error: "SHILIU_API_KEY is not configured" }, 500);
+  const providerStartedAt = Date.now();
   try {
     const response = await fetchWithTimeout(env.MATTING_ENDPOINT || DEFAULT_MATTING_ENDPOINT, {
       method: "POST",
@@ -274,8 +307,10 @@ async function matting(env, body) {
       throw new Error(`code=${data.code} message=${data.msg_cn || data.msg || "unknown error"}`);
     }
     if (!data.result_base64) throw new Error("result_base64 is missing");
+    console.log(`[AiTiming] feature=matting provider=shiliu provider_ms=${Date.now() - providerStartedAt} outcome=success`);
     return json(data);
   } catch (error) {
+    console.log(`[AiTiming] feature=matting provider=shiliu provider_ms=${Date.now() - providerStartedAt} outcome=failed error=${errorMessage(error).slice(0, 160)}`);
     return json({ error: `Matting provider failed: ${errorMessage(error)}` }, 502);
   }
 }
@@ -303,7 +338,7 @@ export default {
     if (request.method === "GET") return json({
       ok: true,
       service: "noma-ai",
-      version: "4",
+      version: "8",
       capabilities: {
         vision: Boolean(env.QWEN_API_KEY || env.GEMINI_API_KEY),
         matting: Boolean(env.SHILIU_API_KEY || env.MATTING_API_KEY),
@@ -320,11 +355,13 @@ export default {
     }
 
     if (body.type === "vision" || body.type === "matting") {
+      const requestStartedAt = Date.now();
       if (!body.image_base64) return json({ error: "image_base64 is required" }, 400);
       const scanId = String(body.scan_id || request.headers.get("x-noma-scan-id") || "").trim();
       if (!scanId) return json({ error: "scan_id is required", code: "AI_SCAN_ID_REQUIRED" }, 400);
 
       let access;
+      const authStartedAt = Date.now();
       try {
         access = await authorizeAiScan(request, env, scanId, body.type);
       } catch (error) {
@@ -335,6 +372,8 @@ export default {
           code: isAuthError ? "AI_AUTH_REQUIRED" : "AI_ACCESS_CHECK_FAILED",
         }, isAuthError ? 401 : 503);
       }
+      const authMs = Date.now() - authStartedAt;
+      console.log(`[AiTiming] feature=${body.type} scan_id=${scanId} auth_ms=${authMs} outcome=authorized`);
 
       if (!access?.allowed) {
         if (access?.reason === "retry_limit") {
@@ -355,8 +394,12 @@ export default {
         }, 429, quotaHeaders(access));
       }
 
+      const providerStartedAt = Date.now();
       const response = body.type === "vision" ? await vision(env, body) : await matting(env, body);
-      return withQuota(response, access);
+      const providerMs = Date.now() - providerStartedAt;
+      const totalMs = Date.now() - requestStartedAt;
+      console.log(`[AiTiming] feature=${body.type} scan_id=${scanId} auth_ms=${authMs} provider_ms=${providerMs} total_ms=${totalMs} status=${response.status}`);
+      return withQuota(response, access, { auth: authMs, provider: providerMs, total: totalMs });
     }
 
     if (body.type === "title" || body.type === "generate-image" || body.type === "emoji-classify") {
