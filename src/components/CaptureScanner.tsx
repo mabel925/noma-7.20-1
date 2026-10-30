@@ -730,7 +730,25 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       if (!preparedTitleRef.current) {
         setAiProgress(isChinese ? "正在识别物品..." : "Recognizing item...");
       }
-      await pendingClassification;
+      let timeoutId: number | undefined;
+      const classificationSettled = await Promise.race([
+        pendingClassification.then(() => true, () => true),
+        new Promise<boolean>((resolve) => {
+          timeoutId = window.setTimeout(() => resolve(false), 17_000);
+        }),
+      ]);
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+
+      if (!classificationSettled && !preparedTitleRef.current) {
+        classificationRequestIdRef.current += 1;
+        classificationPromiseRef.current = null;
+        commitPreparedTitle("Scanned Item");
+        setAiAccessNotice(
+          isChinese
+            ? "识物超时，已使用默认名称。"
+            : "Object recognition timed out. Using the default name.",
+        );
+      }
     }
     const sourceLayout = getCoverLayoutFromDimensions(sourceWidth, sourceHeight);
     const boundsSourceWidth = cutoutBounds?.sourceWidth || sourceWidth || sourceLayout.width;

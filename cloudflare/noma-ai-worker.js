@@ -176,14 +176,16 @@ async function callQwen(env, content, jsonMode = false, timeoutMs = 12000, model
       model: modelOverride || env.QWEN_MODEL || "qwen-vl-plus",
       messages: [{ role: "user", content }],
       temperature: 0.15,
+      max_tokens: 160,
+      enable_thinking: false,
       ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
     }),
   }, timeoutMs);
   return readJsonResponse(response, "Qwen");
 }
 
-function isUnsupportedQwenModel(error) {
-  return /HTTP (?:400|404):.*model.*(?:not exist|not found|does not exist)/i.test(errorMessage(error));
+function isUpstreamTimeout(error) {
+  return /timed out|timeout|abort/i.test(errorMessage(error));
 }
 
 async function vision(env, body) {
@@ -197,34 +199,25 @@ async function vision(env, body) {
   try {
     const providerStartedAt = Date.now();
     const dataUrl = `data:${mimeType};base64,${body.image_base64}`;
-    const qwenModels = [...new Set([
-      env.QWEN_MODEL || "qwen-vl-plus",
-      "qwen3-vl-plus",
-      "qwen-vl-max",
-    ])];
-    const modelFailures = [];
-
-    for (const model of qwenModels) {
-      try {
-        const data = await callQwen(env, [
-          { type: "image_url", image_url: { url: dataUrl } },
-          { type: "text", text: prompt },
-        ], false, 8000, model);
-        const content = extractText(data);
-        if (!content) throw new Error("Qwen returned empty vision content");
-        console.log(`[AiTiming] feature=vision provider=qwen model=${model} provider_ms=${Date.now() - providerStartedAt} total_ms=${Date.now() - visionStartedAt} outcome=success`);
-        return json({ choices: [{ message: { content } }] });
-      } catch (error) {
-        modelFailures.push(`${model}: ${errorMessage(error)}`);
-        if (!isUnsupportedQwenModel(error)) throw error;
-        console.log(`[AiTiming] feature=vision provider=qwen model=${model} outcome=model_unavailable`);
-      }
-    }
-
-    throw new Error(modelFailures.join(" | "));
+    const model = env.QWEN_MODEL || "qwen-vl-plus";
+    const data = await callQwen(env, [
+      { type: "image_url", image_url: { url: dataUrl } },
+      { type: "text", text: prompt },
+    ], false, 12000, model);
+    const content = extractText(data);
+    if (!content) throw new Error("Qwen returned empty vision content");
+    console.log(`[AiTiming] feature=vision provider=qwen model=${model} provider_ms=${Date.now() - providerStartedAt} total_ms=${Date.now() - visionStartedAt} outcome=success`);
+    return json({ choices: [{ message: { content } }] });
   } catch (error) {
-    console.log(`[AiTiming] feature=vision provider=qwen total_ms=${Date.now() - visionStartedAt} outcome=fallback error=${errorMessage(error).slice(0, 240)}`);
+    const timedOut = isUpstreamTimeout(error);
+    console.log(`[AiTiming] feature=vision provider=qwen total_ms=${Date.now() - visionStartedAt} outcome=${timedOut ? "timeout" : "fallback"} error=${errorMessage(error).slice(0, 240)}`);
     failures.push(errorMessage(error));
+    if (timedOut) {
+      return json({
+        error: `Vision provider timed out: ${errorMessage(error)}`,
+        code: "VISION_TIMEOUT",
+      }, 504);
+    }
   }
   try {
     const providerStartedAt = Date.now();
@@ -338,7 +331,7 @@ export default {
     if (request.method === "GET") return json({
       ok: true,
       service: "noma-ai",
-      version: "8",
+      version: "9",
       capabilities: {
         vision: Boolean(env.QWEN_API_KEY || env.GEMINI_API_KEY),
         matting: Boolean(env.SHILIU_API_KEY || env.MATTING_API_KEY),
