@@ -294,7 +294,7 @@ async function matting(env, body) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ mode: "sync", base64: body.image_base64, crop: 0 }),
-    }, 25000);
+    }, 12000);
     const data = await readJsonResponse(response, "Matting");
     if (data.code !== undefined && Number(data.code) !== 0) {
       throw new Error(`code=${data.code} message=${data.msg_cn || data.msg || "unknown error"}`);
@@ -331,7 +331,7 @@ export default {
     if (request.method === "GET") return json({
       ok: true,
       service: "noma-ai",
-      version: "9",
+      version: "10",
       capabilities: {
         vision: Boolean(env.QWEN_API_KEY || env.GEMINI_API_KEY),
         matting: Boolean(env.SHILIU_API_KEY || env.MATTING_API_KEY),

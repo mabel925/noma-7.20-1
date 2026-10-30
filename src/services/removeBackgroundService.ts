@@ -52,7 +52,7 @@ const DEFAULT_CONFIG: RemoveBgConfig = {
 };
 
 const MATTING_MAX_DIMENSION = 512;
-const MATTING_REQUEST_TIMEOUT_MS = 30_000;
+const MATTING_REQUEST_TIMEOUT_MS = 15_000;
 
 type PreparedMattingInput = {
   base64: string;
