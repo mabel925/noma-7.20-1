@@ -415,8 +415,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const [aiProgress, setAiProgress] = useState<string | null>(null);
   const [aiAccessNotice, setAiAccessNotice] = useState<string | null>(null);
 
-  const reportAiAccessError = (error: unknown) => {
-    if (!(error instanceof AiAccessError)) return;
+  const reportAiAccessError = (error: unknown): boolean => {
+    if (!(error instanceof AiAccessError)) return false;
     if (error.code === "AI_QUOTA_EXHAUSTED") {
       setAiAccessNotice(isChinese ? "AI 免费额度已用完，已使用照片缩略图" : "Free AI credits used up. Using the photo thumbnail.");
     } else if (error.code === "AI_AUTH_REQUIRED") {
@@ -424,6 +424,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     } else {
       setAiAccessNotice(isChinese ? "暂时无法核验 AI 额度，已使用照片缩略图" : "AI access could not be checked. Using the photo thumbnail.");
     }
+    return true;
   };
 
   useEffect(() => {
@@ -780,8 +781,11 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
    * Core cutout interface definition with deep logging.
    * Dispatched cleanly to our unified, decoupled background removal service.
    */
-  const processImageForSticker = async (imageSrc: string, scanId?: string): Promise<string> => {
-    if (!scanId) return imageSrc;
+  const processImageForSticker = async (imageSrc: string | Blob, scanId?: string): Promise<string> => {
+    if (!scanId) {
+      if (typeof imageSrc !== "string") throw new Error("A scan ID is required for a binary image");
+      return imageSrc;
+    }
     return remove_background(imageSrc, setAiProgress, scanId);
   };
 
@@ -1066,7 +1070,9 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
           return;
         }
 
-        const renderScale = 3;
+        const isMobileRenderer = window.matchMedia("(pointer: coarse)").matches && Math.min(window.screen.width, window.screen.height) <= 820;
+        const renderScale = isMobileRenderer ? 2 : 3;
+        const outlineAngleStep = isMobileRenderer ? 6 : 2;
         const size = STICKER_CANVAS_SIZE * renderScale;
         canvas.width = size;
         canvas.height = size;
@@ -1096,12 +1102,12 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         ctx.imageSmoothingQuality = "high";
         ctx.clearRect(0, 0, size, size);
 
-        console.log("[StickerEngine] Rendering dilated background cushion in progress (360 degrees, step 6)...");
+        console.log(`[StickerEngine] Rendering dilated background cushion in progress (360 degrees, step ${outlineAngleStep})...`);
         ctx.save();
         ctx.globalCompositeOperation = "source-over";
         // Iterate around 360 degrees to stamp a perfectly thick clean white uniform border
         // Step size 6 for highly detailed, beautiful and crisp border outlines
-        for (let angle = 0; angle < 360; angle += 2) {
+        for (let angle = 0; angle < 360; angle += outlineAngleStep) {
           const rad = (angle * Math.PI) / 180;
           const ox = Math.cos(rad) * borderSize * renderScale;
           const oy = Math.sin(rad) * borderSize * renderScale;
@@ -1283,15 +1289,9 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         }
 
         const cropped = cropTransparentBoundsWithMeta(canvas);
-        try {
-          if (cropped.source instanceof HTMLCanvasElement) {
-            resolve({ url: cropped.source.toDataURL("image/png"), bounds: cropped.bounds });
-          } else {
-            resolve({ url: transparentImgSrc, bounds: null });
-          }
-        } catch (e) {
-          resolve({ url: transparentImgSrc, bounds: null });
-        }
+        // Callers only use the bounds for the flight animation. Avoid a full
+        // PNG encode of an otherwise discarded intermediate canvas.
+        resolve({ url: transparentImgSrc, bounds: cropped.bounds });
       };
       img.onerror = () => {
         resolve({ url: transparentImgSrc, bounds: null });
@@ -3046,7 +3046,14 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         setCustomCategory(getLocalizedCategory(result.category));
       }
     } catch (err: any) {
-      reportAiAccessError(err);
+      const accessError = reportAiAccessError(err);
+      if (!accessError) {
+        setAiAccessNotice(
+          isChinese
+            ? "识物暂时失败，已保留照片，可手动修改名称"
+            : "Object recognition failed. The photo was kept; you can edit the name.",
+        );
+      }
       console.warn("[Classifier] Handled exception or rate-limit in auto-recognize item:", err.message || err);
       if (requestId === classificationRequestIdRef.current && !itemNameEditedRef.current) {
         commitPreparedTitle("Scanned Item");
@@ -3114,28 +3121,15 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     classificationRequestIdRef.current += 1;
     classificationPromiseRef.current = null;
 
-    // 1. 同步进行本地预览
-    const localReader = new FileReader();
-    localReader.readAsDataURL(file);
-    localReader.onload = () => {
-      const b64 = localReader.result as string;
+    // Read the original once for preview and transparency inspection. Cloud
+    // matting receives the File directly so mobile Safari does not allocate a
+    // second full-size base64 copy before compression.
+    const reader = new FileReader();
+    reader.onload = () => {
+      const b64 = String(reader.result || "");
       setUploadedImageUrl(b64);
       stopCamera();
 
-      const img = new Image();
-      img.onload = () => {
-        setUploadedNaturalWidth(img.naturalWidth || img.width || 0);
-        setUploadedNaturalHeight(img.naturalHeight || img.height || 0);
-      };
-      img.src = b64;
-    };
-
-    // 2. 核心抠图流程：透明 PNG 直接复用旧版完整动画，其余图片走云端抠图并自动降级。
-    const processReader = new FileReader();
-    processReader.readAsDataURL(file);
-    processReader.onload = () => {
-      const b64 = processReader.result as string;
-      
       const img = new Image();
       img.onload = async () => {
         const iw = img.naturalWidth || img.width || 500;
@@ -3189,7 +3183,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
         setAiProgress(isChinese ? "正在剥离图片背景..." : "Extracting subject silhouette...");
         try {
-          const transparentBase64 = await processImageForSticker(b64, scanId!);
+          const transparentBase64 = await processImageForSticker(file, scanId!);
           const [alignedCutout, flightCutout, paddedCutout, finalSticker] = await Promise.all([
             generateViewportAlignedCutout(transparentBase64, iw, ih, false),
             generateFlightCutout(transparentBase64, iw, ih, false),
@@ -3218,6 +3212,17 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       };
       img.src = b64;
     };
+    reader.onerror = async () => {
+      commitPreparedTitle("Scanned Item");
+      calculateTargetScaleFromDimensions(500, 500);
+      const previewUrl = URL.createObjectURL(file);
+      try {
+        await completeWithPhotoThumbnail(previewUrl, 500, 500);
+      } finally {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleObjectConfirmed = () => {

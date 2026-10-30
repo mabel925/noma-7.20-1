@@ -166,16 +166,20 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
   }, [user?.id, user?.isMock]);
 
   const reserveAiScan = React.useCallback((): "available" | "quota" | "unavailable" => {
-    if (!user || aiAccessLoading || aiAccessUnavailable || !aiAccess) return "unavailable";
-    if (aiAccess.aiScansRemaining !== null && aiAccess.aiScansRemaining <= 0) return "quota";
+    if (!user) return "unavailable";
+    if (aiAccess?.aiScansRemaining !== null && aiAccess?.aiScansRemaining !== undefined && aiAccess.aiScansRemaining <= 0) {
+      return "quota";
+    }
 
-    if (aiAccess.aiScansRemaining !== null) {
+    if (aiAccess?.aiScansRemaining !== null && aiAccess?.aiScansRemaining !== undefined) {
       setAiAccess((current) => current ? {
         ...current,
         aiScansRemaining: Math.max(0, (current.aiScansRemaining ?? 1) - 1),
         aiScansUsed: current.aiScansUsed + 1,
       } : current);
     }
+    // The Worker remains authoritative for quota and authentication. A slow or
+    // temporarily unavailable access snapshot must not silently disable vision.
     return "available";
   }, [aiAccess, aiAccessLoading, aiAccessUnavailable, user]);
 

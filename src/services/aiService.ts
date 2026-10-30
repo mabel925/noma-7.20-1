@@ -37,55 +37,62 @@ export function stripBase64Prefix(base64Str: string): string {
  */
 export async function prepareImage(imageInput: File | Blob | string, maxWidth = 800): Promise<string> {
   console.log(`[Image Compressor] Compressing image with maxWidth ${maxWidth}, quality 0.7...`);
-  return new Promise((resolve) => {
-    const processImgSrc = (src: string) => {
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          console.warn("[Image Compressor] Canvas 2d context not available, returning original source.");
-          resolve(src);
-          return;
-        }
-        const ratio = Math.min(maxWidth / img.width, 1);
-        canvas.width = img.width * ratio;
-        canvas.height = img.height * ratio;
-        // Use 0.7 quality jpeg compression as requested
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        const compressed = canvas.toDataURL('image/jpeg', 0.7);
-        console.log(`[Image Compressor] Compression done. Original dimensions: ${img.width}x${img.height}, New dimensions: ${canvas.width}x${canvas.height}`);
-        resolve(compressed);
-      };
-      img.onerror = (err) => {
-        console.error("[Image Compressor] Image loading failed, returning original source:", err);
-        resolve(src);
-      };
-      img.src = src;
-    };
+  const source = imageInput instanceof Blob
+    ? imageInput
+    : await fetch(
+        imageInput.startsWith("data:") || imageInput.startsWith("http") || imageInput.startsWith("blob:")
+          ? imageInput
+          : `data:image/jpeg;base64,${imageInput}`,
+      ).then((response) => response.blob());
 
-    if (imageInput instanceof File || imageInput instanceof Blob) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        if (e.target?.result) {
-          processImgSrc(e.target.result as string);
-        } else {
-          resolve("");
-        }
-      };
-      reader.onerror = () => resolve("");
-      reader.readAsDataURL(imageInput);
-    } else if (typeof imageInput === "string") {
-      let src = imageInput;
-      if (!src.startsWith("data:") && !src.startsWith("http") && !src.startsWith("blob:")) {
-        src = `data:image/jpeg;base64,${imageInput}`;
-      }
-      processImgSrc(src);
-    } else {
-      resolve("");
+  let bitmap: ImageBitmap | null = null;
+  if (typeof createImageBitmap === "function") {
+    try {
+      bitmap = await createImageBitmap(source, { imageOrientation: "from-image" });
+    } catch {
+      // Fall through to the image element path for older mobile WebKit builds.
     }
+  }
+
+  const objectUrl = bitmap ? "" : URL.createObjectURL(source);
+  const image = bitmap ? null : await new Promise<HTMLImageElement>((resolve, reject) => {
+    const element = new Image();
+    element.onload = () => resolve(element);
+    element.onerror = () => reject(new Error("Vision image decoding failed"));
+    element.src = objectUrl;
+  }).finally(() => URL.revokeObjectURL(objectUrl));
+
+  const sourceWidth = bitmap?.width || image?.naturalWidth || image?.width || 1;
+  const sourceHeight = bitmap?.height || image?.naturalHeight || image?.height || 1;
+  const ratio = Math.min(maxWidth / sourceWidth, 1);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(sourceWidth * ratio));
+  canvas.height = Math.max(1, Math.round(sourceHeight * ratio));
+  const ctx = canvas.getContext("2d", { alpha: false });
+  if (!ctx) {
+    bitmap?.close();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("Vision image conversion failed"));
+      reader.readAsDataURL(source);
+    });
+  }
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(bitmap || image!, 0, 0, canvas.width, canvas.height);
+  bitmap?.close();
+  const compressedBlob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.7));
+  if (!compressedBlob) throw new Error("Vision image compression failed");
+  const compressed = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Vision image conversion failed"));
+    reader.readAsDataURL(compressedBlob);
   });
+  console.log(`[Image Compressor] Compression done. Original dimensions: ${sourceWidth}x${sourceHeight}, New dimensions: ${canvas.width}x${canvas.height}`);
+  return compressed;
 }
 
 /**
@@ -101,6 +108,7 @@ export function isApiEnabled(): boolean {
 }
 
 const NOMA_BACKEND_URL = NOMA_AI_URL;
+const AI_REQUEST_TIMEOUT_MS = 18_000;
 
 function getRequestOrigin(): string {
   return typeof window === "undefined" ? "server" : window.location.origin;
@@ -154,6 +162,8 @@ export async function callNomaBackend(type: "matting" | "vision" | "title" | "em
   console.log(`[Noma Backend] Sending request of type "${type}" to ${NOMA_BACKEND_URL}. origin=${getRequestOrigin()} apiEnabled=${isApiEnabled()}`);
 
   let response: Response;
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
   try {
     const authHeaders = await getAiAuthHeaders(scanId);
     response = await fetch(NOMA_BACKEND_URL, {
@@ -167,10 +177,16 @@ export async function callNomaBackend(type: "matting" | "vision" | "title" | "em
         ...(scanId ? { scan_id: scanId } : {}),
         ...payload
       }),
+      signal: controller.signal,
     });
   } catch (error: any) {
     if (error instanceof AiAccessError) throw error;
+    if (controller.signal.aborted) {
+      throw new Error(`Worker request timed out after ${AI_REQUEST_TIMEOUT_MS / 1000}s`);
+    }
     throw new Error(`Worker request could not be sent from ${getRequestOrigin()}: ${error?.message || "network/CORS failure"}`);
+  } finally {
+    window.clearTimeout(timeout);
   }
 
   const responseText = await response.text();
@@ -335,11 +351,7 @@ export async function recognizeImage(
   } catch (err: any) {
     if (err instanceof AiAccessError) throw err;
     console.error("[AI Dispatcher] Failed to recognize image via unified worker:", err.message || err);
-    return {
-      title: "Scanned Item",
-      category: "家居日用",
-      labels: ["item", "physical object"]
-    };
+    throw err;
   }
 }
 

@@ -52,7 +52,8 @@ const DEFAULT_CONFIG: RemoveBgConfig = {
 };
 
 const MATTING_MAX_DIMENSION = 768;
-const MATTING_JPEG_QUALITY = 0.72;
+const MOBILE_MATTING_MAX_DIMENSION = 640;
+const MATTING_JPEG_QUALITY = 0.7;
 const MATTING_REQUEST_TIMEOUT_MS = 20_000;
 
 type PreparedMattingInput = {
@@ -70,13 +71,6 @@ const stripDataUrlPrefix = (value: string): string => {
   return commaIndex >= 0 ? value.slice(commaIndex + 1) : value;
 };
 
-const estimateBase64Bytes = (base64: string): number => {
-  const clean = base64.replace(/\s/g, "");
-  if (!clean) return 0;
-  const padding = clean.endsWith("==") ? 2 : clean.endsWith("=") ? 1 : 0;
-  return Math.max(0, Math.floor((clean.length * 3) / 4) - padding);
-};
-
 const loadImageElement = (imageSrc: string): Promise<HTMLImageElement> => {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -89,27 +83,62 @@ const loadImageElement = (imageSrc: string): Promise<HTMLImageElement> => {
   });
 };
 
-async function prepareMattingInput(imageSrc: string): Promise<PreparedMattingInput> {
-  const [originalDataUrl, img] = await Promise.all([
-    getBase64FromImageSrc(imageSrc),
-    loadImageElement(imageSrc),
-  ]);
-  const originalBase64 = stripDataUrlPrefix(originalDataUrl);
-  const originalWidth = img.naturalWidth || img.width || 1;
-  const originalHeight = img.naturalHeight || img.height || 1;
-  const scale = Math.min(1, MATTING_MAX_DIMENSION / Math.max(originalWidth, originalHeight));
+const blobToDataUrl = (blob: Blob): Promise<string> => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(String(reader.result || ""));
+  reader.onerror = () => reject(new Error("Failed to convert image blob to base64"));
+  reader.readAsDataURL(blob);
+});
+
+const canvasToBlob = (canvas: HTMLCanvasElement): Promise<Blob | null> => new Promise((resolve) => {
+  canvas.toBlob(resolve, "image/jpeg", MATTING_JPEG_QUALITY);
+});
+
+const isMobileCaptureDevice = () =>
+  typeof window !== "undefined" &&
+  (window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0) &&
+  Math.min(window.screen.width, window.screen.height) <= 820;
+
+async function prepareMattingInput(imageSrc: string | Blob): Promise<PreparedMattingInput> {
+  const originalBlob = typeof imageSrc === "string" ? await getBlobFromImageSrc(imageSrc) : imageSrc;
+  let bitmap: ImageBitmap | null = null;
+  let imageElement: HTMLImageElement | null = null;
+
+  if (typeof createImageBitmap === "function") {
+    try {
+      bitmap = await createImageBitmap(originalBlob, { imageOrientation: "from-image" });
+    } catch {
+      // Older iOS releases can expose createImageBitmap but reject some HEIC/JPEG inputs.
+    }
+  }
+
+  if (!bitmap) {
+    const fallbackSrc = typeof imageSrc === "string" ? imageSrc : URL.createObjectURL(originalBlob);
+    try {
+      imageElement = await loadImageElement(fallbackSrc);
+    } finally {
+      if (typeof imageSrc !== "string") URL.revokeObjectURL(fallbackSrc);
+    }
+  }
+
+  const originalWidth = bitmap?.width || imageElement?.naturalWidth || imageElement?.width || 1;
+  const originalHeight = bitmap?.height || imageElement?.naturalHeight || imageElement?.height || 1;
+  const maxDimension = isMobileCaptureDevice() ? MOBILE_MATTING_MAX_DIMENSION : MATTING_MAX_DIMENSION;
+  const scale = Math.min(1, maxDimension / Math.max(originalWidth, originalHeight));
   const uploadWidth = Math.max(1, Math.round(originalWidth * scale));
   const uploadHeight = Math.max(1, Math.round(originalHeight * scale));
 
   const canvas = document.createElement("canvas");
   canvas.width = uploadWidth;
   canvas.height = uploadHeight;
-  const ctx = canvas.getContext("2d");
+  const ctx = canvas.getContext("2d", { alpha: false });
   if (!ctx) {
+    bitmap?.close();
+    const originalBase64 = stripDataUrlPrefix(await blobToDataUrl(originalBlob));
     return {
       base64: originalBase64,
-      originalBytes: estimateBase64Bytes(originalBase64),
-      uploadBytes: estimateBase64Bytes(originalBase64),
+      originalBytes: originalBlob.size,
+      uploadBytes: originalBlob.size,
       originalWidth,
       originalHeight,
       uploadWidth: originalWidth,
@@ -121,16 +150,18 @@ async function prepareMattingInput(imageSrc: string): Promise<PreparedMattingInp
   ctx.imageSmoothingQuality = "high";
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, uploadWidth, uploadHeight);
-  ctx.drawImage(img, 0, 0, uploadWidth, uploadHeight);
+  ctx.drawImage(bitmap || imageElement!, 0, 0, uploadWidth, uploadHeight);
+  bitmap?.close();
 
-  const optimizedBase64 = stripDataUrlPrefix(canvas.toDataURL("image/jpeg", MATTING_JPEG_QUALITY));
-  const shouldUseOptimized = scale < 1 || optimizedBase64.length < originalBase64.length;
-  const selectedBase64 = shouldUseOptimized ? optimizedBase64 : originalBase64;
+  const optimizedBlob = await canvasToBlob(canvas);
+  const shouldUseOptimized = Boolean(optimizedBlob && (scale < 1 || optimizedBlob.size < originalBlob.size));
+  const uploadBlob = shouldUseOptimized ? optimizedBlob! : originalBlob;
+  const selectedBase64 = stripDataUrlPrefix(await blobToDataUrl(uploadBlob));
 
   return {
     base64: selectedBase64,
-    originalBytes: estimateBase64Bytes(originalBase64),
-    uploadBytes: estimateBase64Bytes(selectedBase64),
+    originalBytes: originalBlob.size,
+    uploadBytes: uploadBlob.size,
     originalWidth,
     originalHeight,
     uploadWidth: shouldUseOptimized ? uploadWidth : originalWidth,
@@ -202,27 +233,6 @@ async function getBlobFromImageSrc(imageSrc: string): Promise<Blob> {
 }
 
 /**
- * Utility to convert any image source (Base64 data URL, blob URL, or standard URL)
- * into a standard Base64 Data URL string.
- */
-async function getBase64FromImageSrc(imageSrc: string): Promise<string> {
-  if (imageSrc.startsWith("data:")) {
-    return imageSrc;
-  }
-  const blob = await getBlobFromImageSrc(imageSrc);
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      resolve(reader.result as string);
-    };
-    reader.onerror = () => {
-      reject(new Error("Failed to convert image blob to base64"));
-    };
-    reader.readAsDataURL(blob);
-  });
-}
-
-/**
  * Unified decoupled Background Removal API.
  * Dispatches to local python rembg or custom APIs depending on active configuration mode.
  * Throws when cloud matting is unavailable so the caller can use the original photo thumbnail.
@@ -232,7 +242,7 @@ async function getBase64FromImageSrc(imageSrc: string): Promise<string> {
  * @returns Promise resolving to a transparent PNG data/blob URL.
  */
 export async function remove_background(
-  imageSrc: string,
+  imageSrc: string | Blob,
   onProgress?: (progress: string | null) => void,
   scanId?: string,
 ): Promise<string> {

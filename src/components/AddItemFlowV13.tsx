@@ -14,6 +14,7 @@ import { PhotoUploadIcon } from "./PhotoUploadIcon";
 import { CaptureShutterButton } from "./CaptureShutterButton";
 import { useLayoutGuard } from "../hooks/useLayoutGuard";
 import { classifyEmojiText, recognizeImage } from "../services/aiService";
+import { createAiScanId } from "../services/aiAuth";
 import { classifyEmojiLocally, EMOJI_CATALOG, emojiAsset, ITEM_CATEGORIES, refreshEmojiAssetUrl, type EmojiKind } from "../data/emojiCatalog";
 import { generateEmojiOutline, getRoundedOutlineShadow, getStickerTitleStyle, isChineseTitle } from "./StickerTitle";
 
@@ -689,7 +690,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
     setIsRecognizing(true);
     try {
       const imageUrl = await readFile(file);
-      const recognized = await recognizeImage(file);
+      const recognized = await recognizeImage(file, file.type || "image/jpeg", createAiScanId());
       const classification = await classifyEmojiText(recognized.title, "item");
       setItem({ name: recognized.title, category: recognized.category || classification.category, iconKey: classification.icon_key, imageUrl });
       setIsActionReveal(false);
