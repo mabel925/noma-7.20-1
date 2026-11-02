@@ -41,6 +41,95 @@ let recentImagePreparation: {
   promise: Promise<string>;
 } | null = null;
 
+let recentImageVariantsPreparation: {
+  input: File | Blob | string;
+  widthsKey: string;
+  promise: Promise<Record<number, string>>;
+} | null = null;
+
+const blobToDataUrl = (blob: Blob): Promise<string> => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(String(reader.result || ""));
+  reader.onerror = () => reject(new Error("Image conversion failed"));
+  reader.readAsDataURL(blob);
+});
+
+async function compressImageVariants(
+  imageInput: File | Blob | string,
+  maxWidths: number[],
+): Promise<Record<number, string>> {
+  const widths = [...new Set(maxWidths.map((width) => Math.max(1, Math.round(width))))];
+  const source = imageInput instanceof Blob
+    ? imageInput
+    : await fetch(
+        imageInput.startsWith("data:") || imageInput.startsWith("http") || imageInput.startsWith("blob:")
+          ? imageInput
+          : `data:image/jpeg;base64,${imageInput}`,
+      ).then((response) => response.blob());
+
+  let bitmap: ImageBitmap | null = null;
+  if (typeof createImageBitmap === "function") {
+    try {
+      bitmap = await createImageBitmap(source, { imageOrientation: "from-image" });
+    } catch {
+      // Older mobile WebKit builds use the image element fallback below.
+    }
+  }
+
+  const objectUrl = bitmap ? "" : URL.createObjectURL(source);
+  const image = bitmap ? null : await new Promise<HTMLImageElement>((resolve, reject) => {
+    const element = new Image();
+    element.onload = () => resolve(element);
+    element.onerror = () => reject(new Error("Image decoding failed"));
+    element.src = objectUrl;
+  });
+
+  try {
+    const sourceWidth = bitmap?.width || image?.naturalWidth || image?.width || 1;
+    const sourceHeight = bitmap?.height || image?.naturalHeight || image?.height || 1;
+    const entries = await Promise.all(widths.map(async (maxWidth) => {
+      const ratio = Math.min(maxWidth / sourceWidth, 1);
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(sourceWidth * ratio));
+      canvas.height = Math.max(1, Math.round(sourceHeight * ratio));
+      const ctx = canvas.getContext("2d", { alpha: false });
+      if (!ctx) return [maxWidth, await blobToDataUrl(source)] as const;
+
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(bitmap || image!, 0, 0, canvas.width, canvas.height);
+      const compressedBlob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.7));
+      if (!compressedBlob) throw new Error("Image compression failed");
+      return [maxWidth, await blobToDataUrl(compressedBlob)] as const;
+    }));
+    return Object.fromEntries(entries) as Record<number, string>;
+  } finally {
+    bitmap?.close();
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+  }
+}
+
+export function prepareImageVariants(
+  imageInput: File | Blob | string,
+  maxWidths: number[],
+): Promise<Record<number, string>> {
+  const widthsKey = [...new Set(maxWidths)].sort((a, b) => a - b).join(",");
+  if (
+    recentImageVariantsPreparation &&
+    recentImageVariantsPreparation.input === imageInput &&
+    recentImageVariantsPreparation.widthsKey === widthsKey
+  ) {
+    return recentImageVariantsPreparation.promise;
+  }
+
+  const promise = compressImageVariants(imageInput, maxWidths);
+  recentImageVariantsPreparation = { input: imageInput, widthsKey, promise };
+  promise.catch(() => {
+    if (recentImageVariantsPreparation?.promise === promise) recentImageVariantsPreparation = null;
+  });
+  return promise;
+}
+
 async function compressImage(imageInput: File | Blob | string, maxWidth: number): Promise<string> {
   console.log(`[Image Compressor] Compressing image with maxWidth ${maxWidth}, quality 0.7...`);
   const source = imageInput instanceof Blob
@@ -140,13 +229,18 @@ function getRequestOrigin(): string {
 /**
  * Unified request sender function to Noma Cloudflare Workers Backend
  */
-export async function callNomaBackend(type: "matting" | "vision" | "title" | "emoji-classify", payload: any, scanId?: string): Promise<any> {
+export async function callNomaBackend(type: "process-image" | "matting" | "vision" | "title" | "emoji-classify", payload: any, scanId?: string): Promise<any> {
   if (!isApiEnabled()) {
     console.log(`[API Intercept] IS_API_ENABLED is false. Returning high-fidelity mock data for type "${type}". origin=${getRequestOrigin()}`);
     // Add artificial delay for realistic simulation
     await new Promise((resolve) => setTimeout(resolve, 800));
 
-    if (type === "vision") {
+    if (type === "process-image") {
+      return {
+        vision: { ok: true, data: { choices: [{ message: { content: JSON.stringify({ title: "Aesthetic Mug", category: "家居日用", labels: ["mug"] }) } }] } },
+        matting: { ok: true, data: { result_base64: payload.image_base64 || "" } },
+      };
+    } else if (type === "vision") {
       // 识物或空间分类的高拟真 Mock，保持结构完美匹配真实 Cloudflare Worker
       return {
         choices: [
@@ -376,6 +470,53 @@ export async function recognizeImage(
     console.error("[AI Dispatcher] Failed to recognize image via unified worker:", err.message || err);
     throw err;
   }
+}
+
+export interface CapturedImageProcessingResult {
+  recognition: RecognitionResult | null;
+  cutoutDataUrl: string | null;
+  visionError: string | null;
+  mattingError: string | null;
+}
+
+export async function processCapturedImage(
+  imageInput: File | Blob | string,
+  scanId: string,
+): Promise<CapturedImageProcessingResult> {
+  const prepared = await prepareImageVariants(imageInput, [512, 384]);
+  const mattingBase64 = stripBase64Prefix(prepared[512]);
+  const visionBase64 = stripBase64Prefix(prepared[384]);
+  if (!mattingBase64 || !visionBase64) throw new Error("Image preparation returned no data");
+
+  const result = await callNomaBackend("process-image", {
+    image_base64: mattingBase64,
+    vision_image_base64: visionBase64,
+    mime_type: "image/jpeg",
+  }, scanId);
+
+  const visionData = result?.vision?.data;
+  const visionContent =
+    visionData?.choices?.[0]?.message?.content ||
+    visionData?.content ||
+    "";
+  const recognition = result?.vision?.ok && visionContent
+    ? parseVisionContent(String(visionContent))
+    : null;
+
+  let cutoutDataUrl: string | null = null;
+  const resultBase64 = result?.matting?.data?.result_base64;
+  if (result?.matting?.ok && resultBase64) {
+    cutoutDataUrl = String(resultBase64).startsWith("data:")
+      ? String(resultBase64)
+      : `data:image/png;base64,${resultBase64}`;
+  }
+
+  return {
+    recognition,
+    cutoutDataUrl,
+    visionError: result?.vision?.ok ? null : String(result?.vision?.error || "Object recognition failed"),
+    mattingError: result?.matting?.ok ? null : String(result?.matting?.error || "Background removal failed"),
+  };
 }
 
 /**

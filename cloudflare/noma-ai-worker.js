@@ -308,6 +308,39 @@ async function matting(env, body) {
   }
 }
 
+async function responseResult(response) {
+  const text = await response.text();
+  let data;
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { error: text || `HTTP ${response.status}` };
+  }
+  return {
+    ok: response.ok,
+    status: response.status,
+    data: response.ok ? data : undefined,
+    error: response.ok ? undefined : String(data?.error || `HTTP ${response.status}`),
+  };
+}
+
+async function processImage(env, body) {
+  const visionBody = {
+    ...body,
+    image_base64: body.vision_image_base64 || body.image_base64,
+  };
+  const [visionResponse, mattingResponse] = await Promise.all([
+    vision(env, visionBody),
+    matting(env, body),
+  ]);
+  const [visionResult, mattingResult] = await Promise.all([
+    responseResult(visionResponse),
+    responseResult(mattingResponse),
+  ]);
+  const status = visionResult.ok || mattingResult.ok ? 200 : 502;
+  return json({ vision: visionResult, matting: mattingResult }, status);
+}
+
 async function generateImage(env, body) {
   const prompt = String(body.prompt || "").trim();
   if (!prompt) return json({ error: "prompt is required" }, 400);
@@ -331,7 +364,7 @@ export default {
     if (request.method === "GET") return json({
       ok: true,
       service: "noma-ai",
-      version: "10",
+      version: "11",
       capabilities: {
         vision: Boolean(env.QWEN_API_KEY || env.GEMINI_API_KEY),
         matting: Boolean(env.SHILIU_API_KEY || env.MATTING_API_KEY),
@@ -347,7 +380,7 @@ export default {
       return json({ error: "Invalid JSON body" }, 400);
     }
 
-    if (body.type === "vision" || body.type === "matting") {
+    if (body.type === "process-image" || body.type === "vision" || body.type === "matting") {
       const requestStartedAt = Date.now();
       if (!body.image_base64) return json({ error: "image_base64 is required" }, 400);
       const scanId = String(body.scan_id || request.headers.get("x-noma-scan-id") || "").trim();
@@ -356,7 +389,10 @@ export default {
       let access;
       const authStartedAt = Date.now();
       try {
-        access = await authorizeAiScan(request, env, scanId, body.type);
+        // A combined capture is one billable scan. The existing RPC uses the
+        // vision feature as the idempotency key while both providers run here.
+        const accessFeature = body.type === "process-image" ? "vision" : body.type;
+        access = await authorizeAiScan(request, env, scanId, accessFeature);
       } catch (error) {
         const status = Number(error?.status) || 500;
         const isAuthError = status === 401 || status === 403;
@@ -388,7 +424,11 @@ export default {
       }
 
       const providerStartedAt = Date.now();
-      const response = body.type === "vision" ? await vision(env, body) : await matting(env, body);
+      const response = body.type === "process-image"
+        ? await processImage(env, body)
+        : body.type === "vision"
+          ? await vision(env, body)
+          : await matting(env, body);
       const providerMs = Date.now() - providerStartedAt;
       const totalMs = Date.now() - requestStartedAt;
       console.log(`[AiTiming] feature=${body.type} scan_id=${scanId} auth_ms=${authMs} provider_ms=${providerMs} total_ms=${totalMs} status=${response.status}`);

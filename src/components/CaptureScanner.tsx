@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Camera, Check, Image as ImageIcon, RotateCcw } from "lucide-react";
-import { isApiEnabled, recognizeImage } from "../services/aiService";
+import { isApiEnabled, processCapturedImage, recognizeImage, type RecognitionResult } from "../services/aiService";
 import { remove_background } from "../services/removeBackgroundService";
 import { AiAccessError, createAiScanId } from "../services/aiAuth";
 import { MemoryItemLimitError } from "../services/memoryStorage";
@@ -1379,6 +1379,91 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     });
   };
 
+  const generateStickerAssets = (transparentImgSrc: string): Promise<{
+    paddedCutout: string;
+    finalSticker: string;
+    bounds: CutoutBounds | null;
+  }> => new Promise((resolve) => {
+    const img = new Image();
+    if (!transparentImgSrc.startsWith("data:") && !transparentImgSrc.startsWith("blob:")) {
+      img.crossOrigin = "anonymous";
+    }
+    img.onload = () => {
+      const cropped = cropTransparentBoundsWithMeta(img);
+      const source = cropped.source;
+      const sourceWidth = source.width;
+      const sourceHeight = source.height;
+      const paddedCanvas = document.createElement("canvas");
+      paddedCanvas.width = STICKER_CANVAS_SIZE;
+      paddedCanvas.height = STICKER_CANVAS_SIZE;
+      const paddedCtx = paddedCanvas.getContext("2d");
+      if (!paddedCtx) {
+        resolve({ paddedCutout: transparentImgSrc, finalSticker: transparentImgSrc, bounds: cropped.bounds });
+        return;
+      }
+      drawContainCentered(
+        paddedCtx,
+        source,
+        sourceWidth,
+        sourceHeight,
+        STICKER_CANVAS_SIZE,
+        Math.max(2, STICKER_BORDER_SIZE + 2),
+      );
+
+      const isMobileRenderer = window.matchMedia("(pointer: coarse)").matches && Math.min(window.screen.width, window.screen.height) <= 820;
+      const renderScale = isMobileRenderer ? 2 : 3;
+      const outlineAngleStep = isMobileRenderer ? 6 : 2;
+      const stickerSize = STICKER_CANVAS_SIZE * renderScale;
+      const normalizedCanvas = document.createElement("canvas");
+      normalizedCanvas.width = stickerSize;
+      normalizedCanvas.height = stickerSize;
+      const normalizedCtx = normalizedCanvas.getContext("2d");
+      const stickerCanvas = document.createElement("canvas");
+      stickerCanvas.width = stickerSize;
+      stickerCanvas.height = stickerSize;
+      const stickerCtx = stickerCanvas.getContext("2d");
+      if (!normalizedCtx || !stickerCtx) {
+        const paddedCutout = paddedCanvas.toDataURL("image/png");
+        resolve({ paddedCutout, finalSticker: paddedCutout, bounds: cropped.bounds });
+        return;
+      }
+
+      drawContainCentered(
+        normalizedCtx,
+        source,
+        sourceWidth,
+        sourceHeight,
+        stickerSize,
+        Math.max(2, STICKER_BORDER_SIZE + 2) * renderScale,
+      );
+      for (let angle = 0; angle < 360; angle += outlineAngleStep) {
+        const rad = (angle * Math.PI) / 180;
+        stickerCtx.drawImage(
+          normalizedCanvas,
+          Math.cos(rad) * STICKER_BORDER_SIZE * renderScale,
+          Math.sin(rad) * STICKER_BORDER_SIZE * renderScale,
+        );
+      }
+      stickerCtx.globalCompositeOperation = "source-in";
+      stickerCtx.fillStyle = "#FFFFFF";
+      stickerCtx.fillRect(0, 0, stickerSize, stickerSize);
+      stickerCtx.globalCompositeOperation = "source-over";
+      stickerCtx.drawImage(normalizedCanvas, 0, 0);
+
+      resolve({
+        paddedCutout: paddedCanvas.toDataURL("image/png"),
+        finalSticker: stickerCanvas.toDataURL("image/png"),
+        bounds: cropped.bounds,
+      });
+    };
+    img.onerror = () => resolve({
+      paddedCutout: transparentImgSrc,
+      finalSticker: transparentImgSrc,
+      bounds: null,
+    });
+    img.src = transparentImgSrc;
+  });
+
   // Capture frame chunk from standard webcam tag
   const captureVideoFrame = (): string | null => {
     if (!videoRef.current || !cameraActive) return null;
@@ -1437,6 +1522,73 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     });
   };
 
+  const applyRecognitionResult = (recognition: RecognitionResult | null, error?: string | null) => {
+    if (recognition?.title && !itemNameEditedRef.current) {
+      const clean = recognition.title
+        .replace(/^["'\s\.,!?#-（）()《》]+|["'\s\.,!?#-（）()《》]+$/g, "")
+        .trim();
+      const words = clean.split(/\s+/).filter(Boolean);
+      commitPreparedTitle(words.length > 2 ? words.slice(0, 2).join(" ") : clean || "Scanned Item");
+    } else if (!itemNameEditedRef.current) {
+      commitPreparedTitle("Scanned Item");
+    }
+    if (recognition?.category) {
+      setTempIdentifiedCategory(recognition.category);
+      setCustomCategory(getLocalizedCategory(recognition.category));
+    }
+    if (error) {
+      setAiAccessNotice(
+        isChinese
+          ? `识物失败：${error.slice(0, 90)}`
+          : `Object recognition failed: ${error.slice(0, 90)}`,
+      );
+    }
+  };
+
+  const completeWithTransparentCutout = async (
+    transparentCutout: string,
+    width: number,
+    height: number,
+  ) => {
+    calculateTargetScaleFromDimensions(width, height);
+    const assets = await generateStickerAssets(transparentCutout);
+    setAlignedCutoutUrl(null);
+    setFlightCutoutUrl(assets.paddedCutout);
+    setTransparentCutoutUrl(transparentCutout);
+    setPaddedCutoutUrl(assets.paddedCutout);
+    setGeneratedStickerUrl(assets.finalSticker);
+    setTraceCompleted(false);
+    await beginCutoutTransition(width, height, assets.bounds);
+    setAiProgress("Done");
+  };
+
+  const runCombinedImagePipeline = async (
+    imageInput: File | Blob | string,
+    fallbackPreview: string,
+    width: number,
+    height: number,
+    scanId: string,
+    processingPromise?: ReturnType<typeof processCapturedImage>,
+  ) => {
+    try {
+      setAiProgress(isChinese ? "正在处理图片..." : "Processing image...");
+      const result = await (processingPromise || processCapturedImage(imageInput, scanId));
+      applyRecognitionResult(result.recognition, result.visionError);
+      if (!result.cutoutDataUrl) {
+        console.warn("[Pipeline] Matting failed in the combined request:", result.mattingError);
+        await completeWithPhotoThumbnail(fallbackPreview, width, height);
+        return;
+      }
+      await completeWithTransparentCutout(result.cutoutDataUrl, width, height);
+    } catch (error) {
+      reportAiAccessError(error);
+      const detail = error instanceof Error ? error.message : String(error);
+      applyRecognitionResult(null, detail);
+      console.warn("[Pipeline] Combined image processing failed:", error);
+      await completeWithPhotoThumbnail(fallbackPreview, width, height);
+    }
+  };
+
   // Pipeline execution orchestrator
   const runStickerPipeline = async (sourceUrl: string, width?: number, height?: number, scanId?: string) => {
     try {
@@ -1470,20 +1622,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       // 1. Calculate target scale synchronously and trigger instant transition
       calculateTargetScaleFromDimensions(iw, ih);
 
-      const [alignedCutout, flightCutout, paddedCutout, finalSticker] = await Promise.all([
-        generateViewportAlignedCutout(transparentCutout, iw, ih, false),
-        generateFlightCutout(transparentCutout, iw, ih, false),
-        generateTransparentCutoutWithPadding(transparentCutout, STICKER_BORDER_SIZE, false),
-        generatePhysicalSticker(transparentCutout, STICKER_BORDER_SIZE, "#FFFFFF", false),
-      ]);
-      setAlignedCutoutUrl(alignedCutout);
-      setFlightCutoutUrl(paddedCutout);
-      setTransparentCutoutUrl(transparentCutout);
-      setPaddedCutoutUrl(paddedCutout);
-      setGeneratedStickerUrl(finalSticker);
-      setTraceCompleted(false);
-      await beginCutoutTransition(iw, ih, flightCutout.bounds);
-      setAiProgress("Done");
+      await completeWithTransparentCutout(transparentCutout, iw, ih);
 
     } catch (e) {
       reportAiAccessError(e);
@@ -2519,9 +2658,12 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     setPaddedCutoutUrl(null);
     setGeneratedStickerUrl(null);
 
-    // Warm up the AI pipeline in a parallel background worker promise
-    console.log("[CinematicScanner] Submitting image content to the background segmenter thread...");
-    runStickerPipeline(sourceBaseUrl, width, height, scanId);
+    console.log("[CinematicScanner] Submitting one combined image-processing request...");
+    if (scanId) {
+      runCombinedImagePipeline(sourceBaseUrl, sourceBaseUrl, width || 500, height || 500, scanId);
+    } else {
+      runStickerPipeline(sourceBaseUrl, width, height, scanId);
+    }
 
     // Fade out white screen shutter flash over 180ms
     setTimeout(() => {
@@ -2942,8 +3084,9 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       setCustomName("");
       setCustomCategory("家居日用");
       setTempIdentifiedCategory("");
-      // Start classification immediately on capture!
-      startImageClassification(sourceBaseUrl, "camera_capture.png", scanId!);
+      preparedTitleRef.current = "";
+      classificationRequestIdRef.current += 1;
+      classificationPromiseRef.current = null;
     } else {
       classificationRequestIdRef.current += 1;
       classificationPromiseRef.current = null;
@@ -3110,6 +3253,19 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       return;
     }
 
+    // JPEG/HEIC photos cannot already be transparent, so begin preprocessing
+    // and the combined API call immediately while the preview is loading.
+    let aiCaptureAccess: "available" | "quota" | "unavailable" | null = null;
+    let scanId: string | undefined;
+    let processingPromise: ReturnType<typeof processCapturedImage> | undefined;
+    if (file.type !== "image/png") {
+      aiCaptureAccess = reserveAiCapture();
+      if (aiCaptureAccess === "available") {
+        scanId = createAiScanId();
+        processingPromise = processCapturedImage(file, scanId);
+      }
+    }
+
     setSkipScanEffects(false);
     setScanStep("scanning");
     setIsCapturing(true);
@@ -3154,34 +3310,25 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
           setSkipScanEffects(false);
           setAiProgress(null);
 
-          const [alignedCutout, flightCutout, paddedCutout, finalSticker] = await Promise.all([
-            generateViewportAlignedCutout(b64, iw, ih, false),
-            generateFlightCutout(b64, iw, ih, false),
-            generateTransparentCutoutWithPadding(b64, STICKER_BORDER_SIZE, false),
-            generatePhysicalSticker(b64, STICKER_BORDER_SIZE, "#FFFFFF", false),
-          ]);
-
-          setAlignedCutoutUrl(alignedCutout);
-          setFlightCutoutUrl(paddedCutout);
-          setTransparentCutoutUrl(b64);
-          setPaddedCutoutUrl(paddedCutout);
-          setGeneratedStickerUrl(finalSticker);
-          setTraceCompleted(false);
-          await beginCutoutTransition(iw, ih, flightCutout.bounds);
-          setAiProgress("Done");
+          await completeWithTransparentCutout(b64, iw, ih);
           return;
         }
 
-        const aiCaptureAccess = reserveAiCapture();
+        if (aiCaptureAccess === null) aiCaptureAccess = reserveAiCapture();
         const shouldUseAi = aiCaptureAccess === "available";
-        const scanId = shouldUseAi ? createAiScanId() : undefined;
+        if (shouldUseAi && !scanId) scanId = createAiScanId();
+        if (shouldUseAi && !processingPromise) {
+          processingPromise = processCapturedImage(file, scanId!);
+        }
         setSkipScanEffects(!shouldUseAi);
 
         if (shouldUseAi) {
-          startImageClassification(file, file.name, scanId!);
+          preparedTitleRef.current = "";
+          classificationRequestIdRef.current += 1;
+          classificationPromiseRef.current = null;
         } else {
           commitPreparedTitle("Scanned Item");
-          showPhotoThumbnailNotice(aiCaptureAccess);
+          showPhotoThumbnailNotice(aiCaptureAccess === "quota" ? "quota" : "unavailable");
         }
 
         if (!shouldUseAi) {
@@ -3189,29 +3336,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
           return;
         }
 
-        setAiProgress(isChinese ? "正在剥离图片背景..." : "Extracting subject silhouette...");
-        try {
-          const transparentBase64 = await processImageForSticker(file, scanId!);
-          const [alignedCutout, flightCutout, paddedCutout, finalSticker] = await Promise.all([
-            generateViewportAlignedCutout(transparentBase64, iw, ih, false),
-            generateFlightCutout(transparentBase64, iw, ih, false),
-            generateTransparentCutoutWithPadding(transparentBase64, STICKER_BORDER_SIZE, false),
-            generatePhysicalSticker(transparentBase64, STICKER_BORDER_SIZE, "#FFFFFF", false),
-          ]);
-
-          setAlignedCutoutUrl(alignedCutout);
-          setFlightCutoutUrl(paddedCutout);
-          setTransparentCutoutUrl(transparentBase64);
-          setPaddedCutoutUrl(paddedCutout);
-          setGeneratedStickerUrl(finalSticker);
-          setTraceCompleted(false);
-          await beginCutoutTransition(iw, ih, flightCutout.bounds);
-          setAiProgress("Done");
-        } catch (err: any) {
-          reportAiAccessError(err);
-          console.warn("[Background Removal] Cloud matting unavailable, using the photo thumbnail:", err);
-          await completeWithPhotoThumbnail(b64, iw, ih);
-        }
+        await runCombinedImagePipeline(file, b64, iw, ih, scanId!, processingPromise);
       };
       img.onerror = async () => {
         commitPreparedTitle("Scanned Item");
