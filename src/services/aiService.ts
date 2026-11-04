@@ -499,9 +499,22 @@ export async function processCapturedImage(
     visionData?.choices?.[0]?.message?.content ||
     visionData?.content ||
     "";
-  const recognition = result?.vision?.ok && visionContent
-    ? parseVisionContent(String(visionContent))
-    : null;
+  let recognition: RecognitionResult | null = null;
+  let visionError = result?.vision?.ok
+    ? null
+    : String(result?.vision?.error || "Object recognition failed");
+  if (result?.vision?.ok) {
+    if (!visionContent) {
+      visionError = "Object recognition returned no content";
+    } else {
+      const parsed = parseVisionContent(String(visionContent));
+      if (!parsed.title || /^scanned item$/i.test(parsed.title.trim())) {
+        visionError = "Object recognition returned no usable title";
+      } else {
+        recognition = parsed;
+      }
+    }
+  }
 
   let cutoutDataUrl: string | null = null;
   const resultBase64 = result?.matting?.data?.result_base64;
@@ -514,7 +527,7 @@ export async function processCapturedImage(
   return {
     recognition,
     cutoutDataUrl,
-    visionError: result?.vision?.ok ? null : String(result?.vision?.error || "Object recognition failed"),
+    visionError,
     mattingError: result?.matting?.ok ? null : String(result?.matting?.error || "Background removal failed"),
   };
 }

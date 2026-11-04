@@ -3074,6 +3074,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     }
     const scanId = isPreset ? undefined : createAiScanId();
     const aiCaptureAccess = isPreset ? "available" : reserveAiCapture();
+    itemNameEditedRef.current = false;
 
     if (isPreset) {
       classificationRequestIdRef.current += 1;
@@ -3282,6 +3283,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     setTempIdentifiedCategory("");
     setCustomName("");
     preparedTitleRef.current = "";
+    itemNameEditedRef.current = false;
     classificationRequestIdRef.current += 1;
     classificationPromiseRef.current = null;
 
