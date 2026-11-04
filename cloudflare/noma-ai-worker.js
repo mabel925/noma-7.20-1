@@ -150,6 +150,45 @@ function extractText(data) {
   );
 }
 
+function parseVisionResult(content) {
+  const trimmed = String(content || "").trim();
+  if (!trimmed) throw new Error("Vision provider returned empty content");
+
+  const codeBlock = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  const candidate = codeBlock?.[1]?.trim() || trimmed;
+  const objectStart = candidate.indexOf("{");
+  const objectEnd = candidate.lastIndexOf("}");
+  const jsonText = objectStart >= 0 && objectEnd > objectStart
+    ? candidate.slice(objectStart, objectEnd + 1)
+    : candidate;
+
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch {
+    throw new Error("Vision provider returned invalid JSON");
+  }
+
+  const title = String(parsed?.title || "").replace(/\s+/g, " ").trim();
+  const category = String(parsed?.category || "").trim();
+  const labels = Array.isArray(parsed?.labels)
+    ? parsed.labels.map((label) => String(label).trim()).filter(Boolean).slice(0, 8)
+    : [];
+
+  if (!title || /^scanned item$/i.test(title)) {
+    throw new Error("Vision provider returned no usable title");
+  }
+  if (!ITEM_CATEGORIES.includes(category)) {
+    throw new Error("Vision provider returned a category outside the whitelist");
+  }
+
+  return {
+    title: title.slice(0, 80),
+    category,
+    labels: labels.length > 0 ? labels : [title],
+  };
+}
+
 async function callGemini(env, parts, { jsonMode = false, imageMode = false, model, timeoutMs = 12000 } = {}) {
   if (!env.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not configured");
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model || env.GEMINI_MODEL || "gemini-3.5-flash")}:generateContent?key=${encodeURIComponent(env.GEMINI_API_KEY)}`;
@@ -203,11 +242,11 @@ async function vision(env, body) {
     const data = await callQwen(env, [
       { type: "image_url", image_url: { url: dataUrl } },
       { type: "text", text: prompt },
-    ], false, 12000, model);
+    ], true, 12000, model);
     const content = extractText(data);
-    if (!content) throw new Error("Qwen returned empty vision content");
+    const result = parseVisionResult(content);
     console.log(`[AiTiming] feature=vision provider=qwen model=${model} provider_ms=${Date.now() - providerStartedAt} total_ms=${Date.now() - visionStartedAt} outcome=success`);
-    return json({ choices: [{ message: { content } }] });
+    return json({ choices: [{ message: { content: JSON.stringify(result) } }] });
   } catch (error) {
     const timedOut = isUpstreamTimeout(error);
     console.log(`[AiTiming] feature=vision provider=qwen total_ms=${Date.now() - visionStartedAt} outcome=${timedOut ? "timeout" : "fallback"} error=${errorMessage(error).slice(0, 240)}`);
@@ -226,9 +265,9 @@ async function vision(env, body) {
       { text: prompt },
     ], { jsonMode: true, timeoutMs: 10000 });
     const content = extractText(data);
-    if (!content) throw new Error("Gemini returned empty vision content");
+    const result = parseVisionResult(content);
     console.log(`[AiTiming] feature=vision provider=gemini provider_ms=${Date.now() - providerStartedAt} total_ms=${Date.now() - visionStartedAt} outcome=success`);
-    return json({ choices: [{ message: { content } }] });
+    return json({ choices: [{ message: { content: JSON.stringify(result) } }] });
   } catch (error) {
     console.log(`[AiTiming] feature=vision provider=gemini total_ms=${Date.now() - visionStartedAt} outcome=failed error=${errorMessage(error).slice(0, 160)}`);
     failures.push(errorMessage(error));
@@ -364,7 +403,7 @@ export default {
     if (request.method === "GET") return json({
       ok: true,
       service: "noma-ai",
-      version: "11",
+      version: "12",
       capabilities: {
         vision: Boolean(env.QWEN_API_KEY || env.GEMINI_API_KEY),
         matting: Boolean(env.SHILIU_API_KEY || env.MATTING_API_KEY),
