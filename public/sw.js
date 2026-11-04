@@ -1,4 +1,4 @@
-const CACHE_NAME = "noma-app-v27";
+const CACHE_NAME = "noma-app-v28";
 const APP_SHELL = [
   "/",
   "/manifest.json",
@@ -49,7 +49,7 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (request.mode === "navigate") {
-    const refresh = fetch(request).then((response) => {
+    const networkResponse = fetch(request).then((response) => {
       if (!response.ok) return response;
       const responseClone = response.clone();
       return caches
@@ -59,9 +59,14 @@ self.addEventListener("fetch", (event) => {
         .then(() => response);
     });
 
-    event.waitUntil(refresh.then(() => undefined).catch(() => undefined));
     event.respondWith(
-      caches.match("/").then((cachedResponse) => cachedResponse || refresh)
+      networkResponse.catch(() => caches.match("/").then((cachedResponse) => {
+        if (cachedResponse) return cachedResponse;
+        return new Response("Noma is offline", {
+          status: 503,
+          headers: { "Content-Type": "text/plain; charset=UTF-8" },
+        });
+      }))
     );
     return;
   }

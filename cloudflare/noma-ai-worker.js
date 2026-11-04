@@ -11,7 +11,7 @@ const ITEM_CATEGORIES = ["数码用品", "衣物鞋包", "药品健康", "文具
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Client-Info, X-Noma-Scan-Id",
+  "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Client-Info, X-Noma-Scan-Id, X-Noma-Client-Build",
   "Access-Control-Expose-Headers": "X-Noma-AI-Limit, X-Noma-AI-Remaining, X-Noma-Plan, Server-Timing",
   "Access-Control-Max-Age": "86400",
 };

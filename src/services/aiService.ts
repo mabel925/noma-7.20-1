@@ -226,6 +226,14 @@ function getRequestOrigin(): string {
   return typeof window === "undefined" ? "server" : window.location.origin;
 }
 
+function getClientBuildId(): string {
+  try {
+    return new URL(import.meta.url).pathname.split("/").pop() || "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
 /**
  * Unified request sender function to Noma Cloudflare Workers Backend
  */
@@ -287,6 +295,7 @@ export async function callNomaBackend(type: "process-image" | "matting" | "visio
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "X-Noma-Client-Build": getClientBuildId(),
         ...authHeaders,
       },
       body: JSON.stringify({
