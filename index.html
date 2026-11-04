@@ -77,11 +77,12 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        opacity: 1;
+        opacity: 0;
         transition: opacity 120ms linear;
         contain: layout paint;
         backface-visibility: hidden;
       }
+      #startup-splash.is-image-ready .startup-progress { opacity: 1; }
       .startup-progress-track {
         width: 126px;
         height: 6px;
@@ -116,7 +117,15 @@
       (() => {
         const splash = document.getElementById('startup-splash');
         const image = document.getElementById('startup-splash-image');
-        const revealProgress = () => requestAnimationFrame(() => splash?.classList.add('is-image-ready'));
+        const revealProgress = () => requestAnimationFrame(() => requestAnimationFrame(() => {
+          const progress = splash?.querySelector('.startup-progress');
+          if (progress) {
+            const { top } = progress.getBoundingClientRect();
+            progress.style.top = `${Math.round(top)}px`;
+            progress.style.bottom = 'auto';
+          }
+          splash?.classList.add('is-image-ready');
+        }));
         const revealAfterDecode = () => {
           if (typeof image?.decode !== 'function') {
             revealProgress();
