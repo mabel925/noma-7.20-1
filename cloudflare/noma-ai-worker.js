@@ -376,8 +376,18 @@ async function processImage(env, body) {
     responseResult(visionResponse),
     responseResult(mattingResponse),
   ]);
+  let recognition;
+  if (visionResult.ok) {
+    const content = extractText(visionResult.data);
+    try {
+      recognition = parseVisionResult(content);
+    } catch (error) {
+      console.log(`[AiTiming] feature=process-image recognition_contract=invalid error=${errorMessage(error).slice(0, 160)}`);
+    }
+  }
   const status = visionResult.ok || mattingResult.ok ? 200 : 502;
-  return json({ vision: visionResult, matting: mattingResult }, status);
+  console.log(`[AiTiming] feature=process-image recognition_present=${Boolean(recognition)} matting_present=${Boolean(mattingResult.ok && mattingResult.data?.result_base64)}`);
+  return json({ recognition, vision: visionResult, matting: mattingResult }, status);
 }
 
 async function generateImage(env, body) {
@@ -403,7 +413,7 @@ export default {
     if (request.method === "GET") return json({
       ok: true,
       service: "noma-ai",
-      version: "12",
+      version: "13",
       capabilities: {
         vision: Boolean(env.QWEN_API_KEY || env.GEMINI_API_KEY),
         matting: Boolean(env.SHILIU_API_KEY || env.MATTING_API_KEY),

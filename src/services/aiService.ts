@@ -503,6 +503,7 @@ export async function processCapturedImage(
     mime_type: "image/jpeg",
   }, scanId);
 
+  const directRecognition = result?.recognition;
   const visionData = result?.vision?.data;
   const visionContent =
     visionData?.choices?.[0]?.message?.content ||
@@ -512,7 +513,25 @@ export async function processCapturedImage(
   let visionError = result?.vision?.ok
     ? null
     : String(result?.vision?.error || "Object recognition failed");
-  if (result?.vision?.ok) {
+  if (directRecognition?.title) {
+    const directTitle = String(directRecognition.title).trim();
+    const directLabels = Array.isArray(directRecognition.labels)
+      ? directRecognition.labels.map((label: unknown) => String(label).trim()).filter(Boolean)
+      : [];
+    if (!/^scanned item$/i.test(directTitle)) {
+      recognition = {
+        title: directTitle,
+        category: normalizeItemCategory(
+          String(directRecognition.category || ""),
+          directTitle,
+          directLabels,
+        ),
+        labels: directLabels.length > 0 ? directLabels : [directTitle],
+      };
+      visionError = null;
+    }
+  }
+  if (!recognition && result?.vision?.ok) {
     if (!visionContent) {
       visionError = "Object recognition returned no content";
     } else {

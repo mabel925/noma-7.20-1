@@ -1529,7 +1529,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         .trim();
       const words = clean.split(/\s+/).filter(Boolean);
       commitPreparedTitle(words.length > 2 ? words.slice(0, 2).join(" ") : clean || "Scanned Item");
-    } else if (!itemNameEditedRef.current) {
+    } else if (!itemNameEditedRef.current && !preparedTitleRef.current) {
       commitPreparedTitle("Scanned Item");
     }
     if (recognition?.category) {
