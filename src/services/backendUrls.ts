@@ -8,10 +8,7 @@ const productionUrl = (path: string, fallback: string) => {
   return fallback;
 };
 
-// Call the AI Worker directly. Routing this through a Pages Function pins the
-// Worker subrequest to the Pages execution colo, which can add a cross-region
-// hop before reaching the China-hosted vision and matting providers.
-export const NOMA_AI_URL = import.meta.env.VITE_NOMA_AI_URL || AI_WORKER_URL;
+export const NOMA_AI_URL = productionUrl("/api/ai", AI_WORKER_URL);
 export const NOMA_SUPABASE_URL = productionUrl(
   "/api/supabase",
   import.meta.env.VITE_SUPABASE_URL || SUPABASE_WORKER_URL,
