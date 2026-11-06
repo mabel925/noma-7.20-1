@@ -426,6 +426,15 @@ export function parseVisionContent(content: string): { title: string; category: 
   return { title, category: normalizeItemCategory(category, title, labels), labels };
 }
 
+function isGenericVisionTitle(value: string): boolean {
+  const normalized = value
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return /^(?:(?:scanned|detected|recognized|unknown|unidentified)\s+)?(?:item|items|object|objects)$/.test(normalized);
+}
+
 /**
  * Intelligent AI Orchestrator.
  * Fully migrated to Cloudflare Worker backend.
@@ -518,7 +527,7 @@ export async function processCapturedImage(
     const directLabels = Array.isArray(directRecognition.labels)
       ? directRecognition.labels.map((label: unknown) => String(label).trim()).filter(Boolean)
       : [];
-    if (!/^scanned item$/i.test(directTitle)) {
+    if (!isGenericVisionTitle(directTitle)) {
       recognition = {
         title: directTitle,
         category: normalizeItemCategory(
@@ -536,7 +545,7 @@ export async function processCapturedImage(
       visionError = "Object recognition returned no content";
     } else {
       const parsed = parseVisionContent(String(visionContent));
-      if (!parsed.title || /^scanned item$/i.test(parsed.title.trim())) {
+      if (!parsed.title || isGenericVisionTitle(parsed.title.trim())) {
         visionError = "Object recognition returned no usable title";
       } else {
         recognition = parsed;

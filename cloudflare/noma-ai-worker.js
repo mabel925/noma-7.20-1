@@ -150,6 +150,15 @@ function extractText(data) {
   );
 }
 
+function isGenericVisionTitle(value) {
+  const normalized = String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return /^(?:(?:scanned|detected|recognized|unknown|unidentified)\s+)?(?:item|items|object|objects)$/.test(normalized);
+}
+
 function parseVisionResult(content) {
   const trimmed = String(content || "").trim();
   if (!trimmed) throw new Error("Vision provider returned empty content");
@@ -175,7 +184,7 @@ function parseVisionResult(content) {
     ? parsed.labels.map((label) => String(label).trim()).filter(Boolean).slice(0, 8)
     : [];
 
-  if (!title || /^scanned item$/i.test(title)) {
+  if (!title || isGenericVisionTitle(title)) {
     throw new Error("Vision provider returned no usable title");
   }
   if (!ITEM_CATEGORIES.includes(category)) {
@@ -230,7 +239,7 @@ function isUpstreamTimeout(error) {
 async function vision(env, body) {
   if (!body.image_base64) return json({ error: "image_base64 is required" }, 400);
   const mimeType = body.mime_type || "image/jpeg";
-  const prompt = `Identify the main physical object. Choose exactly one category from this whitelist: ${ITEM_CATEGORIES.join(", ")}. Return only JSON: {"title":"short English name","category":"one whitelisted category","labels":["semantic tag"]}.`;
+  const prompt = `Identify the main physical object. The title must be a specific common English name for the visible object. Never use generic placeholders such as item, object, scanned item, scanned items, unknown item, or unidentified object. Choose exactly one category from this whitelist: ${ITEM_CATEGORIES.join(", ")}. Return only JSON: {"title":"specific short English object name","category":"one whitelisted category","labels":["semantic tag"]}.`;
   const failures = [];
   // Prefer Qwen for users in China. Gemini remains a fallback when Qwen is
   // unavailable or returns an invalid response.
@@ -413,7 +422,7 @@ export default {
     if (request.method === "GET") return json({
       ok: true,
       service: "noma-ai",
-      version: "13",
+      version: "14",
       capabilities: {
         vision: Boolean(env.QWEN_API_KEY || env.GEMINI_API_KEY),
         matting: Boolean(env.SHILIU_API_KEY || env.MATTING_API_KEY),
