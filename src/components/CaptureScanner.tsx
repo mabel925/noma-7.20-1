@@ -1882,8 +1882,13 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   useEffect(() => {
     if (!isOpen || !onCutoutComplete || storageFlowStep !== "none" || scanStep !== "done" || !traceCompleted || cutoutCompleteSentRef.current) return;
     cutoutCompleteSentRef.current = true;
+    // Recognition updates the ref and React state together, but the automatic
+    // camera flow can finish its animation before the state render commits.
+    // Use the synchronous prepared title so a valid result is never replaced
+    // by the fallback label at this handoff boundary.
+    const completedName = preparedTitleRef.current.trim() || customName.trim() || "Scanned Item";
     onCutoutComplete({
-      name: customName.trim() || "Scanned Item",
+      name: completedName,
       category: customCategory.trim() || "家居日用",
       stickerUrl: generatedStickerUrl || transparentCutoutUrl || undefined,
     });
