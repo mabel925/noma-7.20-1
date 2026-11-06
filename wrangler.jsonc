@@ -1,0 +1,10 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "noma",
+  "main": "cloudflare/noma-ai-worker.js",
+  "compatibility_date": "2026-11-04",
+  "keep_vars": true,
+  "placement": {
+    "mode": "smart"
+  }
+}
