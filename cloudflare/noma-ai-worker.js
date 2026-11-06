@@ -252,7 +252,7 @@ async function vision(env, body) {
         { type: "text", text: prompt },
       ], true, 12000, model);
       const result = parseVisionResult(extractText(data));
-      console.log(`[AiTiming] feature=vision provider=qwen model=${model} provider_ms=${Date.now() - providerStartedAt} total_ms=${Date.now() - visionStartedAt} outcome=success`);
+      console.log(`[AiTiming] feature=vision provider=qwen model=${model} provider_ms=${Date.now() - providerStartedAt} total_ms=${Date.now() - visionStartedAt} outcome=success accepted_title=${JSON.stringify(result.title)} category=${JSON.stringify(result.category)}`);
       return result;
     } catch (error) {
       const outcome = isUpstreamTimeout(error) ? "timeout" : "invalid";
@@ -270,7 +270,7 @@ async function vision(env, body) {
         { text: prompt },
       ], { jsonMode: true, timeoutMs: remainingMs });
       const result = parseVisionResult(extractText(data));
-      console.log(`[AiTiming] feature=vision provider=gemini provider_ms=${Date.now() - providerStartedAt} total_ms=${Date.now() - visionStartedAt} outcome=success`);
+      console.log(`[AiTiming] feature=vision provider=gemini provider_ms=${Date.now() - providerStartedAt} total_ms=${Date.now() - visionStartedAt} outcome=success accepted_title=${JSON.stringify(result.title)} category=${JSON.stringify(result.category)}`);
       return result;
     } catch (error) {
       console.log(`[AiTiming] feature=vision provider=gemini provider_ms=${Date.now() - providerStartedAt} total_ms=${Date.now() - visionStartedAt} outcome=failed error=${errorMessage(error).slice(0, 160)}`);
@@ -417,7 +417,7 @@ async function processImage(env, body) {
     }
   }
   const status = visionResult.ok || mattingResult.ok ? 200 : 502;
-  console.log(`[AiTiming] feature=process-image recognition_present=${Boolean(recognition)} matting_present=${Boolean(mattingResult.ok && mattingResult.data?.result_base64)}`);
+  console.log(`[AiTiming] feature=process-image recognition_present=${Boolean(recognition)} recognition_title=${JSON.stringify(recognition?.title || "")} matting_present=${Boolean(mattingResult.ok && mattingResult.data?.result_base64)}`);
   return json({ recognition, vision: visionResult, matting: mattingResult }, status);
 }
 
@@ -444,7 +444,7 @@ export default {
     if (request.method === "GET") return json({
       ok: true,
       service: "noma-ai",
-      version: "15",
+      version: "16",
       capabilities: {
         vision: Boolean(env.QWEN_API_KEY || env.GEMINI_API_KEY),
         matting: Boolean(env.SHILIU_API_KEY || env.MATTING_API_KEY),
