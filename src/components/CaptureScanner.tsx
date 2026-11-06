@@ -386,6 +386,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const [isOutlineTraceReady, setIsOutlineTraceReady] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const preparedTitleRef = useRef("");
+  const acceptedRecognitionTitleRef = useRef("");
   const classificationPromiseRef = useRef<Promise<void> | null>(null);
   const classificationRequestIdRef = useRef(0);
   const itemNameEditedRef = useRef(false);
@@ -696,6 +697,17 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     setCustomName(title);
   };
 
+  const commitRecognizedTitle = (title: string) => {
+    acceptedRecognitionTitleRef.current = title;
+    commitPreparedTitle(title);
+    console.log(`[RecognitionFlow] accepted_title=${JSON.stringify(title)}`);
+  };
+
+  const commitFallbackTitle = (title: string = "Scanned Item") => {
+    if (acceptedRecognitionTitleRef.current || itemNameEditedRef.current) return;
+    commitPreparedTitle(title);
+  };
+
   const getCoverLayoutFromDimensions = (sourceWidth?: number, sourceHeight?: number) => {
     if (!sourceWidth || !sourceHeight) return layout;
 
@@ -742,7 +754,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       if (!classificationSettled && !preparedTitleRef.current) {
         classificationRequestIdRef.current += 1;
         classificationPromiseRef.current = null;
-        commitPreparedTitle("Scanned Item");
+        commitFallbackTitle();
         setAiAccessNotice(
           isChinese
             ? "识物超时，已使用默认名称。"
@@ -1528,9 +1540,11 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         .replace(/^["'\s\.,!?#-（）()《》]+|["'\s\.,!?#-（）()《》]+$/g, "")
         .trim();
       const words = clean.split(/\s+/).filter(Boolean);
-      commitPreparedTitle(words.length > 2 ? words.slice(0, 2).join(" ") : clean || "Scanned Item");
+      const recognizedTitle = words.length > 2 ? words.slice(0, 2).join(" ") : clean;
+      if (recognizedTitle) commitRecognizedTitle(recognizedTitle);
+      else commitFallbackTitle();
     } else if (!itemNameEditedRef.current && !preparedTitleRef.current) {
-      commitPreparedTitle("Scanned Item");
+      commitFallbackTitle();
     }
     if (recognition?.category) {
       setTempIdentifiedCategory(recognition.category);
@@ -1843,6 +1857,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       setCustomName("");
       setCustomCategory("");
       preparedTitleRef.current = "";
+      acceptedRecognitionTitleRef.current = "";
       itemNameEditedRef.current = false;
       classificationPromiseRef.current = null;
       classificationRequestIdRef.current += 1;
@@ -1886,7 +1901,10 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     // camera flow can finish its animation before the state render commits.
     // Use the synchronous prepared title so a valid result is never replaced
     // by the fallback label at this handoff boundary.
-    const completedName = preparedTitleRef.current.trim() || customName.trim() || "Scanned Item";
+    const completedName = itemNameEditedRef.current
+      ? customName.trim() || "Scanned Item"
+      : acceptedRecognitionTitleRef.current.trim() || preparedTitleRef.current.trim() || customName.trim() || "Scanned Item";
+    console.log(`[RecognitionFlow] handoff_title=${JSON.stringify(completedName)} accepted_title=${JSON.stringify(acceptedRecognitionTitleRef.current)}`);
     onCutoutComplete({
       name: completedName,
       category: customCategory.trim() || "家居日用",
@@ -3080,6 +3098,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     const scanId = isPreset ? undefined : createAiScanId();
     const aiCaptureAccess = isPreset ? "available" : reserveAiCapture();
     itemNameEditedRef.current = false;
+    acceptedRecognitionTitleRef.current = "";
 
     if (isPreset) {
       classificationRequestIdRef.current += 1;
@@ -3096,7 +3115,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     } else {
       classificationRequestIdRef.current += 1;
       classificationPromiseRef.current = null;
-      commitPreparedTitle("Scanned Item");
+      commitFallbackTitle();
       setCustomCategory("家居日用");
       setTempIdentifiedCategory("");
       showPhotoThumbnailNotice(aiCaptureAccess);
@@ -3193,7 +3212,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
       if (result.title && !itemNameEditedRef.current) {
         const cleanTitle = cleanAndShortenTitle(result.title);
-        commitPreparedTitle(cleanTitle);
+        if (cleanTitle) commitRecognizedTitle(cleanTitle);
+        else throw new Error("Object recognition returned no usable title");
       } else if (!itemNameEditedRef.current) {
         throw new Error("Object recognition returned no title");
       }
@@ -3213,7 +3233,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       }
       console.warn("[Classifier] Handled exception or rate-limit in auto-recognize item:", err.message || err);
       if (requestId === classificationRequestIdRef.current && !itemNameEditedRef.current) {
-        commitPreparedTitle("Scanned Item");
+        commitFallbackTitle();
       }
     }
   };
@@ -3222,6 +3242,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     const requestId = classificationRequestIdRef.current + 1;
     classificationRequestIdRef.current = requestId;
     preparedTitleRef.current = "";
+    acceptedRecognitionTitleRef.current = "";
     itemNameEditedRef.current = false;
     const task = classifyUploadedImage(imageInput, originalFileName, requestId, scanId);
     classificationPromiseRef.current = task;
@@ -3288,6 +3309,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     setTempIdentifiedCategory("");
     setCustomName("");
     preparedTitleRef.current = "";
+    acceptedRecognitionTitleRef.current = "";
     itemNameEditedRef.current = false;
     classificationRequestIdRef.current += 1;
     classificationPromiseRef.current = null;
@@ -3331,10 +3353,11 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
         if (shouldUseAi) {
           preparedTitleRef.current = "";
+          acceptedRecognitionTitleRef.current = "";
           classificationRequestIdRef.current += 1;
           classificationPromiseRef.current = null;
         } else {
-          commitPreparedTitle("Scanned Item");
+          commitFallbackTitle();
           showPhotoThumbnailNotice(aiCaptureAccess === "quota" ? "quota" : "unavailable");
         }
 
@@ -3346,14 +3369,14 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         await runCombinedImagePipeline(file, b64, iw, ih, scanId!, processingPromise);
       };
       img.onerror = async () => {
-        commitPreparedTitle("Scanned Item");
+        commitFallbackTitle();
         calculateTargetScaleFromDimensions(500, 500);
         await completeWithPhotoThumbnail(b64, 500, 500);
       };
       img.src = b64;
     };
     reader.onerror = async () => {
-      commitPreparedTitle("Scanned Item");
+      commitFallbackTitle();
       calculateTargetScaleFromDimensions(500, 500);
       const previewUrl = URL.createObjectURL(file);
       try {

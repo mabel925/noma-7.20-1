@@ -1,5 +1,7 @@
 const DEFAULT_MATTING_ENDPOINT = "https://api.shiliuai.com/api/matting/v1";
-const DEFAULT_QWEN_ENDPOINT = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
+const DEFAULT_QWEN_ENDPOINT = "https://cn-beijing.maas.qianwenaiapi.com/compatible-mode/v1/chat/completions";
+const DEFAULT_QWEN_GLOBAL_ENDPOINT = "https://maas.qianwenaiapi.com/compatible-mode/v1/chat/completions";
+const DEFAULT_QWEN_MODEL = "qwen3.7-flash";
 
 const EMOJI_KEYS_BY_KIND = {
   item: ["laptop", "phone", "charger", "earphones", "camera", "battery", "gamepad", "tshirt", "pants", "shoes", "hat", "bag", "ring", "pill", "bandage", "thermometer", "glasses", "book", "pen", "scissors", "folder", "key", "umbrella", "tissues", "cosmetics", "perfume", "clock", "coffee", "cup", "utensils", "apple", "wrench", "hammer", "flashlight", "lock", "basketball", "guitar", "puzzle", "tent"],
@@ -36,6 +38,14 @@ function getSupabaseConfig(env) {
 function bearerToken(request) {
   const authorization = request.headers.get("authorization") || "";
   return authorization.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() || "";
+}
+
+function resolveQwenRoute(request, env) {
+  const continent = String(request.cf?.continent || "").toUpperCase();
+  const useBeijing = !continent || continent === "AS";
+  return useBeijing
+    ? { endpoint: env.QWEN_ENDPOINT || DEFAULT_QWEN_ENDPOINT, region: "beijing" }
+    : { endpoint: env.QWEN_GLOBAL_ENDPOINT || DEFAULT_QWEN_GLOBAL_ENDPOINT, region: "global" };
 }
 
 async function readSupabaseResponse(response) {
@@ -142,6 +152,56 @@ async function readJsonResponse(response, provider) {
   return data;
 }
 
+async function readOpenAiStream(response, provider) {
+  if (!response.ok) return readJsonResponse(response, provider);
+  if (!response.body) throw new Error(`${provider} returned an empty response body`);
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let content = "";
+  let completed = false;
+
+  const consumeLine = (line) => {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) return;
+    const payload = trimmed.slice(5).trim();
+    if (!payload) return;
+    if (payload === "[DONE]") {
+      completed = true;
+      return;
+    }
+
+    let chunk;
+    try {
+      chunk = JSON.parse(payload);
+    } catch {
+      throw new Error(`${provider} returned invalid streaming JSON`);
+    }
+    if (chunk?.error) {
+      throw new Error(`${provider} stream failed: ${String(chunk.error?.message || chunk.error).slice(0, 500)}`);
+    }
+    const delta = chunk?.choices?.[0]?.delta?.content;
+    if (typeof delta === "string") content += delta;
+  };
+
+  while (!completed) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+    const lines = buffer.split(/\r?\n/);
+    buffer = lines.pop() || "";
+    lines.forEach(consumeLine);
+    if (done) {
+      if (buffer) consumeLine(buffer);
+      break;
+    }
+  }
+
+  const trimmedContent = content.trim();
+  if (!trimmedContent) throw new Error(`${provider} returned empty streaming content`);
+  return { choices: [{ message: { content: trimmedContent } }] };
+}
+
 function extractText(data) {
   return (
     data?.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("").trim() ||
@@ -212,121 +272,83 @@ async function callGemini(env, parts, { jsonMode = false, imageMode = false, mod
   return readJsonResponse(response, "Gemini");
 }
 
-async function callQwen(env, content, jsonMode = false, timeoutMs = 12000, modelOverride = "") {
+async function callQwen(env, content, jsonMode = false, timeoutMs = 12000, modelOverride = "", endpointOverride = "") {
   if (!env.QWEN_API_KEY) throw new Error("QWEN_API_KEY is not configured");
-  const response = await fetchWithTimeout(env.QWEN_ENDPOINT || DEFAULT_QWEN_ENDPOINT, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.QWEN_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: modelOverride || env.QWEN_MODEL || "qwen-vl-plus",
-      messages: [{ role: "user", content }],
-      temperature: 0.15,
-      max_tokens: 160,
-      enable_thinking: false,
-      ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
-    }),
-  }, timeoutMs);
-  return readJsonResponse(response, "Qwen");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort("Upstream request timed out"), timeoutMs);
+  try {
+    const response = await fetch(endpointOverride || env.QWEN_ENDPOINT || DEFAULT_QWEN_ENDPOINT, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.QWEN_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: modelOverride || env.QWEN_MODEL || DEFAULT_QWEN_MODEL,
+        messages: [{ role: "user", content }],
+        temperature: 0.15,
+        max_completion_tokens: 160,
+        enable_thinking: false,
+        stream: true,
+        ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
+      }),
+      signal: controller.signal,
+    });
+    return await readOpenAiStream(response, "Qwen");
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error(`Qwen request timed out after ${timeoutMs} ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function isUpstreamTimeout(error) {
   return /timed out|timeout|abort/i.test(errorMessage(error));
 }
 
-async function vision(env, body) {
+async function vision(env, body, qwenRoute) {
   if (!body.image_base64) return json({ error: "image_base64 is required" }, 400);
   const mimeType = body.mime_type || "image/jpeg";
   const prompt = `Identify the main physical object. The title must be a specific common English name for the visible object. Never use generic placeholders such as item, object, scanned item, scanned items, unknown item, or unidentified object. Choose exactly one category from this whitelist: ${ITEM_CATEGORIES.join(", ")}. Return only JSON: {"title":"specific short English object name","category":"one whitelisted category","labels":["semantic tag"]}.`;
-  const failures = [];
   const visionStartedAt = Date.now();
   const dataUrl = `data:${mimeType};base64,${body.image_base64}`;
-  const model = env.QWEN_MODEL || "qwen-vl-plus";
-  const runQwen = async () => {
-    const providerStartedAt = Date.now();
-    try {
-      const data = await callQwen(env, [
-        { type: "image_url", image_url: { url: dataUrl } },
-        { type: "text", text: prompt },
-      ], true, 12000, model);
-      const result = parseVisionResult(extractText(data));
-      console.log(`[AiTiming] feature=vision provider=qwen model=${model} provider_ms=${Date.now() - providerStartedAt} total_ms=${Date.now() - visionStartedAt} outcome=success accepted_title=${JSON.stringify(result.title)} category=${JSON.stringify(result.category)}`);
-      return result;
-    } catch (error) {
-      const outcome = isUpstreamTimeout(error) ? "timeout" : "invalid";
-      console.log(`[AiTiming] feature=vision provider=qwen model=${model} provider_ms=${Date.now() - providerStartedAt} total_ms=${Date.now() - visionStartedAt} outcome=${outcome} error=${errorMessage(error).slice(0, 240)}`);
-      failures.push(`qwen: ${errorMessage(error)}`);
-      throw error;
-    }
-  };
-  const runGemini = async () => {
-    const providerStartedAt = Date.now();
-    const remainingMs = Math.max(1000, 12000 - (providerStartedAt - visionStartedAt));
-    try {
-      const data = await callGemini(env, [
-        { inlineData: { mimeType, data: body.image_base64 } },
-        { text: prompt },
-      ], { jsonMode: true, timeoutMs: remainingMs });
-      const result = parseVisionResult(extractText(data));
-      console.log(`[AiTiming] feature=vision provider=gemini provider_ms=${Date.now() - providerStartedAt} total_ms=${Date.now() - visionStartedAt} outcome=success accepted_title=${JSON.stringify(result.title)} category=${JSON.stringify(result.category)}`);
-      return result;
-    } catch (error) {
-      console.log(`[AiTiming] feature=vision provider=gemini provider_ms=${Date.now() - providerStartedAt} total_ms=${Date.now() - visionStartedAt} outcome=failed error=${errorMessage(error).slice(0, 160)}`);
-      failures.push(`gemini: ${errorMessage(error)}`);
-      throw error;
-    }
-  };
-
-  const qwenTask = runQwen();
-  const earlyQwen = await Promise.race([
-    qwenTask.then(
-      (result) => ({ state: "success", result }),
-      () => ({ state: "failed" }),
-    ),
-    new Promise((resolve) => setTimeout(() => resolve({ state: "pending" }), 5000)),
-  ]);
-  if (earlyQwen.state === "success") {
-    return json({ choices: [{ message: { content: JSON.stringify(earlyQwen.result) } }] });
-  }
-
-  console.log(`[AiTiming] feature=vision provider=gemini total_ms=${Date.now() - visionStartedAt} outcome=hedge_started qwen_state=${earlyQwen.state}`);
+  const model = env.QWEN_MODEL || DEFAULT_QWEN_MODEL;
+  const providerStartedAt = Date.now();
   try {
-    const result = earlyQwen.state === "pending"
-      ? await Promise.any([qwenTask, runGemini()])
-      : await runGemini();
+    const data = await callQwen(env, [
+      { type: "image_url", image_url: { url: dataUrl } },
+      { type: "text", text: prompt },
+    ], true, 12000, model, qwenRoute.endpoint);
+    const result = parseVisionResult(extractText(data));
+    console.log(`[AiTiming] feature=vision provider=qwen qwen_region=${qwenRoute.region} model=${model} stream=true provider_ms=${Date.now() - providerStartedAt} total_ms=${Date.now() - visionStartedAt} outcome=success accepted_title=${JSON.stringify(result.title)} category=${JSON.stringify(result.category)}`);
     return json({ choices: [{ message: { content: JSON.stringify(result) } }] });
-  } catch {
-    const timedOut = failures.some((failure) => isUpstreamTimeout(failure));
+  } catch (error) {
+    const timedOut = isUpstreamTimeout(error);
+    const outcome = timedOut ? "timeout" : "invalid";
+    console.log(`[AiTiming] feature=vision provider=qwen qwen_region=${qwenRoute.region} model=${model} stream=true provider_ms=${Date.now() - providerStartedAt} total_ms=${Date.now() - visionStartedAt} outcome=${outcome} error=${errorMessage(error).slice(0, 240)}`);
     return json({
-      error: `Vision providers failed: ${failures.join(" | ")}`,
+      error: `Qwen vision failed: ${errorMessage(error)}`,
       ...(timedOut ? { code: "VISION_TIMEOUT" } : {}),
     }, timedOut ? 504 : 502);
   }
 }
 
-async function title(env, body) {
+async function title(env, body, qwenRoute) {
   const sourceTitle = String(body.title || "").trim();
   if (!sourceTitle) return json({ error: "title is required" }, 400);
   const prompt = `Create one concise English storage label, maximum 4 words. Return only the label. Item: ${sourceTitle}; category: ${body.category || ""}; tags: ${(body.labels || []).join(", ")}.`;
-  const failures = [];
   try {
-    const data = await callGemini(env, [{ text: prompt }]);
+    const data = await callQwen(env, prompt, false, 12000, "", qwenRoute.endpoint);
     return json({ choices: [{ message: { content: extractText(data) || sourceTitle } }] });
   } catch (error) {
-    failures.push(errorMessage(error));
+    return json({ error: `Qwen title generation failed: ${errorMessage(error)}` }, 502);
   }
-  try {
-    const data = await callQwen(env, prompt);
-    return json({ choices: [{ message: { content: extractText(data) || sourceTitle } }] });
-  } catch (error) {
-    failures.push(errorMessage(error));
-  }
-  return json({ error: `Title providers failed: ${failures.join(" | ")}` }, 502);
 }
 
-async function classifyEmoji(env, body) {
+async function classifyEmoji(env, body, qwenRoute) {
   const sourceTitle = String(body.title || "").trim();
   const kind = String(body.kind || "item");
   const keys = EMOJI_KEYS_BY_KIND[kind];
@@ -334,21 +356,15 @@ async function classifyEmoji(env, body) {
   if (!keys) return json({ error: "kind must be item, sub-space, or parent-space" }, 400);
 
   const prompt = `You are Noma's storage classifier. Classify the user's ${kind} label. Choose exactly one icon_key from this whitelist: ${keys.join(", ")}. Return only JSON with this schema: {"title":"clean concise title in the user's language","category":"short category in the user's language","icon_key":"one whitelisted key"}. User label: ${sourceTitle}`;
-  const failures = [];
-  for (const provider of ["qwen", "gemini"]) {
-    try {
-      const data = provider === "qwen"
-        ? await callQwen(env, prompt, true)
-        : await callGemini(env, [{ text: prompt }], { jsonMode: true });
-      const content = extractText(data);
-      const parsed = JSON.parse(content.replace(/^```json\s*|\s*```$/g, ""));
-      if (!keys.includes(parsed.icon_key)) throw new Error("Provider returned an icon_key outside the whitelist");
-      return json({ title: String(parsed.title || sourceTitle), category: String(parsed.category || ""), icon_key: parsed.icon_key });
-    } catch (error) {
-      failures.push(`${provider}: ${errorMessage(error)}`);
-    }
+  try {
+    const data = await callQwen(env, prompt, true, 12000, "", qwenRoute.endpoint);
+    const content = extractText(data);
+    const parsed = JSON.parse(content.replace(/^```json\s*|\s*```$/g, ""));
+    if (!keys.includes(parsed.icon_key)) throw new Error("Qwen returned an icon_key outside the whitelist");
+    return json({ title: String(parsed.title || sourceTitle), category: String(parsed.category || ""), icon_key: parsed.icon_key });
+  } catch (error) {
+    return json({ error: `Qwen emoji classification failed: ${errorMessage(error)}` }, 502);
   }
-  return json({ error: `Emoji classification providers failed: ${failures.join(" | ")}` }, 502);
 }
 
 async function matting(env, body) {
@@ -394,13 +410,13 @@ async function responseResult(response) {
   };
 }
 
-async function processImage(env, body) {
+async function processImage(env, body, qwenRoute) {
   const visionBody = {
     ...body,
     image_base64: body.vision_image_base64 || body.image_base64,
   };
   const [visionResponse, mattingResponse] = await Promise.all([
-    vision(env, visionBody),
+    vision(env, visionBody, qwenRoute),
     matting(env, body),
   ]);
   const [visionResult, mattingResult] = await Promise.all([
@@ -444,9 +460,9 @@ export default {
     if (request.method === "GET") return json({
       ok: true,
       service: "noma-ai",
-      version: "16",
+      version: "18",
       capabilities: {
-        vision: Boolean(env.QWEN_API_KEY || env.GEMINI_API_KEY),
+        vision: Boolean(env.QWEN_API_KEY),
         matting: Boolean(env.SHILIU_API_KEY || env.MATTING_API_KEY),
       },
     });
@@ -504,10 +520,11 @@ export default {
       }
 
       const providerStartedAt = Date.now();
+      const qwenRoute = resolveQwenRoute(request, env);
       const response = body.type === "process-image"
-        ? await processImage(env, body)
+        ? await processImage(env, body, qwenRoute)
         : body.type === "vision"
-          ? await vision(env, body)
+          ? await vision(env, body, qwenRoute)
           : await matting(env, body);
       const providerMs = Date.now() - providerStartedAt;
       const totalMs = Date.now() - requestStartedAt;
@@ -524,8 +541,9 @@ export default {
           code: "AI_AUTH_REQUIRED",
         }, 401);
       }
-      if (body.type === "title") return title(env, body);
-      if (body.type === "emoji-classify") return classifyEmoji(env, body);
+      const qwenRoute = resolveQwenRoute(request, env);
+      if (body.type === "title") return title(env, body, qwenRoute);
+      if (body.type === "emoji-classify") return classifyEmoji(env, body, qwenRoute);
       return generateImage(env, body);
     }
 
