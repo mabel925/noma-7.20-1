@@ -6,24 +6,24 @@ export type StartupPreloadProgress = {
   total: number;
 };
 
-const IMAGE_ASSETS = [
+const CRITICAL_IMAGE_ASSETS = [
   "/startup.jpg",
   "/home-bg.jpg",
   "/home-logo.png",
   "/default-avatar.jpg",
   "/noma-fallback.png",
   "/assets/icon-emoji.png",
-  "/apple-touch-icon.png",
-  "/icons/icon-192.png",
-  "/icons/icon-512.png",
-  "/icons/noma-app-icon-180.png",
-  "/icons/noma-app-icon-192.png",
-  "/icons/noma-app-icon-512.png",
+];
+
+const CRITICAL_FONT_ASSETS = [
+  "/font/Alkatra-SemiBold.ttf",
+];
+
+const DEFERRED_IMAGE_ASSETS = [
   ...EMOJI_KEYS.map(emojiAsset),
 ];
 
-const FONT_ASSETS = [
-  "/font/Alkatra-SemiBold.ttf",
+const DEFERRED_FONT_ASSETS = [
   "/font/Zihun-Biantao.ttf",
 ];
 
@@ -51,7 +51,11 @@ const preloadFont = (url: string) => {
 };
 
 let startupPromise: Promise<void> | null = null;
-let startupProgress: StartupPreloadProgress = { loaded: 0, total: IMAGE_ASSETS.length + FONT_ASSETS.length + 1 };
+let deferredPromise: Promise<void> | null = null;
+let startupProgress: StartupPreloadProgress = {
+  loaded: 0,
+  total: CRITICAL_IMAGE_ASSETS.length + CRITICAL_FONT_ASSETS.length + 1,
+};
 const progressListeners = new Set<(progress: StartupPreloadProgress) => void>();
 
 const reportProgress = () => {
@@ -69,11 +73,14 @@ const completeOne = () => {
 export const preloadStartupAssets = () => {
   if (startupPromise) return startupPromise;
 
-  startupProgress = { loaded: 0, total: IMAGE_ASSETS.length + FONT_ASSETS.length + 1 };
+  startupProgress = {
+    loaded: 0,
+    total: CRITICAL_IMAGE_ASSETS.length + CRITICAL_FONT_ASSETS.length + 1,
+  };
   reportProgress();
   const tasks = [
-    ...IMAGE_ASSETS.map((url) => preloadImage(url).finally(completeOne)),
-    ...FONT_ASSETS.map((url) => preloadFont(url).finally(completeOne)),
+    ...CRITICAL_IMAGE_ASSETS.map((url) => preloadImage(url).finally(completeOne)),
+    ...CRITICAL_FONT_ASSETS.map((url) => preloadFont(url).finally(completeOne)),
     preloadPagNoma().then(() => undefined).catch(() => undefined).finally(completeOne),
   ];
   startupPromise = Promise.all(tasks).then(() => undefined);
@@ -87,3 +94,13 @@ export const subscribeStartupPreload = (listener: (progress: StartupPreloadProgr
 };
 
 export const getStartupPreloadProgress = () => startupProgress;
+
+export const preloadDeferredAssets = () => {
+  if (deferredPromise) return deferredPromise;
+  const tasks = [
+    ...DEFERRED_IMAGE_ASSETS.map(preloadImage),
+    ...DEFERRED_FONT_ASSETS.map(preloadFont),
+  ];
+  deferredPromise = Promise.all(tasks).then(() => undefined);
+  return deferredPromise;
+};

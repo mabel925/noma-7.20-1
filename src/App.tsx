@@ -23,7 +23,8 @@ import { MemoryList, MemoryItem } from "./components/MemoryList";
 import { CloseIcon } from "./components/CloseIcon";
 import { useAuth } from "./auth/AuthContext";
 import { isStandalonePwa, syncDisplayModeClasses } from "./utils/appViewport";
-import { preloadStartupAssets, subscribeStartupPreload } from "./services/startupPreload";
+import { preloadDeferredAssets, preloadStartupAssets, subscribeStartupPreload } from "./services/startupPreload";
+import { checkForAppUpdate } from "./services/appUpdate";
 
 const HOME_BACKGROUND_URL = "/home-bg.jpg";
 
@@ -183,7 +184,7 @@ const DEFAULT_MEMORIES: MemoryItem[] = [
 ];
 
 export default function App() {
-  const { user, requireAuth, openLogin } = useAuth();
+  const { user, authLoading, requireAuth, openLogin } = useAuth();
   const userRef = React.useRef(user);
   React.useEffect(() => {
     userRef.current = user;
@@ -197,9 +198,11 @@ export default function App() {
   const [isStandaloneMode, setIsStandaloneMode] = useState<boolean>(false);
   const launchStartedAtRef = React.useRef(performance.now());
   const [areStageAssetsReady, setAreStageAssetsReady] = useState(false);
-  const [areHomeChromeAssetsReady, setAreHomeChromeAssetsReady] = useState(false);
   const [areStartupAssetsReady, setAreStartupAssetsReady] = useState(false);
-  const [startupProgress, setStartupProgress] = useState(4);
+  const [startupAssetProgress, setStartupAssetProgress] = useState({ loaded: 0, total: 1 });
+  const [isVersionCheckReady, setIsVersionCheckReady] = useState(false);
+  const [isAuthGateReady, setIsAuthGateReady] = useState(!authLoading);
+  const [didStartupTimeout, setDidStartupTimeout] = useState(false);
   const [isHomeReady, setIsHomeReady] = useState(false);
   const handleHomeReady = React.useCallback(() => setAreStageAssetsReady(true), []);
   const openMemory = React.useCallback(() => {
@@ -211,18 +214,14 @@ export default function App() {
     let cancelled = false;
     const unsubscribe = subscribeStartupPreload(({ loaded, total }) => {
       if (cancelled) return;
-      const progress = total > 0 ? Math.round((loaded / total) * 92) + 4 : 96;
-      setStartupProgress(Math.min(96, progress));
+      setStartupAssetProgress({ loaded, total: Math.max(1, total) });
       if (loaded >= total) {
         setAreStartupAssetsReady(true);
-        setAreHomeChromeAssetsReady(true);
       }
     });
     void preloadStartupAssets().then(() => {
       if (!cancelled) {
-        setStartupProgress(96);
         setAreStartupAssetsReady(true);
-        setAreHomeChromeAssetsReady(true);
       }
     });
     return () => {
@@ -232,19 +231,45 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    void checkForAppUpdate().finally(() => {
+      if (!cancelled) setIsVersionCheckReady(true);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!authLoading) {
+      setIsAuthGateReady(true);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      console.warn("[Startup] Local auth restoration exceeded 2500ms; continuing startup.");
+      setIsAuthGateReady(true);
+    }, 2500);
+    return () => window.clearTimeout(timer);
+  }, [authLoading]);
+
+  useEffect(() => {
     if (isHomeReady) return;
-    const timer = window.setInterval(() => {
-      setStartupProgress((current) => {
-        if (areStageAssetsReady && areHomeChromeAssetsReady && areStartupAssetsReady) return 100;
-        const ceiling = areStartupAssetsReady
-          ? (areStageAssetsReady && areHomeChromeAssetsReady ? 100 : 98)
-          : 62;
-        const step = Math.max(0.6, (ceiling - current) * 0.075);
-        return Math.min(ceiling, current + step);
-      });
-    }, 140);
-    return () => window.clearInterval(timer);
-  }, [areHomeChromeAssetsReady, areStageAssetsReady, areStartupAssetsReady, isHomeReady]);
+    const timer = window.setTimeout(() => {
+      console.warn("[Startup] Critical startup tasks exceeded 10 seconds; entering the home fallback.");
+      setDidStartupTimeout(true);
+    }, 10000);
+    return () => window.clearTimeout(timer);
+  }, [isHomeReady]);
+
+  const startupProgress = React.useMemo(() => {
+    if (didStartupTimeout) return 100;
+    const assetRatio = Math.min(1, startupAssetProgress.loaded / startupAssetProgress.total);
+    return Math.min(100, Math.round(
+      4
+      + (isVersionCheckReady ? 12 : 0)
+      + (isAuthGateReady ? 14 : 0)
+      + assetRatio * 50
+      + (areStageAssetsReady ? 20 : 0),
+    ));
+  }, [areStageAssetsReady, didStartupTimeout, isAuthGateReady, isVersionCheckReady, startupAssetProgress]);
 
   useEffect(() => {
     const splash = document.getElementById("startup-splash");
@@ -258,28 +283,38 @@ export default function App() {
   }, [startupProgress]);
 
   useEffect(() => {
-    if (!areStageAssetsReady || !areHomeChromeAssetsReady || !areStartupAssetsReady) return;
-    setStartupProgress(100);
+    const criticalTasksReady = isVersionCheckReady
+      && isAuthGateReady
+      && areStartupAssetsReady
+      && areStageAssetsReady;
+    if (!criticalTasksReady && !didStartupTimeout) return;
     const elapsed = performance.now() - launchStartedAtRef.current;
     const timer = window.setTimeout(() => setIsHomeReady(true), Math.max(240, 650 - elapsed));
     return () => window.clearTimeout(timer);
-  }, [areHomeChromeAssetsReady, areStageAssetsReady, areStartupAssetsReady]);
-
-  useEffect(() => {
-    if (isHomeReady) return;
-    const warningTimer = window.setTimeout(() => {
-      console.warn("[Startup] Home resources are still loading after 12 seconds.");
-    }, 12000);
-    return () => window.clearTimeout(warningTimer);
-  }, [isHomeReady]);
+  }, [areStageAssetsReady, areStartupAssetsReady, didStartupTimeout, isAuthGateReady, isVersionCheckReady]);
 
   useEffect(() => {
     if (!isHomeReady) return;
+    document.documentElement.dataset.nomaHomeReady = "true";
+    window.dispatchEvent(new Event("noma-home-ready"));
     const splash = document.getElementById("startup-splash");
-    if (!splash) return;
-    splash.classList.add("is-hidden");
-    const removeTimer = window.setTimeout(() => splash.remove(), 380);
-    return () => window.clearTimeout(removeTimer);
+    splash?.classList.add("is-hidden");
+    const removeTimer = window.setTimeout(() => splash?.remove(), 380);
+    const preloadDeferred = () => void preloadDeferredAssets();
+    const idleWindow = window as unknown as {
+      requestIdleCallback?: Window["requestIdleCallback"];
+      cancelIdleCallback?: Window["cancelIdleCallback"];
+    };
+    const requestIdle = idleWindow.requestIdleCallback?.bind(window);
+    const cancelIdle = idleWindow.cancelIdleCallback?.bind(window);
+    const idleTimer = requestIdle
+      ? requestIdle(preloadDeferred, { timeout: 2500 })
+      : window.setTimeout(preloadDeferred, 500);
+    return () => {
+      window.clearTimeout(removeTimer);
+      if (requestIdle && cancelIdle) cancelIdle(idleTimer);
+      else window.clearTimeout(idleTimer);
+    };
   }, [isHomeReady]);
 
   const controls = useAnimation();
@@ -358,7 +393,7 @@ export default function App() {
     setHydratedUserId(null);
     setMemoryNextCursor(null);
     setHasMoreMemories(false);
-    if (!user) return () => { cancelled = true; };
+    if (!user || !isHomeReady) return () => { cancelled = true; };
     persistedMemorySnapshotsRef.current.delete(user.id);
     if (user.isMock) {
       setIsMemoryHydrated(true);
@@ -396,7 +431,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [user?.id, user?.isMock]);
+  }, [isHomeReady, user?.id, user?.isMock]);
 
   // Persist only the delta between local snapshots. Writes are serialized so
   // a slower, older request cannot finish after and overwrite a newer edit.

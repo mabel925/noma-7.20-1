@@ -94,6 +94,9 @@ const mapUser = (user: User | null): AuthUser | null => {
 export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
   const [user, setUser] = React.useState<AuthUser | null>(MOCK_AUTH_ENABLED ? MOCK_AUTH_USER : null);
   const [authLoading, setAuthLoading] = React.useState(!MOCK_AUTH_ENABLED);
+  const [isBackgroundStartupReady, setIsBackgroundStartupReady] = React.useState(
+    document.documentElement.dataset.nomaHomeReady === "true",
+  );
   const [aiAccess, setAiAccess] = React.useState<AiAccessSnapshot | null>(MOCK_AUTH_ENABLED ? MOCK_AI_ACCESS : null);
   const [aiAccessLoading, setAiAccessLoading] = React.useState(false);
   const [aiAccessUnavailable, setAiAccessUnavailable] = React.useState(false);
@@ -122,6 +125,13 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
   }, []);
 
   React.useEffect(() => {
+    if (isBackgroundStartupReady) return;
+    const handleHomeReady = () => setIsBackgroundStartupReady(true);
+    window.addEventListener("noma-home-ready", handleHomeReady, { once: true });
+    return () => window.removeEventListener("noma-home-ready", handleHomeReady);
+  }, [isBackgroundStartupReady]);
+
+  React.useEffect(() => {
     if (!user) {
       setAiAccess(null);
       setAiAccessLoading(false);
@@ -130,6 +140,12 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
     }
     if (user.isMock) {
       setAiAccess(MOCK_AI_ACCESS);
+      setAiAccessLoading(false);
+      setAiAccessUnavailable(false);
+      return;
+    }
+    if (!isBackgroundStartupReady) {
+      setAiAccess(null);
       setAiAccessLoading(false);
       setAiAccessUnavailable(false);
       return;
@@ -152,7 +168,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       })
       .catch((error) => {
         if (cancelled) return;
-        console.warn("[Auth] Unable to load AI access during app startup:", error);
+        console.warn("[Auth] Unable to refresh AI access in the background:", error);
         setAiAccess(null);
         setAiAccessUnavailable(true);
       })
@@ -163,7 +179,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
     return () => {
       cancelled = true;
     };
-  }, [user?.id, user?.isMock]);
+  }, [isBackgroundStartupReady, user?.id, user?.isMock]);
 
   const reserveAiScan = React.useCallback((): "available" | "quota" | "unavailable" => {
     if (!user) return "unavailable";

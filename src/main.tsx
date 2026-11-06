@@ -6,8 +6,10 @@ import { AuthProvider } from './auth/AuthContext';
 import { AuthDialog } from './components/AuthDialog';
 import { installAppViewportSync } from './utils/appViewport';
 import { preloadStartupAssets } from './services/startupPreload';
+import { checkForAppUpdate } from './services/appUpdate';
 
 installAppViewportSync();
+void checkForAppUpdate();
 void preloadStartupAssets();
 
 createRoot(document.getElementById('root')!).render(
@@ -18,14 +20,3 @@ createRoot(document.getElementById('root')!).render(
     </AuthProvider>
   </StrictMode>,
 );
-
-if (import.meta.env.PROD && "serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker
-      .register("/sw.js")
-      .then((registration) => registration.update())
-      .catch((error) => {
-        console.warn("[PWA] Service worker registration failed:", error);
-      });
-  });
-}
