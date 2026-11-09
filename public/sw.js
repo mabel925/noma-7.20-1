@@ -1,37 +1,50 @@
-const CACHE_NAME = "noma-app-v28";
+const BUILD_ID = "__NOMA_BUILD_ID__";
+const CACHE_NAME = `noma-app-${BUILD_ID}`;
+const LEGACY_REFRESH_MARKER = "noma-migration-recognition-title-v1";
 const APP_SHELL = [
   "/",
   "/manifest.json",
   "/apple-touch-icon.png",
-  "/icons/noma-app-icon-180.png",
-  "/icons/noma-app-icon-192.png",
-  "/icons/noma-app-icon-512.png",
   "/startup.jpg",
-  "/home-bg.jpg",
-  "/home-logo.png",
-  "/default-avatar.jpg",
-  "/noma-fallback.png",
-  "/assets/icon-emoji.png",
-  "/font/Alkatra-SemiBold.ttf",
-  "/font/Zihun-Biantao.ttf",
-  "/pag/noma.pag",
-  "/pag/libpag.wasm",
 ];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL))
+    caches
+      .open(CACHE_NAME)
+      .then((cache) => cache.addAll(APP_SHELL))
+      .then(() => self.skipWaiting())
   );
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches
-      .keys()
-      .then((keys) =>
-        Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))
-      )
+    (async () => {
+      const keys = await caches.keys();
+      const shouldRefreshLegacyClient =
+        keys.includes("noma-app-v28") && !keys.includes(LEGACY_REFRESH_MARKER);
+      await Promise.all(
+        keys
+          .filter((key) => key.startsWith("noma-app-") && key !== CACHE_NAME)
+          .map((key) => caches.delete(key)),
+      );
+      await self.clients.claim();
+
+      // Existing v28 clients do not listen for controller changes. Refresh
+      // them once so the recognition-title fix can take effect. The marker is
+      // kept outside the versioned app caches, so future releases use the
+      // normal startup update path below without a forced migration refresh.
+      if (shouldRefreshLegacyClient) {
+        await caches.open(LEGACY_REFRESH_MARKER);
+        const clients = await self.clients.matchAll({type: "window"});
+        await Promise.all(clients.map((client) => client.navigate(client.url)));
+      }
+    })()
   );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
 });
 
 self.addEventListener("fetch", (event) => {

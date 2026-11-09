@@ -1,11 +1,39 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import {readFileSync, writeFileSync} from 'node:fs';
 import path from 'path';
 import {defineConfig} from 'vite';
 
+const pwaBuildId = (
+  process.env.CF_PAGES_COMMIT_SHA ||
+  process.env.GITHUB_SHA ||
+  `local-${Date.now().toString(36)}`
+).slice(0, 16);
+
+const pwaVersionPlugin = () => ({
+  name: 'noma-pwa-version',
+  apply: 'build' as const,
+  closeBundle() {
+    const outputDirectory = path.resolve(__dirname, 'dist');
+    const serviceWorkerPath = path.join(outputDirectory, 'sw.js');
+    const serviceWorkerSource = readFileSync(serviceWorkerPath, 'utf8');
+    if (!serviceWorkerSource.includes('__NOMA_BUILD_ID__')) {
+      throw new Error('PWA service worker build placeholder is missing');
+    }
+    writeFileSync(
+      serviceWorkerPath,
+      serviceWorkerSource.replaceAll('__NOMA_BUILD_ID__', pwaBuildId),
+    );
+    writeFileSync(
+      path.join(outputDirectory, 'version.json'),
+      `${JSON.stringify({buildId: pwaBuildId})}\n`,
+    );
+  },
+});
+
 export default defineConfig(() => {
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), pwaVersionPlugin()],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
