@@ -95,6 +95,7 @@ interface CaptureScannerProps {
     subLocationImg?: string;
     subLocationHighlight?: { x: number; y: number };
   }) => void | Promise<void>;
+  onRecognitionComplete?: (result: { title: string; category: string }) => void;
   onCutoutComplete?: (result: { name: string; category: string; stickerUrl?: string }) => void;
   onSwitchToEmoji?: () => void;
   layer?: number;
@@ -269,6 +270,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   onClose,
   existingMemories = [],
   onItemAdded,
+  onRecognitionComplete,
   onCutoutComplete,
   onSwitchToEmoji,
   layer = 50,
@@ -1553,6 +1555,10 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
           title: recognizedTitle,
           category: recognizedCategory,
         };
+        onRecognitionComplete?.({
+          title: recognizedTitle,
+          category: recognizedCategory,
+        });
         if (onCutoutComplete || !itemNameEditedRef.current) {
           commitRecognizedTitle(recognizedTitle);
         }
