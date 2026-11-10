@@ -4,7 +4,7 @@ import { Camera, Check, Image as ImageIcon, RotateCcw } from "lucide-react";
 import { isApiEnabled, processCapturedImage, recognizeImage, type RecognitionResult } from "../services/aiService";
 import { remove_background } from "../services/removeBackgroundService";
 import { AiAccessError, createAiScanId } from "../services/aiAuth";
-import { createResolvedCaptureResult, isUsableCaptureTitle } from "../services/captureResult.js";
+import { createCaptureResult } from "../services/captureResult.js";
 import { MemoryItemLimitError } from "../services/memoryStorage";
 import { useAuth } from "../auth/AuthContext";
 import { motion, AnimatePresence } from "motion/react";
@@ -710,7 +710,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   };
 
   const commitFallbackTitle = (title: string = "Scanned Item") => {
-    if (onCutoutComplete || acceptedRecognitionTitleRef.current || itemNameEditedRef.current) return;
+    if (acceptedRecognitionTitleRef.current || itemNameEditedRef.current) return;
     commitPreparedTitle(title);
   };
 
@@ -1548,7 +1548,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         .trim();
       const words = clean.split(/\s+/).filter(Boolean);
       const recognizedTitle = words.length > 2 ? words.slice(0, 2).join(" ") : clean;
-      if (isUsableCaptureTitle(recognizedTitle)) {
+      if (recognizedTitle) {
         const recognizedCategory = recognition.category
           ? getLocalizedCategory(recognition.category)
           : "家居日用";
@@ -1600,43 +1600,43 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     scanId: string,
     processingPromise?: ReturnType<typeof processCapturedImage>,
   ) => {
+    let result: Awaited<ReturnType<typeof processCapturedImage>>;
     try {
       setAiProgress(isChinese ? "正在处理图片..." : "Processing image...");
-      const result = await (processingPromise || processCapturedImage(imageInput, scanId));
-      if (!result.recognition || !isUsableCaptureTitle(result.recognition.title)) {
-        throw new Error(result.visionError || "Object recognition returned no usable title");
-      }
-      applyRecognitionResult(result.recognition, result.visionError);
-      let stickerUrl: string;
-      if (!result.cutoutDataUrl) {
-        console.warn("[Pipeline] Matting failed in the combined request:", result.mattingError);
-        stickerUrl = await completeWithPhotoThumbnail(fallbackPreview, width, height);
-      } else {
-        try {
-          stickerUrl = await completeWithTransparentCutout(result.cutoutDataUrl, width, height);
-        } catch (error) {
-          console.warn("[Pipeline] Sticker rendering failed, preserving recognition with a photo thumbnail:", error);
-          stickerUrl = await completeWithPhotoThumbnail(fallbackPreview, width, height);
-        }
-      }
-      setResolvedCaptureResult(createResolvedCaptureResult({
-        title: result.recognition.title,
-        category: getLocalizedCategory(result.recognition.category),
-        stickerUrl,
-      }));
+      result = await (processingPromise || processCapturedImage(imageInput, scanId));
     } catch (error) {
       reportAiAccessError(error);
       const detail = error instanceof Error ? error.message : String(error);
       applyRecognitionResult(null, detail);
-      console.warn("[Pipeline] Combined image processing failed:", error);
-      if (onCutoutComplete) {
-        setAiProgress(null);
-        setIsCapturing(false);
-        setScanStep("viewport");
-        return;
-      }
-      await completeWithPhotoThumbnail(fallbackPreview, width, height);
+      console.warn("[Pipeline] Combined image request failed:", error);
+      const stickerUrl = await completeWithPhotoThumbnail(fallbackPreview, width, height);
+      setResolvedCaptureResult(createCaptureResult({
+        title: "",
+        category: "家居日用",
+        stickerUrl,
+      }));
+      return;
     }
+
+    applyRecognitionResult(result.recognition, result.visionError);
+    let stickerUrl: string;
+    try {
+      if (!result.cutoutDataUrl) {
+        console.warn("[Pipeline] Matting failed in the combined request:", result.mattingError);
+        stickerUrl = await completeWithPhotoThumbnail(fallbackPreview, width, height);
+      } else {
+        stickerUrl = await completeWithTransparentCutout(result.cutoutDataUrl, width, height);
+      }
+    } catch (error) {
+      console.warn("[Pipeline] Cutout rendering failed; preserving the recognition result:", error);
+      stickerUrl = await completeWithPhotoThumbnail(fallbackPreview, width, height);
+    }
+
+    setResolvedCaptureResult(createCaptureResult({
+      title: result.recognition?.title,
+      category: result.recognition?.category,
+      stickerUrl,
+    }));
   };
 
   // Pipeline execution orchestrator
@@ -1650,7 +1650,10 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       const isPreset = !uploadedImageUrl && !cameraActive;
       const pipelineBypassed = (transparentCutout === sourceUrl);
       if (pipelineBypassed && !isPreset) {
-        await completeWithPhotoThumbnail(sourceUrl, width || 500, height || 500);
+        const stickerUrl = await completeWithPhotoThumbnail(sourceUrl, width || 500, height || 500);
+        if (onCutoutComplete) {
+          setResolvedCaptureResult(createCaptureResult({ title: "", category: "家居日用", stickerUrl }));
+        }
         return;
       }
       
@@ -1673,9 +1676,9 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       calculateTargetScaleFromDimensions(iw, ih);
 
       const stickerUrl = await completeWithTransparentCutout(transparentCutout, iw, ih);
-      if (onCutoutComplete && isPreset) {
-        setResolvedCaptureResult(createResolvedCaptureResult({
-          title: activeItem.name,
+      if (onCutoutComplete) {
+        setResolvedCaptureResult(createCaptureResult({
+          title: isPreset ? activeItem.name : "",
           category: "家居日用",
           stickerUrl,
         }));
@@ -1688,7 +1691,14 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       let iw = width || 500;
       let ih = height || 500;
       calculateTargetScaleFromDimensions(iw, ih);
-      await completeWithPhotoThumbnail(sourceUrl, iw, ih);
+      const stickerUrl = await completeWithPhotoThumbnail(sourceUrl, iw, ih);
+      if (onCutoutComplete) {
+        setResolvedCaptureResult(createCaptureResult({
+          title: "",
+          category: "家居日用",
+          stickerUrl,
+        }));
+      }
     }
   };
 
@@ -1941,7 +1951,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   useEffect(() => {
     if (!isOpen || !onCutoutComplete || !resolvedCaptureResult || storageFlowStep !== "none" || scanStep !== "done" || !traceCompleted || cutoutCompleteSentRef.current) return;
     cutoutCompleteSentRef.current = true;
-    console.log(`[RecognitionFlow] handoff_title=${JSON.stringify(resolvedCaptureResult.name)} source=atomic_result`);
+    console.log(`[RecognitionFlow] handoff_title=${JSON.stringify(resolvedCaptureResult.name)} source=resolved_capture`);
     onCutoutComplete(resolvedCaptureResult);
   }, [isOpen, onCutoutComplete, resolvedCaptureResult, storageFlowStep, scanStep, traceCompleted]);
 
@@ -2727,7 +2737,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     }, 180);
   };
 
-  const startPhotoThumbnailTransition = async (sourceBaseUrl: string, width: number, height: number) => {
+  const startPhotoThumbnailTransition = async (sourceBaseUrl: string, width: number, height: number): Promise<string> => {
     setSkipScanEffects(true);
     setIsCapturing(true);
     setShutterFlash(true);
@@ -2739,7 +2749,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     setGeneratedStickerUrl(null);
     calculateTargetScaleFromDimensions(width, height);
     window.setTimeout(() => setShutterFlash(false), 180);
-    await completeWithPhotoThumbnail(sourceBaseUrl, width, height);
+    return completeWithPhotoThumbnail(sourceBaseUrl, width, height);
   };
 
   // Watcher: Monitor when both local AI cutout calculation resides, stage enters 'sticker', and white border trace is completed!
@@ -3153,7 +3163,10 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       setCustomCategory("家居日用");
       setTempIdentifiedCategory("");
       showPhotoThumbnailNotice(aiCaptureAccess);
-      await startPhotoThumbnailTransition(sourceBaseUrl, width, height);
+      const stickerUrl = await startPhotoThumbnailTransition(sourceBaseUrl, width, height);
+      if (onCutoutComplete) {
+        setResolvedCaptureResult(createCaptureResult({ title: "", category: "家居日用", stickerUrl }));
+      }
       return;
     }
 
@@ -3375,7 +3388,14 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
           setSkipScanEffects(false);
           setAiProgress(null);
 
-          await completeWithTransparentCutout(b64, iw, ih);
+          const stickerUrl = await completeWithTransparentCutout(b64, iw, ih);
+          if (onCutoutComplete) {
+            setResolvedCaptureResult(createCaptureResult({
+              title: fallbackTitle,
+              category: "家居日用",
+              stickerUrl,
+            }));
+          }
           return;
         }
 
@@ -3399,7 +3419,10 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         }
 
         if (!shouldUseAi) {
-          await startPhotoThumbnailTransition(b64, iw, ih);
+          const stickerUrl = await startPhotoThumbnailTransition(b64, iw, ih);
+          if (onCutoutComplete) {
+            setResolvedCaptureResult(createCaptureResult({ title: "", category: "家居日用", stickerUrl }));
+          }
           return;
         }
 
@@ -3408,7 +3431,10 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       img.onerror = async () => {
         commitFallbackTitle();
         calculateTargetScaleFromDimensions(500, 500);
-        await completeWithPhotoThumbnail(b64, 500, 500);
+        const stickerUrl = await completeWithPhotoThumbnail(b64, 500, 500);
+        if (onCutoutComplete) {
+          setResolvedCaptureResult(createCaptureResult({ title: "", category: "家居日用", stickerUrl }));
+        }
       };
       img.src = b64;
     };
@@ -3417,7 +3443,10 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       calculateTargetScaleFromDimensions(500, 500);
       const previewUrl = URL.createObjectURL(file);
       try {
-        await completeWithPhotoThumbnail(previewUrl, 500, 500);
+        const stickerUrl = await completeWithPhotoThumbnail(previewUrl, 500, 500);
+        if (onCutoutComplete) {
+          setResolvedCaptureResult(createCaptureResult({ title: "", category: "家居日用", stickerUrl }));
+        }
       } finally {
         URL.revokeObjectURL(previewUrl);
       }
