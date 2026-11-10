@@ -45,8 +45,8 @@ const DEFAULT_CONFIG: RemoveBgConfig = {
   },
   
   api: {
-    provider: "shiliu",
-    endpoint: "https://api.shiliuai.com/api/matting/v1",
+    provider: "picwish",
+    endpoint: "https://techsz.aoscdn.com/api/tasks/visual/segmentation",
     headers: {}
   }
 };
@@ -100,10 +100,10 @@ export function loadRemoveBgConfig(): RemoveBgConfig {
         local: { ...DEFAULT_CONFIG.local, ...parsed.local },
         api: { ...DEFAULT_CONFIG.api, ...parsed.api }
       };
-      // Migrate the retired Aliyun proxy configuration to the official Shiliu endpoint.
-      if (loadedConfig.api.endpoint?.includes("fcapp.run")) {
-        loadedConfig.api.provider = "shiliu";
-        loadedConfig.api.endpoint = "https://api.shiliuai.com/api/matting/v1";
+      // Provider selection lives in the Worker; keep stale browser metadata aligned.
+      if (loadedConfig.api.provider !== "picwish") {
+        loadedConfig.api.provider = "picwish";
+        loadedConfig.api.endpoint = "https://techsz.aoscdn.com/api/tasks/visual/segmentation";
       }
       return loadedConfig;
     }

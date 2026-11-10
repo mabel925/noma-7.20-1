@@ -103,3 +103,74 @@ test("vision uses the Qwen streaming multimodal contract", async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+test("matting uses the PicWish asynchronous task contract", async () => {
+  const originalFetch = globalThis.fetch;
+  const upstreamRequests = [];
+  const resultBytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+
+  globalThis.fetch = async (input, init = {}) => {
+    const url = String(input);
+    upstreamRequests.push({ url, init });
+
+    if (url.endsWith("/rest/v1/rpc/authorize_ai_scan")) {
+      return Response.json({ allowed: true, planCode: "free", limit: 10, remaining: 9 });
+    }
+    if (url === "https://techsz.aoscdn.com/api/tasks/visual/segmentation") {
+      assert.equal(init.method, "POST");
+      assert.equal(init.headers["X-API-KEY"], "test-picwish-key");
+      assert.ok(init.body instanceof FormData);
+      assert.equal(init.body.get("sync"), "0");
+      assert.equal(init.body.get("type"), "object");
+      assert.equal(init.body.get("return_type"), "1");
+      assert.equal(init.body.get("output_type"), "2");
+      assert.equal(init.body.get("crop"), "0");
+      assert.equal(init.body.get("format"), "png");
+      const imageFile = init.body.get("image_file");
+      assert.ok(imageFile instanceof Blob);
+      assert.equal(imageFile.type, "image/jpeg");
+      assert.equal(Buffer.from(await imageFile.arrayBuffer()).toString("utf8"), "test");
+      return Response.json({ status: 200, message: "success", data: { task_id: "picwish-task-1" } });
+    }
+    if (url === "https://techsz.aoscdn.com/api/tasks/visual/segmentation/picwish-task-1") {
+      assert.equal(init.headers["X-API-KEY"], "test-picwish-key");
+      return Response.json({
+        status: 200,
+        message: "success",
+        data: { task_id: "picwish-task-1", state: 1, progress: 100, image: "https://result.picwish.test/cutout.png" },
+      });
+    }
+    if (url === "https://result.picwish.test/cutout.png") {
+      return new Response(resultBytes, { status: 200, headers: { "Content-Type": "image/png" } });
+    }
+    throw new Error(`Unexpected upstream request: ${url}`);
+  };
+
+  try {
+    const response = await worker.fetch(new Request("https://noma.test/", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer test-user-token",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        type: "matting",
+        scan_id: "scan-matting-1",
+        mime_type: "image/jpeg",
+        image_base64: "dGVzdA==",
+      }),
+    }), {
+      PICWISH_API_KEY: "test-picwish-key",
+      SUPABASE_URL: "https://example.supabase.co",
+      SUPABASE_PUBLISHABLE_KEY: "test-supabase-key",
+    });
+
+    assert.equal(response.status, 200);
+    const data = await response.json();
+    assert.equal(data.provider, "picwish");
+    assert.deepEqual(Buffer.from(data.result_base64, "base64"), Buffer.from(resultBytes));
+    assert.equal(upstreamRequests.length, 4);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

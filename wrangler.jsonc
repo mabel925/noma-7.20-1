@@ -4,6 +4,12 @@
   "main": "cloudflare/noma-ai-worker.js",
   "compatibility_date": "2026-11-04",
   "keep_vars": true,
+  "vars": {
+    "QWEN_ENDPOINT": "https://cn-beijing.maas.qianwenaiapi.com/compatible-mode/v1/chat/completions",
+    "QWEN_MODEL": "qwen3.7-flash",
+    "SUPABASE_URL": "https://rthvexnnsebtfxcfpung.supabase.co",
+    "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_QBCoMyZvh6Px_3AFff_yTg_5BOpG8FY"
+  },
   "placement": {
     "mode": "smart"
   }

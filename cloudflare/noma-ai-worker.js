@@ -1,4 +1,7 @@
-const DEFAULT_MATTING_ENDPOINT = "https://api.shiliuai.com/api/matting/v1";
+const DEFAULT_PICWISH_ENDPOINT = "https://techsz.aoscdn.com/api/tasks/visual/segmentation";
+const PICWISH_POLL_INTERVAL_MS = 1000;
+const PICWISH_TOTAL_TIMEOUT_MS = 14000;
+const PICWISH_MAX_RESULT_BYTES = 8 * 1024 * 1024;
 const DEFAULT_QWEN_ENDPOINT = "https://cn-beijing.maas.qianwenaiapi.com/compatible-mode/v1/chat/completions";
 const DEFAULT_QWEN_GLOBAL_ENDPOINT = "https://maas.qianwenaiapi.com/compatible-mode/v1/chat/completions";
 const DEFAULT_QWEN_MODEL = "qwen3.7-flash";
@@ -151,6 +154,33 @@ async function readJsonResponse(response, provider) {
   }
   return data;
 }
+
+function base64ImageBlob(base64, mimeType = "image/jpeg") {
+  const normalized = String(base64 || "").replace(/^data:[^,]+,/, "").replace(/\s+/g, "");
+  const binary = atob(normalized);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return new Blob([bytes], { type: mimeType });
+}
+
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function picwishData(payload, operation) {
+  if (Number(payload?.status) !== 200) {
+    throw new Error(`${operation} failed: status=${payload?.status ?? "missing"} message=${payload?.message || "unknown error"}`);
+  }
+  return payload?.data || {};
+}
+
+const delay = (durationMs) => new Promise((resolve) => setTimeout(resolve, durationMs));
 
 async function readOpenAiStream(response, provider) {
   if (!response.ok) return readJsonResponse(response, provider);
@@ -369,27 +399,70 @@ async function classifyEmoji(env, body, qwenRoute) {
 
 async function matting(env, body) {
   if (!body.image_base64) return json({ error: "image_base64 is required" }, 400);
-  const mattingApiKey = env.SHILIU_API_KEY || env.MATTING_API_KEY;
-  if (!mattingApiKey) return json({ error: "SHILIU_API_KEY is not configured" }, 500);
+  const mattingApiKey = env.PICWISH_API_KEY;
+  if (!mattingApiKey) return json({ error: "PICWISH_API_KEY is not configured" }, 500);
   const providerStartedAt = Date.now();
   try {
-    const response = await fetchWithTimeout(env.MATTING_ENDPOINT || DEFAULT_MATTING_ENDPOINT, {
+    const endpoint = String(env.PICWISH_ENDPOINT || DEFAULT_PICWISH_ENDPOINT).replace(/\/+$/, "");
+    const upload = new FormData();
+    upload.set("sync", "0");
+    upload.set("type", "object");
+    upload.set("return_type", "1");
+    upload.set("output_type", "2");
+    upload.set("crop", "0");
+    upload.set("format", "png");
+    upload.set("image_file", base64ImageBlob(body.image_base64, body.mime_type || "image/jpeg"), "noma-capture.jpg");
+
+    const createResponse = await fetchWithTimeout(endpoint, {
       method: "POST",
       headers: {
-        APIKEY: mattingApiKey,
-        "Content-Type": "application/json",
+        "X-API-KEY": mattingApiKey,
       },
-      body: JSON.stringify({ mode: "sync", base64: body.image_base64, crop: 0 }),
-    }, 12000);
-    const data = await readJsonResponse(response, "Matting");
-    if (data.code !== undefined && Number(data.code) !== 0) {
-      throw new Error(`code=${data.code} message=${data.msg_cn || data.msg || "unknown error"}`);
+      body: upload,
+    }, 8000);
+    const createPayload = await readJsonResponse(createResponse, "PicWish create task");
+    const taskId = String(picwishData(createPayload, "PicWish create task").task_id || "").trim();
+    if (!taskId) throw new Error("PicWish create task returned no task_id");
+
+    const deadline = providerStartedAt + PICWISH_TOTAL_TIMEOUT_MS;
+    let resultUrl = "";
+    let pollCount = 0;
+    while (Date.now() < deadline) {
+      pollCount += 1;
+      const remainingMs = deadline - Date.now();
+      const pollResponse = await fetchWithTimeout(`${endpoint}/${encodeURIComponent(taskId)}`, {
+        headers: { "X-API-KEY": mattingApiKey },
+      }, Math.max(500, Math.min(5000, remainingMs)));
+      const pollPayload = await readJsonResponse(pollResponse, "PicWish query task");
+      const task = picwishData(pollPayload, "PicWish query task");
+      const state = Number(task.state);
+      if (state === 1) {
+        resultUrl = String(task.image || "").trim();
+        if (!resultUrl) throw new Error("PicWish completed task returned no image URL");
+        break;
+      }
+      if (state < 0) {
+        throw new Error(`PicWish task failed: state=${state} message=${pollPayload?.message || "unknown error"}`);
+      }
+      await delay(Math.min(PICWISH_POLL_INTERVAL_MS, Math.max(0, deadline - Date.now())));
     }
-    if (!data.result_base64) throw new Error("result_base64 is missing");
-    console.log(`[AiTiming] feature=matting provider=shiliu provider_ms=${Date.now() - providerStartedAt} outcome=success`);
-    return json(data);
+    if (!resultUrl) throw new Error(`PicWish task timed out after ${PICWISH_TOTAL_TIMEOUT_MS / 1000}s`);
+
+    const parsedResultUrl = new URL(resultUrl);
+    if (parsedResultUrl.protocol !== "https:") throw new Error("PicWish returned a non-HTTPS result URL");
+    const resultResponse = await fetchWithTimeout(parsedResultUrl.toString(), {}, Math.max(500, Math.min(5000, deadline - Date.now())));
+    if (!resultResponse.ok) throw new Error(`PicWish result download HTTP ${resultResponse.status}`);
+    const declaredLength = Number(resultResponse.headers.get("content-length") || 0);
+    if (declaredLength > PICWISH_MAX_RESULT_BYTES) throw new Error("PicWish result is too large");
+    const resultBuffer = await resultResponse.arrayBuffer();
+    if (!resultBuffer.byteLength || resultBuffer.byteLength > PICWISH_MAX_RESULT_BYTES) {
+      throw new Error(resultBuffer.byteLength ? "PicWish result is too large" : "PicWish result is empty");
+    }
+
+    console.log(`[AiTiming] feature=matting provider=picwish task_id=${taskId} polls=${pollCount} result_bytes=${resultBuffer.byteLength} provider_ms=${Date.now() - providerStartedAt} outcome=success`);
+    return json({ result_base64: arrayBufferToBase64(resultBuffer), provider: "picwish" });
   } catch (error) {
-    console.log(`[AiTiming] feature=matting provider=shiliu provider_ms=${Date.now() - providerStartedAt} outcome=failed error=${errorMessage(error).slice(0, 160)}`);
+    console.log(`[AiTiming] feature=matting provider=picwish provider_ms=${Date.now() - providerStartedAt} outcome=failed error=${errorMessage(error).slice(0, 160)}`);
     return json({ error: `Matting provider failed: ${errorMessage(error)}` }, 502);
   }
 }
@@ -460,10 +533,10 @@ export default {
     if (request.method === "GET") return json({
       ok: true,
       service: "noma-ai",
-      version: "18",
+      version: "19",
       capabilities: {
         vision: Boolean(env.QWEN_API_KEY),
-        matting: Boolean(env.SHILIU_API_KEY || env.MATTING_API_KEY),
+        matting: Boolean(env.PICWISH_API_KEY),
       },
     });
     if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
