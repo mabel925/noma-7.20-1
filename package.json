@@ -9,7 +9,7 @@
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test:worker": "node --test cloudflare/noma-ai-worker.test.mjs"
+    "test:worker": "node --test cloudflare/noma-ai-worker.test.mjs tests/capture-result.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",

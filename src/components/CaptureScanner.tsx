@@ -4,6 +4,7 @@ import { Camera, Check, Image as ImageIcon, RotateCcw } from "lucide-react";
 import { isApiEnabled, processCapturedImage, recognizeImage, type RecognitionResult } from "../services/aiService";
 import { remove_background } from "../services/removeBackgroundService";
 import { AiAccessError, createAiScanId } from "../services/aiAuth";
+import { createResolvedCaptureResult, isUsableCaptureTitle } from "../services/captureResult.js";
 import { MemoryItemLimitError } from "../services/memoryStorage";
 import { useAuth } from "../auth/AuthContext";
 import { motion, AnimatePresence } from "motion/react";
@@ -95,7 +96,6 @@ interface CaptureScannerProps {
     subLocationImg?: string;
     subLocationHighlight?: { x: number; y: number };
   }) => void | Promise<void>;
-  onRecognitionComplete?: (result: { title: string; category: string }) => void;
   onCutoutComplete?: (result: { name: string; category: string; stickerUrl?: string }) => void;
   onSwitchToEmoji?: () => void;
   layer?: number;
@@ -270,7 +270,6 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   onClose,
   existingMemories = [],
   onItemAdded,
-  onRecognitionComplete,
   onCutoutComplete,
   onSwitchToEmoji,
   layer = 50,
@@ -380,6 +379,11 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
   const [customName, setCustomName] = useState<string>("");
   const [customCategory, setCustomCategory] = useState<string>("");
+  const [resolvedCaptureResult, setResolvedCaptureResult] = useState<{
+    name: string;
+    category: string;
+    stickerUrl?: string;
+  } | null>(null);
   const [tempIdentifiedCategory, setTempIdentifiedCategory] = useState<string>("");
   const [isCategorySelectorOpen, setIsCategorySelectorOpen] = useState<boolean>(false);
   const [isColorBlurReady, setIsColorBlurReady] = useState<boolean>(false);
@@ -389,7 +393,6 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const preparedTitleRef = useRef("");
   const acceptedRecognitionTitleRef = useRef("");
-  const confirmedScanResultRef = useRef<{ title: string; category: string } | null>(null);
   const classificationPromiseRef = useRef<Promise<void> | null>(null);
   const classificationRequestIdRef = useRef(0);
   const itemNameEditedRef = useRef(false);
@@ -707,7 +710,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   };
 
   const commitFallbackTitle = (title: string = "Scanned Item") => {
-    if (acceptedRecognitionTitleRef.current || itemNameEditedRef.current) return;
+    if (onCutoutComplete || acceptedRecognitionTitleRef.current || itemNameEditedRef.current) return;
     commitPreparedTitle(title);
   };
 
@@ -904,7 +907,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     });
   };
 
-  const completeWithPhotoThumbnail = async (imageSrc: string, width: number, height: number) => {
+  const completeWithPhotoThumbnail = async (imageSrc: string, width: number, height: number): Promise<string> => {
     const thumbnailSticker = await generatePhotoThumbnailSticker(imageSrc);
     setAlignedCutoutUrl(thumbnailSticker);
     setFlightCutoutUrl(thumbnailSticker);
@@ -914,6 +917,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     setTraceCompleted(false);
     await beginCutoutTransition(width, height, null, true);
     setAiProgress("Done");
+    return thumbnailSticker;
   };
 
   type CutoutBounds = {
@@ -1544,21 +1548,10 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         .trim();
       const words = clean.split(/\s+/).filter(Boolean);
       const recognizedTitle = words.length > 2 ? words.slice(0, 2).join(" ") : clean;
-      if (recognizedTitle) {
+      if (isUsableCaptureTitle(recognizedTitle)) {
         const recognizedCategory = recognition.category
           ? getLocalizedCategory(recognition.category)
           : "家居日用";
-        // Keep the API result independent from transient React display state.
-        // Matting and animation fallbacks may replace the image, but must not
-        // replace a title already confirmed for this scan.
-        confirmedScanResultRef.current = {
-          title: recognizedTitle,
-          category: recognizedCategory,
-        };
-        onRecognitionComplete?.({
-          title: recognizedTitle,
-          category: recognizedCategory,
-        });
         if (onCutoutComplete || !itemNameEditedRef.current) {
           commitRecognizedTitle(recognizedTitle);
         }
@@ -1585,7 +1578,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     transparentCutout: string,
     width: number,
     height: number,
-  ) => {
+  ): Promise<string> => {
     calculateTargetScaleFromDimensions(width, height);
     const assets = await generateStickerAssets(transparentCutout);
     setAlignedCutoutUrl(null);
@@ -1596,6 +1589,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     setTraceCompleted(false);
     await beginCutoutTransition(width, height, assets.bounds);
     setAiProgress("Done");
+    return assets.finalSticker;
   };
 
   const runCombinedImagePipeline = async (
@@ -1609,18 +1603,38 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     try {
       setAiProgress(isChinese ? "正在处理图片..." : "Processing image...");
       const result = await (processingPromise || processCapturedImage(imageInput, scanId));
+      if (!result.recognition || !isUsableCaptureTitle(result.recognition.title)) {
+        throw new Error(result.visionError || "Object recognition returned no usable title");
+      }
       applyRecognitionResult(result.recognition, result.visionError);
+      let stickerUrl: string;
       if (!result.cutoutDataUrl) {
         console.warn("[Pipeline] Matting failed in the combined request:", result.mattingError);
-        await completeWithPhotoThumbnail(fallbackPreview, width, height);
-        return;
+        stickerUrl = await completeWithPhotoThumbnail(fallbackPreview, width, height);
+      } else {
+        try {
+          stickerUrl = await completeWithTransparentCutout(result.cutoutDataUrl, width, height);
+        } catch (error) {
+          console.warn("[Pipeline] Sticker rendering failed, preserving recognition with a photo thumbnail:", error);
+          stickerUrl = await completeWithPhotoThumbnail(fallbackPreview, width, height);
+        }
       }
-      await completeWithTransparentCutout(result.cutoutDataUrl, width, height);
+      setResolvedCaptureResult(createResolvedCaptureResult({
+        title: result.recognition.title,
+        category: getLocalizedCategory(result.recognition.category),
+        stickerUrl,
+      }));
     } catch (error) {
       reportAiAccessError(error);
       const detail = error instanceof Error ? error.message : String(error);
       applyRecognitionResult(null, detail);
       console.warn("[Pipeline] Combined image processing failed:", error);
+      if (onCutoutComplete) {
+        setAiProgress(null);
+        setIsCapturing(false);
+        setScanStep("viewport");
+        return;
+      }
       await completeWithPhotoThumbnail(fallbackPreview, width, height);
     }
   };
@@ -1658,7 +1672,14 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       // 1. Calculate target scale synchronously and trigger instant transition
       calculateTargetScaleFromDimensions(iw, ih);
 
-      await completeWithTransparentCutout(transparentCutout, iw, ih);
+      const stickerUrl = await completeWithTransparentCutout(transparentCutout, iw, ih);
+      if (onCutoutComplete && isPreset) {
+        setResolvedCaptureResult(createResolvedCaptureResult({
+          title: activeItem.name,
+          category: "家居日用",
+          stickerUrl,
+        }));
+      }
 
     } catch (e) {
       reportAiAccessError(e);
@@ -1880,7 +1901,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       setCustomCategory("");
       preparedTitleRef.current = "";
       acceptedRecognitionTitleRef.current = "";
-      confirmedScanResultRef.current = null;
+      setResolvedCaptureResult(null);
       itemNameEditedRef.current = false;
       classificationPromiseRef.current = null;
       classificationRequestIdRef.current += 1;
@@ -1918,24 +1939,11 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   }, [isOpen]);
 
   useEffect(() => {
-    if (!isOpen || !onCutoutComplete || storageFlowStep !== "none" || scanStep !== "done" || !traceCompleted || cutoutCompleteSentRef.current) return;
+    if (!isOpen || !onCutoutComplete || !resolvedCaptureResult || storageFlowStep !== "none" || scanStep !== "done" || !traceCompleted || cutoutCompleteSentRef.current) return;
     cutoutCompleteSentRef.current = true;
-    // Recognition updates the ref and React state together, but the automatic
-    // camera flow can finish its animation before the state render commits.
-    // Use the synchronous prepared title so a valid result is never replaced
-    // by the fallback label at this handoff boundary.
-    const confirmedScanResult = confirmedScanResultRef.current;
-    const completedName = confirmedScanResult?.title || (itemNameEditedRef.current
-      ? customName.trim() || "Scanned Item"
-      : acceptedRecognitionTitleRef.current.trim() || preparedTitleRef.current.trim() || customName.trim() || "Scanned Item");
-    const completedCategory = confirmedScanResult?.category || customCategory.trim() || "家居日用";
-    console.log(`[RecognitionFlow] handoff_title=${JSON.stringify(completedName)} accepted_title=${JSON.stringify(acceptedRecognitionTitleRef.current)} confirmed_title=${JSON.stringify(confirmedScanResult?.title || "")}`);
-    onCutoutComplete({
-      name: completedName,
-      category: completedCategory,
-      stickerUrl: generatedStickerUrl || transparentCutoutUrl || undefined,
-    });
-  }, [isOpen, onCutoutComplete, storageFlowStep, scanStep, traceCompleted, customName, customCategory, generatedStickerUrl, transparentCutoutUrl]);
+    console.log(`[RecognitionFlow] handoff_title=${JSON.stringify(resolvedCaptureResult.name)} source=atomic_result`);
+    onCutoutComplete(resolvedCaptureResult);
+  }, [isOpen, onCutoutComplete, resolvedCaptureResult, storageFlowStep, scanStep, traceCompleted]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -3124,7 +3132,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     const aiCaptureAccess = isPreset ? "available" : reserveAiCapture();
     itemNameEditedRef.current = false;
     acceptedRecognitionTitleRef.current = "";
-    confirmedScanResultRef.current = null;
+    setResolvedCaptureResult(null);
 
     if (isPreset) {
       classificationRequestIdRef.current += 1;
@@ -3269,7 +3277,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     classificationRequestIdRef.current = requestId;
     preparedTitleRef.current = "";
     acceptedRecognitionTitleRef.current = "";
-    confirmedScanResultRef.current = null;
+    setResolvedCaptureResult(null);
     itemNameEditedRef.current = false;
     const task = classifyUploadedImage(imageInput, originalFileName, requestId, scanId);
     classificationPromiseRef.current = task;
@@ -3337,7 +3345,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     setCustomName("");
     preparedTitleRef.current = "";
     acceptedRecognitionTitleRef.current = "";
-    confirmedScanResultRef.current = null;
+    setResolvedCaptureResult(null);
     itemNameEditedRef.current = false;
     classificationRequestIdRef.current += 1;
     classificationPromiseRef.current = null;
@@ -3382,7 +3390,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         if (shouldUseAi) {
           preparedTitleRef.current = "";
           acceptedRecognitionTitleRef.current = "";
-          confirmedScanResultRef.current = null;
+          setResolvedCaptureResult(null);
           classificationRequestIdRef.current += 1;
           classificationPromiseRef.current = null;
         } else {

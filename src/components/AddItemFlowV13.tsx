@@ -44,7 +44,6 @@ interface AddItemFlowV13Props {
 const EMPTY_ITEM: DraftEntity = { name: "", iconKey: "box", category: "家居日用" };
 const EMPTY_SUB: DraftEntity = { name: "", iconKey: "box", category: "子级空间" };
 const EMPTY_PARENT: DraftEntity = { name: "", iconKey: "home", category: "父级空间" };
-const isGenericScanTitle = (title: string) => /^(?:scanned\s+)?items?$/i.test(title.trim());
 const CATEGORY_FAN_POSITIONS = [
   { x: -134, y: -248, rotate: -8 },
   { x: 138, y: -196, rotate: 8 },
@@ -1544,16 +1543,8 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
             }))}
             onClose={onClose}
             onSwitchToEmoji={() => changeItemMode("emoji")}
-            onRecognitionComplete={({ title, category }) => {
-              setItem((current) => ({ ...current, name: title, category }));
-            }}
             onCutoutComplete={({ name, category, stickerUrl }) => {
-              setItem((current) => ({
-                ...current,
-                name: isGenericScanTitle(name) && current.name.trim() ? current.name : name,
-                category: isGenericScanTitle(name) && current.name.trim() ? current.category : category,
-                imageUrl: stickerUrl,
-              }));
+              setItem((current) => ({ ...current, name, category, imageUrl: stickerUrl }));
               setIsItemReveal(false);
               setIsActionReveal(true);
               setStage("识别emoji");
