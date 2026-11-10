@@ -15,6 +15,9 @@ export type AuthUser = {
 export const DEFAULT_AVATAR_URL = "/default-avatar.jpg";
 
 const MOCK_AUTH_ENABLED = import.meta.env.DEV && new URLSearchParams(window.location.search).get("mockAuth") === "1";
+const LOCAL_OTP_BYPASS_ENABLED = import.meta.env.DEV
+  && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+const LOCAL_OTP_CODE = "000000";
 const MOCK_AUTH_USER: AuthUser = {
   id: "00000000-0000-4000-8000-000000000001",
   email: "preview@noma.local",
@@ -44,42 +47,13 @@ type AuthContextValue = {
   requireAuth: (action?: () => void) => boolean;
   openLogin: () => void;
   closeLogin: () => void;
-  requestOtp: (email: string, displayName?: string) => Promise<void>;
-  verifyOtp: (email: string, token: string, displayName?: string) => Promise<void>;
+  updateDisplayName: (displayName: string) => Promise<void>;
+  requestOtp: (email: string) => Promise<void>;
+  verifyOtp: (email: string, token: string) => Promise<void>;
   signOut: () => Promise<void>;
 };
 
 const AuthContext = React.createContext<AuthContextValue | null>(null);
-
-export const USERNAME_CONFLICT_MESSAGE = "该用户名已存在了";
-
-const normalizeDisplayName = (value?: string) => value?.trim().replace(/\s+/g, " ") || "";
-
-const assertDisplayNameAvailable = async (displayName: string, email: string) => {
-  const normalizedName = normalizeDisplayName(displayName);
-  if (!normalizedName) return;
-
-  const { data, error } = await supabase.rpc("check_display_name_available", {
-    candidate_name: normalizedName,
-    candidate_email: email.trim().toLowerCase(),
-  });
-  // Older deployments may not have the optional username RPC yet. Keep auth
-  // usable until the migration is applied, while enforcing it once available.
-  if (error) {
-    if (
-      error.code === "42883" ||
-      error.code === "PGRST202" ||
-      /function .* does not exist|could not find .*function/i.test(error.message || "")
-    ) {
-      console.warn("[Auth] Username availability RPC is not installed yet.");
-      return;
-    }
-    throw error;
-  }
-  if (data === false || data?.available === false) {
-    throw new Error(USERNAME_CONFLICT_MESSAGE);
-  }
-};
 
 const mapUser = (user: User | null): AuthUser | null => {
   if (!user?.id || !user.email) return null;
@@ -93,7 +67,7 @@ const mapUser = (user: User | null): AuthUser | null => {
 
 export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
   const [user, setUser] = React.useState<AuthUser | null>(MOCK_AUTH_ENABLED ? MOCK_AUTH_USER : null);
-  const [authLoading, setAuthLoading] = React.useState(!MOCK_AUTH_ENABLED);
+  const [authLoading, setAuthLoading] = React.useState(!(MOCK_AUTH_ENABLED || LOCAL_OTP_BYPASS_ENABLED));
   const [isBackgroundStartupReady, setIsBackgroundStartupReady] = React.useState(
     document.documentElement.dataset.nomaHomeReady === "true",
   );
@@ -104,7 +78,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
   const pendingActionRef = React.useRef<(() => void) | null>(null);
 
   React.useEffect(() => {
-    if (MOCK_AUTH_ENABLED) return;
+    if (MOCK_AUTH_ENABLED || LOCAL_OTP_BYPASS_ENABLED) return;
     let mounted = true;
     supabase.auth.getSession().then(({ data }) => {
       if (!mounted) return;
@@ -212,50 +186,82 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
     return false;
   }, [user]);
 
-  const requestOtp = React.useCallback(async (email: string, displayName?: string) => {
+  const updateDisplayName = React.useCallback(async (displayName: string) => {
+    const normalizedName = displayName.trim().replace(/\s+/g, " ");
+    if (!normalizedName) throw new Error("Name cannot be empty.");
+    if (!user || user.isMock) {
+      if (user?.isMock) {
+        setUser((current) => current ? { ...current, displayName: normalizedName } : current);
+        return;
+      }
+      throw new Error("Please sign in before editing your name.");
+    }
+
+    const { data: isAvailable, error: availabilityError } = await supabase.rpc("check_display_name_available", {
+      candidate_name: normalizedName,
+      candidate_email: user.email,
+    });
+    if (availabilityError) throw availabilityError;
+    if (isAvailable === false || isAvailable?.available === false) {
+      throw new Error("This name is already in use.");
+    }
+
+    const { error: metadataError } = await supabase.auth.updateUser({
+      data: { display_name: normalizedName },
+    });
+    if (metadataError) throw metadataError;
+
+    const { error: profileError } = await supabase.rpc("bootstrap_my_account", {
+      preferred_display_name: normalizedName,
+    });
+    if (profileError) {
+      await supabase.auth.updateUser({ data: { display_name: user.displayName } });
+      throw profileError;
+    }
+
+    setUser((current) => current ? { ...current, displayName: normalizedName } : current);
+  }, [user]);
+
+  const requestOtp = React.useCallback(async (email: string) => {
     const normalizedEmail = email.trim().toLowerCase();
-    const normalizedName = normalizeDisplayName(displayName);
-    await assertDisplayNameAvailable(normalizedName, normalizedEmail);
+    if (LOCAL_OTP_BYPASS_ENABLED) return;
+
     const { error } = await supabase.auth.signInWithOtp({
       email: normalizedEmail,
       options: {
         shouldCreateUser: true,
-        data: normalizedName ? { display_name: normalizedName } : undefined,
       },
     });
-    if (error) {
-      if (/duplicate|already exists|already registered|display.?name|username/i.test(error.message || "")) {
-        throw new Error(USERNAME_CONFLICT_MESSAGE);
-      }
-      throw error;
-    }
+    if (error) throw error;
   }, []);
 
-  const verifyOtp = React.useCallback(async (email: string, token: string, displayName?: string) => {
+  const verifyOtp = React.useCallback(async (email: string, token: string) => {
     const normalizedEmail = email.trim().toLowerCase();
-    const { data, error } = await supabase.auth.verifyOtp({
+    if (LOCAL_OTP_BYPASS_ENABLED) {
+      if (token.trim() !== LOCAL_OTP_CODE) {
+        throw new Error("Use 000000 for local testing.");
+      }
+
+      setUser({
+        ...MOCK_AUTH_USER,
+        email: normalizedEmail,
+        displayName: normalizedEmail.split("@")[0] || "Noma Test User",
+      });
+      const pendingAction = pendingActionRef.current;
+      pendingActionRef.current = null;
+      setIsLoginOpen(false);
+      window.setTimeout(() => pendingAction?.(), 0);
+      return;
+    }
+
+    const { error } = await supabase.auth.verifyOtp({
       email: normalizedEmail,
       token: token.trim(),
       type: "email",
     });
     if (error) throw error;
 
-    if (data.user && displayName?.trim()) {
-      await assertDisplayNameAvailable(displayName, normalizedEmail);
-      const { error: updateError } = await supabase.auth.updateUser({
-        data: { display_name: normalizeDisplayName(displayName) },
-      });
-      if (updateError) {
-        if (/duplicate|already exists|already registered|display.?name|username/i.test(updateError.message || "")) {
-          throw new Error(USERNAME_CONFLICT_MESSAGE);
-        }
-        throw updateError;
-      }
-    }
-
-    const { error: bootstrapError } = await supabase.rpc("bootstrap_my_account", {
-      preferred_display_name: normalizeDisplayName(displayName),
-    });
+    const { error: bootstrapError } = await supabase.rpc("bootstrap_my_account");
     if (bootstrapError) throw bootstrapError;
 
     const pendingAction = pendingActionRef.current;
@@ -267,7 +273,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
   const signOut = React.useCallback(async () => {
     pendingActionRef.current = null;
     await mediaStorage.clearReadSession();
-    if (!MOCK_AUTH_ENABLED) await supabase.auth.signOut();
+    if (!MOCK_AUTH_ENABLED && !LOCAL_OTP_BYPASS_ENABLED) await supabase.auth.signOut();
     setUser(null);
   }, []);
 
@@ -283,6 +289,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       requireAuth,
       openLogin,
       closeLogin,
+      updateDisplayName,
       requestOtp,
       verifyOtp,
       signOut,
@@ -298,6 +305,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       requireAuth,
       openLogin,
       closeLogin,
+      updateDisplayName,
       requestOtp,
       verifyOtp,
       signOut,
