@@ -43,6 +43,7 @@ type AuthContextValue = {
   aiAccessLoading: boolean;
   aiAccessUnavailable: boolean;
   isLoginOpen: boolean;
+  authDialogMode: "login" | "account";
   reserveAiScan: () => "available" | "quota" | "unavailable";
   requireAuth: (action?: () => void) => boolean;
   openLogin: () => void;
@@ -75,6 +76,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
   const [aiAccessLoading, setAiAccessLoading] = React.useState(false);
   const [aiAccessUnavailable, setAiAccessUnavailable] = React.useState(false);
   const [isLoginOpen, setIsLoginOpen] = React.useState(false);
+  const [authDialogMode, setAuthDialogMode] = React.useState<"login" | "account">("login");
   const pendingActionRef = React.useRef<(() => void) | null>(null);
 
   React.useEffect(() => {
@@ -173,7 +175,10 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
     return "available";
   }, [aiAccess, aiAccessLoading, aiAccessUnavailable, user]);
 
-  const openLogin = React.useCallback(() => setIsLoginOpen(true), []);
+  const openLogin = React.useCallback(() => {
+    setAuthDialogMode(user ? "account" : "login");
+    setIsLoginOpen(true);
+  }, [user]);
   const closeLogin = React.useCallback(() => {
     pendingActionRef.current = null;
     setIsLoginOpen(false);
@@ -182,6 +187,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
   const requireAuth = React.useCallback((action?: () => void) => {
     if (user) return true;
     pendingActionRef.current = action || null;
+    setAuthDialogMode("login");
     setIsLoginOpen(true);
     return false;
   }, [user]);
@@ -285,6 +291,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       aiAccessLoading,
       aiAccessUnavailable,
       isLoginOpen,
+      authDialogMode,
       reserveAiScan,
       requireAuth,
       openLogin,
@@ -301,6 +308,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       aiAccessLoading,
       aiAccessUnavailable,
       isLoginOpen,
+      authDialogMode,
       reserveAiScan,
       requireAuth,
       openLogin,

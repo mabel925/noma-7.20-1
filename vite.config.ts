@@ -10,6 +10,26 @@ const pwaBuildId = (
   `local-${Date.now().toString(36)}`
 ).slice(0, 16);
 
+const inlineStartupImagePlugin = () => {
+  const source = 'src="/startup.jpg"';
+  const startupImage = readFileSync(
+    path.resolve(__dirname, 'public/startup.jpg'),
+  ).toString('base64');
+
+  return {
+    name: 'noma-inline-startup-image',
+    transformIndexHtml: {
+      order: 'pre' as const,
+      handler(html: string) {
+        if (!html.includes(source)) {
+          throw new Error('Startup splash image source is missing from index.html');
+        }
+        return html.replace(source, `src="data:image/jpeg;base64,${startupImage}"`);
+      },
+    },
+  };
+};
+
 const pwaVersionPlugin = () => ({
   name: 'noma-pwa-version',
   apply: 'build' as const,
@@ -33,7 +53,7 @@ const pwaVersionPlugin = () => ({
 
 export default defineConfig(() => {
   return {
-    plugins: [react(), tailwindcss(), pwaVersionPlugin()],
+    plugins: [inlineStartupImagePlugin(), react(), tailwindcss(), pwaVersionPlugin()],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

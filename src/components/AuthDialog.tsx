@@ -11,7 +11,7 @@ const LOGIN_STEP_TRANSITION = {
 };
 
 export const AuthDialog: React.FC = () => {
-  const { user, aiAccess: access, isLoginOpen, closeLogin, requestOtp, verifyOtp, updateDisplayName, signOut } = useAuth();
+  const { user, aiAccess: access, isLoginOpen, authDialogMode, closeLogin, requestOtp, verifyOtp, updateDisplayName, signOut } = useAuth();
   const [email, setEmail] = React.useState("");
   const [token, setToken] = React.useState("");
   const [step, setStep] = React.useState<"email" | "otp">("email");
@@ -25,6 +25,7 @@ export const AuthDialog: React.FC = () => {
   const [accountError, setAccountError] = React.useState("");
   const autoVerifyRef = React.useRef(false);
   const otpInputRef = React.useRef<HTMLInputElement>(null);
+  const showAccount = authDialogMode === "account" && Boolean(user);
 
   React.useEffect(() => {
     if (!isEditingName && user) setNameDraft(user.displayName);
@@ -137,10 +138,10 @@ export const AuthDialog: React.FC = () => {
             className="pointer-events-auto relative w-full max-w-[360px]"
           >
             <form
-              onSubmit={user ? (isEditingName ? saveDisplayName : (event) => { event.preventDefault(); }) : step === "email" ? submitEmail : submitOtp}
-              className={`relative w-full rounded-[36px] bg-[#E9E6E1] px-6 pb-7 pt-8 text-[#232121] shadow-[0_24px_80px_rgba(0,0,0,0.28)] ${user ? "" : "h-[380px] overflow-hidden"}`}
+              onSubmit={showAccount ? (isEditingName ? saveDisplayName : (event) => { event.preventDefault(); }) : step === "email" ? submitEmail : submitOtp}
+              className={`relative w-full rounded-[36px] bg-[#E9E6E1] px-6 pb-7 pt-8 text-[#232121] shadow-[0_24px_80px_rgba(0,0,0,0.28)] ${showAccount ? "" : "h-[380px] overflow-hidden"}`}
             >
-            {user && step === "email" ? (
+            {showAccount && user ? (
               <>
                 <p className="text-[13px] font-semibold text-[#232121]/50">Noma account</p>
                 {isEditingName ? (
