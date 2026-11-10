@@ -1,6 +1,5 @@
 const DEFAULT_PICWISH_ENDPOINT = "https://techsz.aoscdn.com/api/tasks/visual/segmentation";
-const PICWISH_POLL_INTERVAL_MS = 1000;
-const PICWISH_TOTAL_TIMEOUT_MS = 14000;
+const PICWISH_SYNC_TIMEOUT_MS = 12000;
 const PICWISH_MAX_RESULT_BYTES = 8 * 1024 * 1024;
 const DEFAULT_QWEN_ENDPOINT = "https://cn-beijing.maas.qianwenaiapi.com/compatible-mode/v1/chat/completions";
 const DEFAULT_QWEN_GLOBAL_ENDPOINT = "https://maas.qianwenaiapi.com/compatible-mode/v1/chat/completions";
@@ -163,24 +162,12 @@ function base64ImageBlob(base64, mimeType = "image/jpeg") {
   return new Blob([bytes], { type: mimeType });
 }
 
-function arrayBufferToBase64(buffer) {
-  const bytes = new Uint8Array(buffer);
-  const chunkSize = 0x8000;
-  let binary = "";
-  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
-  }
-  return btoa(binary);
-}
-
 function picwishData(payload, operation) {
   if (Number(payload?.status) !== 200) {
     throw new Error(`${operation} failed: status=${payload?.status ?? "missing"} message=${payload?.message || "unknown error"}`);
   }
   return payload?.data || {};
 }
-
-const delay = (durationMs) => new Promise((resolve) => setTimeout(resolve, durationMs));
 
 async function readOpenAiStream(response, provider) {
   if (!response.ok) return readJsonResponse(response, provider);
@@ -405,9 +392,9 @@ async function matting(env, body) {
   try {
     const endpoint = String(env.PICWISH_ENDPOINT || DEFAULT_PICWISH_ENDPOINT).replace(/\/+$/, "");
     const upload = new FormData();
-    upload.set("sync", "0");
+    upload.set("sync", "1");
     upload.set("type", "object");
-    upload.set("return_type", "1");
+    upload.set("return_type", "2");
     upload.set("output_type", "2");
     upload.set("crop", "0");
     upload.set("format", "png");
@@ -419,48 +406,18 @@ async function matting(env, body) {
         "X-API-KEY": mattingApiKey,
       },
       body: upload,
-    }, 8000);
-    const createPayload = await readJsonResponse(createResponse, "PicWish create task");
-    const taskId = String(picwishData(createPayload, "PicWish create task").task_id || "").trim();
-    if (!taskId) throw new Error("PicWish create task returned no task_id");
+    }, PICWISH_SYNC_TIMEOUT_MS);
+    const payload = await readJsonResponse(createResponse, "PicWish synchronous matting");
+    const task = picwishData(payload, "PicWish synchronous matting");
+    const state = Number(task.state);
+    if (state !== 1) throw new Error(`PicWish synchronous task did not complete: state=${task.state ?? "missing"}`);
+    const resultBase64 = String(task.image || "").replace(/^data:[^,]+,/, "").replace(/\s+/g, "");
+    if (!resultBase64) throw new Error("PicWish synchronous task returned no image base64");
+    const resultBytes = atob(resultBase64).length;
+    if (resultBytes > PICWISH_MAX_RESULT_BYTES) throw new Error("PicWish result is too large");
 
-    const deadline = providerStartedAt + PICWISH_TOTAL_TIMEOUT_MS;
-    let resultUrl = "";
-    let pollCount = 0;
-    while (Date.now() < deadline) {
-      pollCount += 1;
-      const remainingMs = deadline - Date.now();
-      const pollResponse = await fetchWithTimeout(`${endpoint}/${encodeURIComponent(taskId)}`, {
-        headers: { "X-API-KEY": mattingApiKey },
-      }, Math.max(500, Math.min(5000, remainingMs)));
-      const pollPayload = await readJsonResponse(pollResponse, "PicWish query task");
-      const task = picwishData(pollPayload, "PicWish query task");
-      const state = Number(task.state);
-      if (state === 1) {
-        resultUrl = String(task.image || "").trim();
-        if (!resultUrl) throw new Error("PicWish completed task returned no image URL");
-        break;
-      }
-      if (state < 0) {
-        throw new Error(`PicWish task failed: state=${state} message=${pollPayload?.message || "unknown error"}`);
-      }
-      await delay(Math.min(PICWISH_POLL_INTERVAL_MS, Math.max(0, deadline - Date.now())));
-    }
-    if (!resultUrl) throw new Error(`PicWish task timed out after ${PICWISH_TOTAL_TIMEOUT_MS / 1000}s`);
-
-    const parsedResultUrl = new URL(resultUrl);
-    if (parsedResultUrl.protocol !== "https:") throw new Error("PicWish returned a non-HTTPS result URL");
-    const resultResponse = await fetchWithTimeout(parsedResultUrl.toString(), {}, Math.max(500, Math.min(5000, deadline - Date.now())));
-    if (!resultResponse.ok) throw new Error(`PicWish result download HTTP ${resultResponse.status}`);
-    const declaredLength = Number(resultResponse.headers.get("content-length") || 0);
-    if (declaredLength > PICWISH_MAX_RESULT_BYTES) throw new Error("PicWish result is too large");
-    const resultBuffer = await resultResponse.arrayBuffer();
-    if (!resultBuffer.byteLength || resultBuffer.byteLength > PICWISH_MAX_RESULT_BYTES) {
-      throw new Error(resultBuffer.byteLength ? "PicWish result is too large" : "PicWish result is empty");
-    }
-
-    console.log(`[AiTiming] feature=matting provider=picwish task_id=${taskId} polls=${pollCount} result_bytes=${resultBuffer.byteLength} provider_ms=${Date.now() - providerStartedAt} outcome=success`);
-    return json({ result_base64: arrayBufferToBase64(resultBuffer), provider: "picwish" });
+    console.log(`[AiTiming] feature=matting provider=picwish mode=sync task_id=${task.task_id || "unknown"} result_bytes=${resultBytes} provider_ms=${Date.now() - providerStartedAt} outcome=success`);
+    return json({ result_base64: resultBase64, provider: "picwish" });
   } catch (error) {
     console.log(`[AiTiming] feature=matting provider=picwish provider_ms=${Date.now() - providerStartedAt} outcome=failed error=${errorMessage(error).slice(0, 160)}`);
     return json({ error: `Matting provider failed: ${errorMessage(error)}` }, 502);
@@ -533,7 +490,7 @@ export default {
     if (request.method === "GET") return json({
       ok: true,
       service: "noma-ai",
-      version: "19",
+      version: "20",
       capabilities: {
         vision: Boolean(env.QWEN_API_KEY),
         matting: Boolean(env.PICWISH_API_KEY),

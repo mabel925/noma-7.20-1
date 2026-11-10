@@ -104,10 +104,10 @@ test("vision uses the Qwen streaming multimodal contract", async () => {
   }
 });
 
-test("matting uses the PicWish asynchronous task contract", async () => {
+test("matting uses the PicWish synchronous task contract", async () => {
   const originalFetch = globalThis.fetch;
   const upstreamRequests = [];
-  const resultBytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+  const resultBase64 = Buffer.from("picwish-png").toString("base64");
 
   globalThis.fetch = async (input, init = {}) => {
     const url = String(input);
@@ -120,9 +120,9 @@ test("matting uses the PicWish asynchronous task contract", async () => {
       assert.equal(init.method, "POST");
       assert.equal(init.headers["X-API-KEY"], "test-picwish-key");
       assert.ok(init.body instanceof FormData);
-      assert.equal(init.body.get("sync"), "0");
+      assert.equal(init.body.get("sync"), "1");
       assert.equal(init.body.get("type"), "object");
-      assert.equal(init.body.get("return_type"), "1");
+      assert.equal(init.body.get("return_type"), "2");
       assert.equal(init.body.get("output_type"), "2");
       assert.equal(init.body.get("crop"), "0");
       assert.equal(init.body.get("format"), "png");
@@ -130,18 +130,11 @@ test("matting uses the PicWish asynchronous task contract", async () => {
       assert.ok(imageFile instanceof Blob);
       assert.equal(imageFile.type, "image/jpeg");
       assert.equal(Buffer.from(await imageFile.arrayBuffer()).toString("utf8"), "test");
-      return Response.json({ status: 200, message: "success", data: { task_id: "picwish-task-1" } });
-    }
-    if (url === "https://techsz.aoscdn.com/api/tasks/visual/segmentation/picwish-task-1") {
-      assert.equal(init.headers["X-API-KEY"], "test-picwish-key");
       return Response.json({
         status: 200,
         message: "success",
-        data: { task_id: "picwish-task-1", state: 1, progress: 100, image: "https://result.picwish.test/cutout.png" },
+        data: { task_id: "picwish-task-1", state: 1, progress: 100, image: resultBase64 },
       });
-    }
-    if (url === "https://result.picwish.test/cutout.png") {
-      return new Response(resultBytes, { status: 200, headers: { "Content-Type": "image/png" } });
     }
     throw new Error(`Unexpected upstream request: ${url}`);
   };
@@ -168,8 +161,8 @@ test("matting uses the PicWish asynchronous task contract", async () => {
     assert.equal(response.status, 200);
     const data = await response.json();
     assert.equal(data.provider, "picwish");
-    assert.deepEqual(Buffer.from(data.result_base64, "base64"), Buffer.from(resultBytes));
-    assert.equal(upstreamRequests.length, 4);
+    assert.equal(data.result_base64, resultBase64);
+    assert.equal(upstreamRequests.length, 2);
   } finally {
     globalThis.fetch = originalFetch;
   }
