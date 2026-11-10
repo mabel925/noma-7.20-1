@@ -62,7 +62,8 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (request.mode === "navigate") {
-    const networkResponse = fetch(request).then((response) => {
+    const cachedShellPromise = caches.match("/");
+    const cacheResponse = (response) => {
       if (!response.ok) return response;
       const responseClone = response.clone();
       return caches
@@ -70,16 +71,23 @@ self.addEventListener("fetch", (event) => {
         .then((cache) => cache.put("/", responseClone))
         .catch(() => undefined)
         .then(() => response);
+    };
+    const refreshShell = cachedShellPromise.then((cachedResponse) => {
+      if (!cachedResponse) return undefined;
+      return fetch(request).then(cacheResponse);
     });
+    event.waitUntil(refreshShell.catch(() => undefined));
 
     event.respondWith(
-      networkResponse.catch(() => caches.match("/").then((cachedResponse) => {
+      cachedShellPromise.then((cachedResponse) => {
         if (cachedResponse) return cachedResponse;
-        return new Response("Noma is offline", {
-          status: 503,
-          headers: { "Content-Type": "text/plain; charset=UTF-8" },
-        });
-      }))
+        return fetch(request)
+          .then(cacheResponse)
+          .catch(() => new Response("Noma is offline", {
+            status: 503,
+            headers: { "Content-Type": "text/plain; charset=UTF-8" },
+          }));
+      })
     );
     return;
   }
