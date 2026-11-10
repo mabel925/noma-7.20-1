@@ -681,7 +681,12 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const activeItem = MEMORY_ITEMS[selectedItemIndex];
   const STICKER_CANVAS_SIZE = 256;
   const STICKER_BORDER_SIZE = 8;
-  const stickerTitleText = customName.trim();
+  // The embedded add-item flow renders only the settled capture title. This
+  // prevents the temporary fallback state from flashing before recognition
+  // and image processing have been combined into the final result.
+  const stickerTitleText = onCutoutComplete
+    ? resolvedCaptureResult?.name || ""
+    : customName.trim();
   const stickerTitleLines = formatStickerTitleLines(stickerTitleText);
   const stickerTitleStyle = getStickerTitleStyle(RESULT_STICKER_VISUAL_SIZE);
   const isResultTitleVisible = isResultTitleRevealReady && Boolean(stickerTitleText);
