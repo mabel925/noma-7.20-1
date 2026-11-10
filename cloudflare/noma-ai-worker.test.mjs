@@ -104,6 +104,77 @@ test("vision uses the Qwen streaming multimodal contract", async () => {
   }
 });
 
+test("vision falls back to Gemini within the shared deadline", async () => {
+  const originalFetch = globalThis.fetch;
+  const upstreamRequests = [];
+
+  globalThis.fetch = async (input, init = {}) => {
+    const url = String(input);
+    upstreamRequests.push({ url, init });
+
+    if (url.endsWith("/rest/v1/rpc/authorize_ai_scan")) {
+      return Response.json({ allowed: true, planCode: "free", limit: 10, remaining: 9 });
+    }
+    if (url === "https://cn-beijing.maas.qianwenaiapi.com/compatible-mode/v1/chat/completions") {
+      return Response.json({ error: { message: "temporary failure" } }, { status: 503 });
+    }
+    if (url.startsWith("https://generativelanguage.googleapis.com/v1beta/models/")) {
+      return Response.json({
+        candidates: [{
+          content: {
+            parts: [{ text: JSON.stringify({ title: "Coffee Mug", category: "家居日用", labels: ["cup"] }) }],
+          },
+        }],
+      });
+    }
+    throw new Error(`Unexpected upstream request: ${url}`);
+  };
+
+  try {
+    const request = new Request("https://noma.test/", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer test-user-token",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        type: "vision",
+        scan_id: "scan-gemini-fallback",
+        mime_type: "image/jpeg",
+        image_base64: "dGVzdA==",
+      }),
+    });
+    Object.defineProperty(request, "cf", { value: { continent: "AS", country: "CN" } });
+    const response = await worker.fetch(request, {
+      QWEN_API_KEY: "test-qwen-key",
+      GEMINI_API_KEY: "test-gemini-key",
+      GEMINI_VISION_MODEL: "gemini-test-vision",
+      SUPABASE_URL: "https://example.supabase.co",
+      SUPABASE_PUBLISHABLE_KEY: "test-supabase-key",
+    });
+
+    assert.equal(response.status, 200);
+    const data = await response.json();
+    assert.deepEqual(JSON.parse(data.choices[0].message.content), {
+      title: "Coffee Mug",
+      category: "家居日用",
+      labels: ["cup"],
+    });
+
+    assert.equal(upstreamRequests.length, 3);
+    const geminiRequest = upstreamRequests[2];
+    assert.match(geminiRequest.url, /gemini-test-vision:generateContent/);
+    const requestBody = JSON.parse(geminiRequest.init.body);
+    assert.equal(requestBody.generationConfig.responseMimeType, "application/json");
+    assert.deepEqual(requestBody.contents[0].parts[0], {
+      inlineData: { mimeType: "image/jpeg", data: "dGVzdA==" },
+    });
+    assert.match(requestBody.contents[0].parts[1].text, /specific common English name/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("matting uses the PicWish synchronous task contract", async () => {
   const originalFetch = globalThis.fetch;
   const upstreamRequests = [];
@@ -221,6 +292,70 @@ test("combined capture returns the cutout with a fallback title when vision time
     assert.match(data.vision.error, /timed out/);
     assert.equal(data.matting.ok, true);
     assert.equal(data.matting.data.result_base64, resultBase64);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("combined capture bounds Qwen and Gemini to one shared vision deadline", async () => {
+  const originalFetch = globalThis.fetch;
+  const resultBase64 = Buffer.from("picwish-png").toString("base64");
+
+  globalThis.fetch = async (input, init = {}) => {
+    const url = String(input);
+    if (url.endsWith("/rest/v1/rpc/authorize_ai_scan")) {
+      return Response.json({ allowed: true, planCode: "free", limit: 10, remaining: 9 });
+    }
+    if (url === "https://cn-beijing.maas.qianwenaiapi.com/compatible-mode/v1/chat/completions") {
+      return Response.json({ error: { message: "temporary failure" } }, { status: 503 });
+    }
+    if (url.startsWith("https://generativelanguage.googleapis.com/v1beta/models/")) {
+      return new Promise((_, reject) => {
+        init.signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+      });
+    }
+    if (url === "https://techhk.aoscdn.com/api/tasks/visual/segmentation") {
+      return Response.json({
+        status: 200,
+        message: "success",
+        data: { task_id: "picwish-task-shared-deadline", state: 1, progress: 100, image: resultBase64 },
+      });
+    }
+    throw new Error(`Unexpected upstream request: ${url}`);
+  };
+
+  try {
+    const startedAt = Date.now();
+    const response = await worker.fetch(new Request("https://noma.test/", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer test-user-token",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        type: "process-image",
+        scan_id: "scan-shared-vision-deadline",
+        mime_type: "image/jpeg",
+        image_base64: "dGVzdA==",
+        vision_image_base64: "dGVzdA==",
+      }),
+    }), {
+      PICWISH_GLOBAL_API_KEY: "test-picwish-key",
+      QWEN_API_KEY: "test-qwen-key",
+      GEMINI_API_KEY: "test-gemini-key",
+      CAPTURE_VISION_TIMEOUT_MS: "50",
+      SUPABASE_URL: "https://example.supabase.co",
+      SUPABASE_PUBLISHABLE_KEY: "test-supabase-key",
+    });
+    const elapsedMs = Date.now() - startedAt;
+
+    assert.equal(response.status, 200);
+    assert.ok(elapsedMs < 500, `shared vision deadline took ${elapsedMs} ms`);
+    const data = await response.json();
+    assert.equal(data.recognition, undefined);
+    assert.equal(data.vision.ok, false);
+    assert.match(data.vision.error, /Gemini request timed out/);
+    assert.equal(data.matting.ok, true);
   } finally {
     globalThis.fetch = originalFetch;
   }

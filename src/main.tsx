@@ -9,18 +9,14 @@ import { preloadStartupAssets } from './services/startupPreload';
 import { checkForAppUpdate } from './services/appUpdate';
 
 installAppViewportSync();
+void checkForAppUpdate();
 void preloadStartupAssets();
 
-const startApp = async () => {
-  await checkForAppUpdate();
-  createRoot(document.getElementById('root')!).render(
-    <StrictMode>
-      <AuthProvider>
-        <App />
-        <AuthDialog />
-      </AuthProvider>
-    </StrictMode>,
-  );
-};
-
-void startApp();
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <AuthProvider>
+      <App />
+      <AuthDialog />
+    </AuthProvider>
+  </StrictMode>,
+);

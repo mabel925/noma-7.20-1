@@ -1,8 +1,9 @@
 const DEFAULT_PICWISH_ENDPOINT = "https://techhk.aoscdn.com/api/tasks/visual/segmentation";
 const PICWISH_SYNC_TIMEOUT_MS = 12000;
 const PICWISH_MAX_RESULT_BYTES = 8 * 1024 * 1024;
-const DEFAULT_VISION_TIMEOUT_MS = 12000;
+const DEFAULT_VISION_TIMEOUT_MS = 5000;
 const DEFAULT_CAPTURE_VISION_TIMEOUT_MS = 5000;
+const QWEN_VISION_BUDGET_RATIO = 0.6;
 const DEFAULT_QWEN_ENDPOINT = "https://cn-beijing.maas.qianwenaiapi.com/compatible-mode/v1/chat/completions";
 const DEFAULT_QWEN_GLOBAL_ENDPOINT = "https://maas.qianwenaiapi.com/compatible-mode/v1/chat/completions";
 const DEFAULT_QWEN_MODEL = "qwen3.7-flash";
@@ -283,12 +284,24 @@ async function callGemini(env, parts, { jsonMode = false, imageMode = false, mod
   const generationConfig = { temperature: 0.15 };
   if (jsonMode) generationConfig.responseMimeType = "application/json";
   if (imageMode) generationConfig.responseModalities = ["TEXT", "IMAGE"];
-  const response = await fetchWithTimeout(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ contents: [{ role: "user", parts }], generationConfig }),
-  }, timeoutMs);
-  return readJsonResponse(response, "Gemini");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort("Upstream request timed out"), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contents: [{ role: "user", parts }], generationConfig }),
+      signal: controller.signal,
+    });
+    return await readJsonResponse(response, "Gemini");
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error(`Gemini request timed out after ${timeoutMs} ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function callQwen(env, content, jsonMode = false, timeoutMs = 12000, modelOverride = "", endpointOverride = "") {
@@ -333,26 +346,55 @@ async function vision(env, body, qwenRoute, timeoutMs = DEFAULT_VISION_TIMEOUT_M
   const mimeType = body.mime_type || "image/jpeg";
   const prompt = `Identify the main physical object. The title must be a specific common English name for the visible object. Never use generic placeholders such as item, object, scanned item, scanned items, unknown item, or unidentified object. Choose exactly one category from this whitelist: ${ITEM_CATEGORIES.join(", ")}. Return only JSON: {"title":"specific short English object name","category":"one whitelisted category","labels":["semantic tag"]}.`;
   const visionStartedAt = Date.now();
+  const deadline = visionStartedAt + timeoutMs;
   const dataUrl = `data:${mimeType};base64,${body.image_base64}`;
   const model = env.QWEN_MODEL || DEFAULT_QWEN_MODEL;
+  const failures = [];
   const providerStartedAt = Date.now();
   try {
+    const qwenTimeoutMs = Math.max(1, Math.floor(timeoutMs * QWEN_VISION_BUDGET_RATIO));
     const data = await callQwen(env, [
       { type: "image_url", image_url: { url: dataUrl } },
       { type: "text", text: prompt },
-    ], true, timeoutMs, model, qwenRoute.endpoint);
+    ], true, qwenTimeoutMs, model, qwenRoute.endpoint);
     const result = parseVisionResult(extractText(data));
     console.log(`[AiTiming] feature=vision provider=qwen qwen_region=${qwenRoute.region} model=${model} stream=true provider_ms=${Date.now() - providerStartedAt} total_ms=${Date.now() - visionStartedAt} outcome=success accepted_title=${JSON.stringify(result.title)} category=${JSON.stringify(result.category)}`);
     return json({ choices: [{ message: { content: JSON.stringify(result) } }] });
   } catch (error) {
     const timedOut = isUpstreamTimeout(error);
     const outcome = timedOut ? "timeout" : "invalid";
-    console.log(`[AiTiming] feature=vision provider=qwen qwen_region=${qwenRoute.region} model=${model} stream=true timeout_ms=${timeoutMs} provider_ms=${Date.now() - providerStartedAt} total_ms=${Date.now() - visionStartedAt} outcome=${outcome} error=${errorMessage(error).slice(0, 240)}`);
-    return json({
-      error: `Qwen vision failed: ${errorMessage(error)}`,
-      ...(timedOut ? { code: "VISION_TIMEOUT" } : {}),
-    }, timedOut ? 504 : 502);
+    failures.push(`qwen: ${errorMessage(error)}`);
+    console.log(`[AiTiming] feature=vision provider=qwen qwen_region=${qwenRoute.region} model=${model} stream=true provider_ms=${Date.now() - providerStartedAt} total_ms=${Date.now() - visionStartedAt} outcome=${outcome} error=${errorMessage(error).slice(0, 240)}`);
   }
+
+  const remainingMs = deadline - Date.now();
+  if (remainingMs > 0 && env.GEMINI_API_KEY) {
+    const geminiStartedAt = Date.now();
+    const geminiModel = env.GEMINI_VISION_MODEL || env.GEMINI_MODEL || "gemini-3.5-flash";
+    try {
+      const data = await callGemini(env, [
+        { inlineData: { mimeType, data: body.image_base64 } },
+        { text: prompt },
+      ], { jsonMode: true, model: geminiModel, timeoutMs: remainingMs });
+      const result = parseVisionResult(extractText(data));
+      console.log(`[AiTiming] feature=vision provider=gemini model=${geminiModel} timeout_ms=${remainingMs} provider_ms=${Date.now() - geminiStartedAt} total_ms=${Date.now() - visionStartedAt} outcome=success accepted_title=${JSON.stringify(result.title)} category=${JSON.stringify(result.category)}`);
+      return json({ choices: [{ message: { content: JSON.stringify(result) } }] });
+    } catch (error) {
+      failures.push(`gemini: ${errorMessage(error)}`);
+      const outcome = isUpstreamTimeout(error) ? "timeout" : "invalid";
+      console.log(`[AiTiming] feature=vision provider=gemini model=${geminiModel} timeout_ms=${remainingMs} provider_ms=${Date.now() - geminiStartedAt} total_ms=${Date.now() - visionStartedAt} outcome=${outcome} error=${errorMessage(error).slice(0, 240)}`);
+    }
+  } else if (!env.GEMINI_API_KEY) {
+    failures.push("gemini: GEMINI_API_KEY is not configured");
+  } else {
+    failures.push("gemini: shared vision deadline exhausted");
+  }
+
+  const timedOut = failures.some((failure) => isUpstreamTimeout(failure)) || Date.now() >= deadline;
+  return json({
+    error: `Vision providers failed: ${failures.join(" | ")}`,
+    ...(timedOut ? { code: "VISION_TIMEOUT" } : {}),
+  }, timedOut ? 504 : 502);
 }
 
 async function title(env, body, qwenRoute) {
@@ -496,9 +538,9 @@ export default {
     if (request.method === "GET") return json({
       ok: true,
       service: "noma-ai",
-      version: "22",
+      version: "23",
       capabilities: {
-        vision: Boolean(env.QWEN_API_KEY),
+        vision: Boolean(env.QWEN_API_KEY || env.GEMINI_API_KEY),
         matting: Boolean(env.PICWISH_GLOBAL_API_KEY),
       },
     });

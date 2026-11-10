@@ -25,6 +25,9 @@ export const checkForAppUpdate = (): Promise<void> => {
   let reloadStarted = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     if (!hadController || reloadStarted) return;
+    // Never pull a user who has reached the home screen back into startup.
+    // The activated worker will serve the new release on the next launch.
+    if (document.documentElement.dataset.nomaHomeReady === "true") return;
     reloadStarted = true;
     window.location.reload();
   });
