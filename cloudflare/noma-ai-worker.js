@@ -1,4 +1,4 @@
-const DEFAULT_PICWISH_ENDPOINT = "https://techsz.aoscdn.com/api/tasks/visual/segmentation";
+const DEFAULT_PICWISH_ENDPOINT = "https://techhk.aoscdn.com/api/tasks/visual/segmentation";
 const PICWISH_SYNC_TIMEOUT_MS = 12000;
 const PICWISH_MAX_RESULT_BYTES = 8 * 1024 * 1024;
 const DEFAULT_QWEN_ENDPOINT = "https://cn-beijing.maas.qianwenaiapi.com/compatible-mode/v1/chat/completions";
@@ -386,8 +386,8 @@ async function classifyEmoji(env, body, qwenRoute) {
 
 async function matting(env, body) {
   if (!body.image_base64) return json({ error: "image_base64 is required" }, 400);
-  const mattingApiKey = env.PICWISH_API_KEY;
-  if (!mattingApiKey) return json({ error: "PICWISH_API_KEY is not configured" }, 500);
+  const mattingApiKey = env.PICWISH_GLOBAL_API_KEY;
+  if (!mattingApiKey) return json({ error: "PICWISH_GLOBAL_API_KEY is not configured" }, 500);
   const providerStartedAt = Date.now();
   try {
     const endpoint = String(env.PICWISH_ENDPOINT || DEFAULT_PICWISH_ENDPOINT).replace(/\/+$/, "");
@@ -490,10 +490,10 @@ export default {
     if (request.method === "GET") return json({
       ok: true,
       service: "noma-ai",
-      version: "20",
+      version: "21",
       capabilities: {
         vision: Boolean(env.QWEN_API_KEY),
-        matting: Boolean(env.PICWISH_API_KEY),
+        matting: Boolean(env.PICWISH_GLOBAL_API_KEY),
       },
     });
     if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);

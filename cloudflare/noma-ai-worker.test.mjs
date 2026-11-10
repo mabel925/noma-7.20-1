@@ -116,7 +116,7 @@ test("matting uses the PicWish synchronous task contract", async () => {
     if (url.endsWith("/rest/v1/rpc/authorize_ai_scan")) {
       return Response.json({ allowed: true, planCode: "free", limit: 10, remaining: 9 });
     }
-    if (url === "https://techsz.aoscdn.com/api/tasks/visual/segmentation") {
+    if (url === "https://techhk.aoscdn.com/api/tasks/visual/segmentation") {
       assert.equal(init.method, "POST");
       assert.equal(init.headers["X-API-KEY"], "test-picwish-key");
       assert.ok(init.body instanceof FormData);
@@ -153,7 +153,7 @@ test("matting uses the PicWish synchronous task contract", async () => {
         image_base64: "dGVzdA==",
       }),
     }), {
-      PICWISH_API_KEY: "test-picwish-key",
+      PICWISH_GLOBAL_API_KEY: "test-picwish-key",
       SUPABASE_URL: "https://example.supabase.co",
       SUPABASE_PUBLISHABLE_KEY: "test-supabase-key",
     });

@@ -46,7 +46,7 @@ const DEFAULT_CONFIG: RemoveBgConfig = {
   
   api: {
     provider: "picwish",
-    endpoint: "https://techsz.aoscdn.com/api/tasks/visual/segmentation",
+    endpoint: "https://techhk.aoscdn.com/api/tasks/visual/segmentation",
     headers: {}
   }
 };
@@ -103,7 +103,7 @@ export function loadRemoveBgConfig(): RemoveBgConfig {
       // Provider selection lives in the Worker; keep stale browser metadata aligned.
       if (loadedConfig.api.provider !== "picwish") {
         loadedConfig.api.provider = "picwish";
-        loadedConfig.api.endpoint = "https://techsz.aoscdn.com/api/tasks/visual/segmentation";
+        loadedConfig.api.endpoint = "https://techhk.aoscdn.com/api/tasks/visual/segmentation";
       }
       return loadedConfig;
     }
