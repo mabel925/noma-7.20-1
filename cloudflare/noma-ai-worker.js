@@ -1,6 +1,8 @@
 const DEFAULT_PICWISH_ENDPOINT = "https://techhk.aoscdn.com/api/tasks/visual/segmentation";
 const PICWISH_SYNC_TIMEOUT_MS = 12000;
 const PICWISH_MAX_RESULT_BYTES = 8 * 1024 * 1024;
+const DEFAULT_VISION_TIMEOUT_MS = 12000;
+const DEFAULT_CAPTURE_VISION_TIMEOUT_MS = 5000;
 const DEFAULT_QWEN_ENDPOINT = "https://cn-beijing.maas.qianwenaiapi.com/compatible-mode/v1/chat/completions";
 const DEFAULT_QWEN_GLOBAL_ENDPOINT = "https://maas.qianwenaiapi.com/compatible-mode/v1/chat/completions";
 const DEFAULT_QWEN_MODEL = "qwen3.7-flash";
@@ -326,7 +328,7 @@ function isUpstreamTimeout(error) {
   return /timed out|timeout|abort/i.test(errorMessage(error));
 }
 
-async function vision(env, body, qwenRoute) {
+async function vision(env, body, qwenRoute, timeoutMs = DEFAULT_VISION_TIMEOUT_MS) {
   if (!body.image_base64) return json({ error: "image_base64 is required" }, 400);
   const mimeType = body.mime_type || "image/jpeg";
   const prompt = `Identify the main physical object. The title must be a specific common English name for the visible object. Never use generic placeholders such as item, object, scanned item, scanned items, unknown item, or unidentified object. Choose exactly one category from this whitelist: ${ITEM_CATEGORIES.join(", ")}. Return only JSON: {"title":"specific short English object name","category":"one whitelisted category","labels":["semantic tag"]}.`;
@@ -338,14 +340,14 @@ async function vision(env, body, qwenRoute) {
     const data = await callQwen(env, [
       { type: "image_url", image_url: { url: dataUrl } },
       { type: "text", text: prompt },
-    ], true, 12000, model, qwenRoute.endpoint);
+    ], true, timeoutMs, model, qwenRoute.endpoint);
     const result = parseVisionResult(extractText(data));
     console.log(`[AiTiming] feature=vision provider=qwen qwen_region=${qwenRoute.region} model=${model} stream=true provider_ms=${Date.now() - providerStartedAt} total_ms=${Date.now() - visionStartedAt} outcome=success accepted_title=${JSON.stringify(result.title)} category=${JSON.stringify(result.category)}`);
     return json({ choices: [{ message: { content: JSON.stringify(result) } }] });
   } catch (error) {
     const timedOut = isUpstreamTimeout(error);
     const outcome = timedOut ? "timeout" : "invalid";
-    console.log(`[AiTiming] feature=vision provider=qwen qwen_region=${qwenRoute.region} model=${model} stream=true provider_ms=${Date.now() - providerStartedAt} total_ms=${Date.now() - visionStartedAt} outcome=${outcome} error=${errorMessage(error).slice(0, 240)}`);
+    console.log(`[AiTiming] feature=vision provider=qwen qwen_region=${qwenRoute.region} model=${model} stream=true timeout_ms=${timeoutMs} provider_ms=${Date.now() - providerStartedAt} total_ms=${Date.now() - visionStartedAt} outcome=${outcome} error=${errorMessage(error).slice(0, 240)}`);
     return json({
       error: `Qwen vision failed: ${errorMessage(error)}`,
       ...(timedOut ? { code: "VISION_TIMEOUT" } : {}),
@@ -445,8 +447,12 @@ async function processImage(env, body, qwenRoute) {
     ...body,
     image_base64: body.vision_image_base64 || body.image_base64,
   };
+  const configuredCaptureTimeout = Number(env.CAPTURE_VISION_TIMEOUT_MS);
+  const captureVisionTimeoutMs = Number.isFinite(configuredCaptureTimeout)
+    ? Math.min(DEFAULT_VISION_TIMEOUT_MS, Math.max(50, configuredCaptureTimeout))
+    : DEFAULT_CAPTURE_VISION_TIMEOUT_MS;
   const [visionResponse, mattingResponse] = await Promise.all([
-    vision(env, visionBody, qwenRoute),
+    vision(env, visionBody, qwenRoute, captureVisionTimeoutMs),
     matting(env, body),
   ]);
   const [visionResult, mattingResult] = await Promise.all([
@@ -490,7 +496,7 @@ export default {
     if (request.method === "GET") return json({
       ok: true,
       service: "noma-ai",
-      version: "21",
+      version: "22",
       capabilities: {
         vision: Boolean(env.QWEN_API_KEY),
         matting: Boolean(env.PICWISH_GLOBAL_API_KEY),

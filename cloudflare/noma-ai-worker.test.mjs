@@ -167,3 +167,61 @@ test("matting uses the PicWish synchronous task contract", async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+test("combined capture returns the cutout with a fallback title when vision times out", async () => {
+  const originalFetch = globalThis.fetch;
+  const resultBase64 = Buffer.from("picwish-png").toString("base64");
+
+  globalThis.fetch = async (input, init = {}) => {
+    const url = String(input);
+    if (url.endsWith("/rest/v1/rpc/authorize_ai_scan")) {
+      return Response.json({ allowed: true, planCode: "free", limit: 10, remaining: 9 });
+    }
+    if (url === "https://cn-beijing.maas.qianwenaiapi.com/compatible-mode/v1/chat/completions") {
+      return new Promise((_, reject) => {
+        init.signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+      });
+    }
+    if (url === "https://techhk.aoscdn.com/api/tasks/visual/segmentation") {
+      return Response.json({
+        status: 200,
+        message: "success",
+        data: { task_id: "picwish-task-timeout", state: 1, progress: 100, image: resultBase64 },
+      });
+    }
+    throw new Error(`Unexpected upstream request: ${url}`);
+  };
+
+  try {
+    const response = await worker.fetch(new Request("https://noma.test/", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer test-user-token",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        type: "process-image",
+        scan_id: "scan-vision-timeout",
+        mime_type: "image/jpeg",
+        image_base64: "dGVzdA==",
+        vision_image_base64: "dGVzdA==",
+      }),
+    }), {
+      PICWISH_GLOBAL_API_KEY: "test-picwish-key",
+      QWEN_API_KEY: "test-qwen-key",
+      CAPTURE_VISION_TIMEOUT_MS: "50",
+      SUPABASE_URL: "https://example.supabase.co",
+      SUPABASE_PUBLISHABLE_KEY: "test-supabase-key",
+    });
+
+    assert.equal(response.status, 200);
+    const data = await response.json();
+    assert.equal(data.recognition, undefined);
+    assert.equal(data.vision.ok, false);
+    assert.match(data.vision.error, /timed out/);
+    assert.equal(data.matting.ok, true);
+    assert.equal(data.matting.data.result_base64, resultBase64);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
