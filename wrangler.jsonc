@@ -7,14 +7,14 @@
   "vars": {
     "QWEN_ENDPOINT": "https://maas.qianwenaiapi.com/compatible-mode/v1/chat/completions",
     "QWEN_MODEL": "qwen3.7-flash",
-    "MATTING_ENABLED": "false",
+    "MATTING_ENABLED": "true",
     "AUTH_UNVERIFIED_RETENTION_HOURS": "24",
     "MEDIA_GC_RETENTION_DAYS": "3",
     "SUPABASE_URL": "https://rthvexnnsebtfxcfpung.supabase.co",
     "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_QBCoMyZvh6Px_3AFff_yTg_5BOpG8FY"
   },
   "placement": {
-    // Temporary recognition-only comparison: prefer execution near Singapore.
+    // Comparison placement: prefer execution near Singapore.
     "region": "aws:ap-southeast-1"
   },
   "observability": {
