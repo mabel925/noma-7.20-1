@@ -377,7 +377,7 @@ function picwishData(payload, operation) {
   return payload?.data || {};
 }
 
-async function readOpenAiStream(response, provider) {
+async function readOpenAiStream(response, provider, { timing, acceptContent } = {}) {
   if (!response.ok) return readJsonResponse(response, provider);
   if (!response.body) throw new Error(`${provider} returned an empty response body`);
 
@@ -394,6 +394,7 @@ async function readOpenAiStream(response, provider) {
     if (!payload) return;
     if (payload === "[DONE]") {
       completed = true;
+      if (timing) timing.completion = "done_marker";
       return;
     }
 
@@ -407,19 +408,54 @@ async function readOpenAiStream(response, provider) {
       throw new Error(`${provider} stream failed: ${String(chunk.error?.message || chunk.error).slice(0, 500)}`);
     }
     const delta = chunk?.choices?.[0]?.delta?.content;
-    if (typeof delta === "string") content += delta;
+    if (typeof delta === "string" && delta.length > 0) {
+      content += delta;
+      if (timing) {
+        timing.firstContentMs ??= Date.now() - timing.startedAt;
+        timing.contentChars = content.length;
+        timing.stage = "receiving_content";
+      }
+      if (acceptContent?.(content)) {
+        completed = true;
+        if (timing) timing.completion = "valid_json";
+      }
+    }
+    const finishReason = chunk?.choices?.[0]?.finish_reason;
+    if (finishReason) {
+      if (timing) timing.finishReason = finishReason;
+      if (!completed) {
+        completed = true;
+        if (timing) timing.completion = "finish_reason";
+      }
+    }
   };
 
-  while (!completed) {
-    const { done, value } = await reader.read();
-    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
-    const lines = buffer.split(/\r?\n/);
-    buffer = lines.pop() || "";
-    lines.forEach(consumeLine);
-    if (done) {
-      if (buffer) consumeLine(buffer);
-      break;
+  try {
+    while (!completed) {
+      const { done, value } = await reader.read();
+      if (timing && value?.byteLength) {
+        timing.firstBodyMs ??= Date.now() - timing.startedAt;
+        timing.bodyBytes += value.byteLength;
+        if (timing.firstContentMs === undefined) timing.stage = "awaiting_content";
+      }
+      buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop() || "";
+      for (const line of lines) {
+        consumeLine(line);
+        if (completed) break;
+      }
+      if (done) {
+        if (!completed && buffer) consumeLine(buffer);
+        if (timing && !completed) timing.completion = "body_end";
+        break;
+      }
     }
+  } finally {
+    // A complete, validated vision JSON needs no trailing usage frame or DONE.
+    // Initiate cancellation without delaying the result on upstream cleanup.
+    void reader.cancel().catch(() => undefined);
+    reader.releaseLock();
   }
 
   const trimmedContent = content.trim();
@@ -483,7 +519,7 @@ function parseVisionResult(content) {
   };
 }
 
-async function callQwen(env, content, jsonMode = false, timeoutMs = 12000, modelOverride = "", endpointOverride = "") {
+async function callQwen(env, content, jsonMode = false, timeoutMs = 12000, modelOverride = "", endpointOverride = "", streamOptions = {}) {
   if (!env.QWEN_API_KEY) throw new Error("QWEN_API_KEY is not configured");
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort("Upstream request timed out"), timeoutMs);
@@ -505,7 +541,12 @@ async function callQwen(env, content, jsonMode = false, timeoutMs = 12000, model
       }),
       signal: controller.signal,
     });
-    return await readOpenAiStream(response, "Qwen");
+    if (streamOptions.timing) {
+      streamOptions.timing.headersMs = Date.now() - streamOptions.timing.startedAt;
+      streamOptions.timing.httpStatus = response.status;
+      streamOptions.timing.stage = "awaiting_body";
+    }
+    return await readOpenAiStream(response, "Qwen", streamOptions);
   } catch (error) {
     if (controller.signal.aborted) {
       throw new Error(`Qwen request timed out after ${timeoutMs} ms`);
@@ -528,19 +569,41 @@ async function vision(env, body, qwenRoute, timeoutMs = DEFAULT_VISION_TIMEOUT_M
   const dataUrl = `data:${mimeType};base64,${body.image_base64}`;
   const model = env.QWEN_MODEL || DEFAULT_QWEN_MODEL;
   const providerStartedAt = Date.now();
+  const timing = { startedAt: providerStartedAt, stage: "awaiting_headers", bodyBytes: 0, contentChars: 0 };
+  const streamOptions = {
+    timing,
+    acceptContent(content) {
+      const candidate = content.trim();
+      if (!candidate.startsWith("{") || !candidate.endsWith("}")) return false;
+      try {
+        // Require the whole JSON, not a nested object extracted from a partial stream.
+        JSON.parse(candidate);
+      } catch {
+        return false;
+      }
+      timing.jsonCompleteMs ??= Date.now() - providerStartedAt;
+      try {
+        parseVisionResult(candidate);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  };
+  const timingLog = () => `scan_id=${JSON.stringify(String(body.scan_id || "").slice(0, 160))} headers_ms=${timing.headersMs ?? -1} first_body_ms=${timing.firstBodyMs ?? -1} first_content_ms=${timing.firstContentMs ?? -1} json_complete_ms=${timing.jsonCompleteMs ?? -1} body_bytes=${timing.bodyBytes} content_chars=${timing.contentChars} upstream_status=${timing.httpStatus ?? -1} completion=${timing.completion || "none"} finish_reason=${JSON.stringify(timing.finishReason || "")}`;
   try {
     const qwenTimeoutMs = Math.max(1, Math.min(DEFAULT_VISION_PROVIDER_TIMEOUT_MS, timeoutMs));
     const data = await callQwen(env, [
       { type: "image_url", image_url: { url: dataUrl } },
       { type: "text", text: prompt },
-    ], true, qwenTimeoutMs, model, qwenRoute.endpoint);
+    ], true, qwenTimeoutMs, model, qwenRoute.endpoint, streamOptions);
     const result = parseVisionResult(extractText(data));
-    console.log(`[AiTiming] feature=vision provider=qwen qwen_region=${qwenRoute.region} model=${model} stream=true provider_ms=${Date.now() - providerStartedAt} total_ms=${Date.now() - visionStartedAt} outcome=success accepted_title=${JSON.stringify(result.title)} category=${JSON.stringify(result.category)}`);
+    console.log(`[AiTiming] feature=vision provider=qwen qwen_region=${qwenRoute.region} model=${model} stream=true provider_ms=${Date.now() - providerStartedAt} total_ms=${Date.now() - visionStartedAt} outcome=success accepted_title=${JSON.stringify(result.title)} category=${JSON.stringify(result.category)} ${timingLog()}`);
     return json({ choices: [{ message: { content: JSON.stringify(result) } }] });
   } catch (error) {
     const timedOut = isUpstreamTimeout(error);
     const outcome = timedOut ? "timeout" : "invalid";
-    console.log(`[AiTiming] feature=vision provider=qwen qwen_region=${qwenRoute.region} model=${model} stream=true provider_ms=${Date.now() - providerStartedAt} total_ms=${Date.now() - visionStartedAt} outcome=${outcome} error=${errorMessage(error).slice(0, 240)}`);
+    console.log(`[AiTiming] feature=vision provider=qwen qwen_region=${qwenRoute.region} model=${model} stream=true provider_ms=${Date.now() - providerStartedAt} total_ms=${Date.now() - visionStartedAt} outcome=${outcome} timeout_stage=${timedOut ? timing.stage : "none"} ${timingLog()} error=${errorMessage(error).slice(0, 240)}`);
     return json({
       error: `Qwen vision failed: ${errorMessage(error)}`,
       ...(timedOut ? { code: "VISION_TIMEOUT" } : {}),
@@ -680,7 +743,7 @@ export default {
     if (request.method === "GET") return json({
       ok: true,
       service: "noma-ai",
-      version: "23",
+      version: "24",
       capabilities: {
         vision: Boolean(env.QWEN_API_KEY),
         matting: isMattingEnabled(env) && Boolean(env.PICWISH_GLOBAL_API_KEY),
