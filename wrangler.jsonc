@@ -7,7 +7,7 @@
   "vars": {
     "QWEN_ENDPOINT": "https://maas.qianwenaiapi.com/compatible-mode/v1/chat/completions",
     "QWEN_MODEL": "qwen3.7-flash",
-    "MATTING_ENABLED": "true",
+    "MATTING_ENABLED": "false",
     "AUTH_UNVERIFIED_RETENTION_HOURS": "24",
     "MEDIA_GC_RETENTION_DAYS": "3",
     "SUPABASE_URL": "https://rthvexnnsebtfxcfpung.supabase.co",
