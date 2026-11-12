@@ -253,9 +253,13 @@ function bearerToken(request) {
 function resolveQwenRoute(request, env) {
   const continent = String(request.cf?.continent || "").toUpperCase();
   const useBeijing = !continent || continent === "AS";
-  return useBeijing
-    ? { endpoint: env.QWEN_ENDPOINT || DEFAULT_QWEN_ENDPOINT, region: "beijing" }
-    : { endpoint: env.QWEN_GLOBAL_ENDPOINT || DEFAULT_QWEN_GLOBAL_ENDPOINT, region: "global" };
+  const endpoint = useBeijing
+    ? env.QWEN_ENDPOINT || DEFAULT_QWEN_ENDPOINT
+    : env.QWEN_GLOBAL_ENDPOINT || DEFAULT_QWEN_GLOBAL_ENDPOINT;
+  const hostname = new URL(endpoint).hostname;
+  const region = hostname === "cn-beijing.maas.qianwenaiapi.com" ? "beijing"
+    : hostname === "maas.qianwenaiapi.com" ? "global" : "custom";
+  return { endpoint, region, hostname };
 }
 
 async function readSupabaseResponse(response) {
@@ -544,6 +548,7 @@ async function callQwen(env, content, jsonMode = false, timeoutMs = 12000, model
     if (streamOptions.timing) {
       streamOptions.timing.headersMs = Date.now() - streamOptions.timing.startedAt;
       streamOptions.timing.httpStatus = response.status;
+      streamOptions.timing.requestId = response.headers.get("x-request-id") || response.headers.get("x-dashscope-request-id") || "";
       streamOptions.timing.stage = "awaiting_body";
     }
     return await readOpenAiStream(response, "Qwen", streamOptions);
@@ -590,7 +595,7 @@ async function vision(env, body, qwenRoute, timeoutMs = DEFAULT_VISION_TIMEOUT_M
       }
     },
   };
-  const timingLog = () => `scan_id=${JSON.stringify(String(body.scan_id || "").slice(0, 160))} headers_ms=${timing.headersMs ?? -1} first_body_ms=${timing.firstBodyMs ?? -1} first_content_ms=${timing.firstContentMs ?? -1} json_complete_ms=${timing.jsonCompleteMs ?? -1} body_bytes=${timing.bodyBytes} content_chars=${timing.contentChars} upstream_status=${timing.httpStatus ?? -1} completion=${timing.completion || "none"} finish_reason=${JSON.stringify(timing.finishReason || "")}`;
+  const timingLog = () => `scan_id=${JSON.stringify(String(body.scan_id || "").slice(0, 160))} qwen_host=${JSON.stringify(qwenRoute.hostname || "")} headers_ms=${timing.headersMs ?? -1} first_body_ms=${timing.firstBodyMs ?? -1} first_content_ms=${timing.firstContentMs ?? -1} json_complete_ms=${timing.jsonCompleteMs ?? -1} body_bytes=${timing.bodyBytes} content_chars=${timing.contentChars} upstream_status=${timing.httpStatus ?? -1} upstream_request_id=${JSON.stringify(String(timing.requestId || "").slice(0, 160))} completion=${timing.completion || "none"} finish_reason=${JSON.stringify(timing.finishReason || "")}`;
   try {
     const qwenTimeoutMs = Math.max(1, Math.min(DEFAULT_VISION_PROVIDER_TIMEOUT_MS, timeoutMs));
     const data = await callQwen(env, [

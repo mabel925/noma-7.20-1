@@ -6,19 +6,22 @@ const encoder = new TextEncoder();
 const frame = (content) => `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`;
 const result = { title: "Coffee Mug", category: "食品厨房", labels: ["cup"] };
 
-async function capture(makeResponse) {
+async function capture(makeResponse, envOverrides = {}) {
   const originalFetch = globalThis.fetch;
   const originalLog = console.log;
   const logs = [];
   let providerCalls = 0;
+  const providerEndpoints = [];
   console.log = (...args) => logs.push(args.join(" "));
   globalThis.fetch = async (input, init = {}) => {
     const url = String(input);
     if (url.endsWith("/rest/v1/rpc/authorize_ai_scan")) {
       return Response.json({ allowed: true, planCode: "free", limit: 10, remaining: 9 });
     }
-    if (url === "https://cn-beijing.maas.qianwenaiapi.com/compatible-mode/v1/chat/completions") {
+    if (url === "https://cn-beijing.maas.qianwenaiapi.com/compatible-mode/v1/chat/completions" ||
+      url === "https://maas.qianwenaiapi.com/compatible-mode/v1/chat/completions") {
       providerCalls += 1;
+      providerEndpoints.push(url);
       return makeResponse(init.signal);
     }
     throw new Error(`Unexpected provider request: ${url}`);
@@ -34,8 +37,9 @@ async function capture(makeResponse) {
       QWEN_API_KEY: "test-qwen-key",
       MATTING_ENABLED: "false",
       CAPTURE_VISION_TIMEOUT_MS: "50",
+      ...envOverrides,
     });
-    return { data: await response.json(), logs, providerCalls };
+    return { data: await response.json(), logs, providerCalls, providerEndpoints };
   } finally {
     globalThis.fetch = originalFetch;
     console.log = originalLog;
@@ -133,4 +137,17 @@ test("a finish_reason ends reading even when the DONE marker and connection clos
   assert.match(data.vision.error, /invalid JSON/);
   assert(logs.some((line) => line.includes("completion=finish_reason")));
   assert(!logs.some((line) => line.includes("outcome=timeout")));
+});
+
+test("an Asian request can use the configured global endpoint with accurate route and request-id diagnostics", async () => {
+  const endpoint = "https://maas.qianwenaiapi.com/compatible-mode/v1/chat/completions";
+  const { data, logs, providerEndpoints } = await capture(() => new Response(
+    frame(JSON.stringify(result)),
+    { headers: { "Content-Type": "text/event-stream", "x-request-id": "test-provider-request-1" } },
+  ), { QWEN_ENDPOINT: endpoint });
+  assert.deepEqual(data.recognition, result);
+  assert.deepEqual(providerEndpoints, [endpoint]);
+  assert(logs.some((line) => line.includes("qwen_region=global")));
+  assert(logs.some((line) => line.includes('qwen_host="maas.qianwenaiapi.com"')));
+  assert(logs.some((line) => line.includes('upstream_request_id="test-provider-request-1"')));
 });
