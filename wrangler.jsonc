@@ -14,7 +14,8 @@
     "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_QBCoMyZvh6Px_3AFff_yTg_5BOpG8FY"
   },
   "placement": {
-    "mode": "smart"
+    // Temporary recognition-only comparison: prefer execution near Singapore.
+    "region": "aws:ap-southeast-1"
   },
   "observability": {
     "enabled": true,
