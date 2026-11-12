@@ -3,10 +3,15 @@ const PICWISH_SYNC_TIMEOUT_MS = 12000;
 const PICWISH_MAX_RESULT_BYTES = 8 * 1024 * 1024;
 const DEFAULT_VISION_TIMEOUT_MS = 5000;
 const DEFAULT_CAPTURE_VISION_TIMEOUT_MS = 5000;
-const QWEN_VISION_BUDGET_RATIO = 0.6;
+const DEFAULT_VISION_PROVIDER_TIMEOUT_MS = 5000;
 const DEFAULT_QWEN_ENDPOINT = "https://cn-beijing.maas.qianwenaiapi.com/compatible-mode/v1/chat/completions";
 const DEFAULT_QWEN_GLOBAL_ENDPOINT = "https://maas.qianwenaiapi.com/compatible-mode/v1/chat/completions";
 const DEFAULT_QWEN_MODEL = "qwen3.7-flash";
+const DEFAULT_MEDIA_GC_RETENTION_DAYS = 3;
+const DEFAULT_MEDIA_GC_BATCH_SIZE = 200;
+const DEFAULT_MEDIA_GC_STALE_CLAIM_HOURS = 2;
+const DEFAULT_UNVERIFIED_AUTH_RETENTION_HOURS = 24;
+const DEFAULT_UNVERIFIED_AUTH_CLEANUP_BATCH_SIZE = 200;
 
 const EMOJI_KEYS_BY_KIND = {
   item: ["laptop", "phone", "charger", "earphones", "camera", "battery", "gamepad", "tshirt", "pants", "shoes", "hat", "bag", "ring", "pill", "bandage", "thermometer", "glasses", "book", "pen", "scissors", "folder", "key", "umbrella", "tissues", "cosmetics", "perfume", "clock", "coffee", "cup", "utensils", "apple", "wrench", "hammer", "flashlight", "lock", "basketball", "guitar", "puzzle", "tent"],
@@ -30,6 +35,7 @@ const json = (data, status = 200, extraHeaders = {}) =>
   });
 
 const errorMessage = (value) => (value instanceof Error ? value.message : String(value));
+const isMattingEnabled = (env) => String(env.MATTING_ENABLED ?? "true").toLowerCase() !== "false";
 
 function getSupabaseConfig(env) {
   const url = String(env.SUPABASE_URL || "").trim().replace(/\/+$/, "");
@@ -38,6 +44,205 @@ function getSupabaseConfig(env) {
     throw new Error("SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY must be configured");
   }
   return { url, key };
+}
+
+function mediaGcNumber(value, fallback, minimum, maximum) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.min(maximum, Math.max(minimum, Math.floor(parsed))) : fallback;
+}
+
+function getMediaGcConfig(env) {
+  const url = String(env.SUPABASE_URL || "").trim().replace(/\/+$/, "");
+  const serviceKey = String(env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+  const bucket = env.NOMA_MEMORY_IMAGES;
+  if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(url) || !serviceKey || !bucket?.delete) return null;
+  return {
+    url,
+    serviceKey,
+    bucket,
+    retentionDays: mediaGcNumber(env.MEDIA_GC_RETENTION_DAYS, DEFAULT_MEDIA_GC_RETENTION_DAYS, 1, 90),
+    batchSize: mediaGcNumber(env.MEDIA_GC_BATCH_SIZE, DEFAULT_MEDIA_GC_BATCH_SIZE, 1, 500),
+    staleClaimHours: mediaGcNumber(env.MEDIA_GC_STALE_CLAIM_HOURS, DEFAULT_MEDIA_GC_STALE_CLAIM_HOURS, 1, 24),
+  };
+}
+
+function getUnverifiedAuthCleanupConfig(env) {
+  const url = String(env.SUPABASE_URL || "").trim().replace(/\/+$/, "");
+  const serviceKey = String(env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+  if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(url) || !serviceKey) return null;
+  return {
+    url,
+    serviceKey,
+    retentionHours: mediaGcNumber(
+      env.AUTH_UNVERIFIED_RETENTION_HOURS,
+      DEFAULT_UNVERIFIED_AUTH_RETENTION_HOURS,
+      24,
+      24 * 30,
+    ),
+    batchSize: mediaGcNumber(
+      env.AUTH_CLEANUP_BATCH_SIZE,
+      DEFAULT_UNVERIFIED_AUTH_CLEANUP_BATCH_SIZE,
+      1,
+      500,
+    ),
+  };
+}
+
+async function mediaGcSupabaseRequest(config, path, init = {}) {
+  const response = await fetch(`${config.url}/rest/v1/${path}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${config.serviceKey}`,
+      apikey: config.serviceKey,
+      ...init.headers,
+    },
+  });
+  const text = await response.text();
+  if (!response.ok) throw new Error(`Media GC Supabase HTTP ${response.status}: ${text.slice(0, 300)}`);
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error("Media GC Supabase returned invalid JSON");
+  }
+}
+
+async function deleteSupabaseAuthUser(config, userId) {
+  const response = await fetch(`${config.url}/auth/v1/admin/users/${encodeURIComponent(userId)}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${config.serviceKey}`,
+      apikey: config.serviceKey,
+    },
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`Supabase Auth Admin HTTP ${response.status}: ${text.slice(0, 300)}`);
+  }
+}
+
+function mediaGcQuery(entries) {
+  const params = new URLSearchParams();
+  for (const [name, value] of entries) params.set(name, String(value));
+  return params.toString();
+}
+
+export async function runMediaGc(env, now = Date.now()) {
+  const config = getMediaGcConfig(env);
+  if (!config) {
+    console.warn("[MediaGC] skipped: SUPABASE_SERVICE_ROLE_KEY or NOMA_MEMORY_IMAGES is not configured");
+    return { scanned: 0, deleted: 0, failed: 0, skipped: true };
+  }
+
+  const cutoff = new Date(now - config.retentionDays * 24 * 60 * 60 * 1000).toISOString();
+  const staleClaimBefore = new Date(now - config.staleClaimHours * 60 * 60 * 1000).toISOString();
+  const candidates = await mediaGcSupabaseRequest(config, "rpc/claim_noma_media_gc", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      p_cutoff: cutoff,
+      p_stale_claim_before: staleClaimBefore,
+      p_limit: config.batchSize,
+    }),
+  });
+  let deleted = 0;
+  let failed = 0;
+
+  for (const candidate of Array.isArray(candidates) ? candidates : []) {
+    const key = String(candidate?.key || "");
+    if (!key.startsWith("users/")) continue;
+    let r2Deleted = false;
+    try {
+      await config.bucket.delete(key);
+      r2Deleted = true;
+      const deleteQuery = mediaGcQuery([
+        ["key", `eq.${key}`],
+        ["ref_count", "eq.0"],
+        ["orphaned_at", `lte.${cutoff}`],
+        ["gc_claimed_at", "not.is.null"],
+      ]);
+      await mediaGcSupabaseRequest(config, `media_objects?${deleteQuery}`, {
+        method: "DELETE",
+        headers: { Prefer: "return=minimal" },
+      });
+      deleted += 1;
+    } catch (error) {
+      failed += 1;
+      if (!r2Deleted) {
+        const releaseQuery = mediaGcQuery([
+          ["key", `eq.${key}`],
+          ["gc_claimed_at", "not.is.null"],
+        ]);
+        try {
+          await mediaGcSupabaseRequest(config, `media_objects?${releaseQuery}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", Prefer: "return=minimal" },
+            body: JSON.stringify({ gc_claimed_at: null }),
+          });
+        } catch (releaseError) {
+          console.error(`[MediaGC] claim_release_failed key=${JSON.stringify(key)} error=${errorMessage(releaseError).slice(0, 200)}`);
+        }
+      }
+      console.error(`[MediaGC] key=${JSON.stringify(key)} error=${errorMessage(error).slice(0, 300)}`);
+    }
+  }
+
+  const result = { scanned: Array.isArray(candidates) ? candidates.length : 0, deleted, failed, skipped: false };
+  console.log(`[MediaGC] scanned=${result.scanned} deleted=${deleted} failed=${failed} cutoff=${cutoff}`);
+  return result;
+}
+
+export async function runUnverifiedAuthCleanup(env, now = Date.now()) {
+  const config = getUnverifiedAuthCleanupConfig(env);
+  if (!config) {
+    console.warn("[AuthCleanup] skipped: SUPABASE_SERVICE_ROLE_KEY is not configured");
+    return { scanned: 0, deleted: 0, failed: 0, skipped: true };
+  }
+
+  const cutoff = new Date(now - config.retentionHours * 60 * 60 * 1000).toISOString();
+  const candidates = await mediaGcSupabaseRequest(config, "rpc/list_noma_unverified_auth_cleanup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      p_cutoff: cutoff,
+      p_limit: config.batchSize,
+    }),
+  });
+  let deleted = 0;
+  let failed = 0;
+
+  for (const candidate of Array.isArray(candidates) ? candidates : []) {
+    const userId = String(candidate?.user_id || "").trim();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(userId)) {
+      failed += 1;
+      console.error(`[AuthCleanup] invalid_candidate user_id=${JSON.stringify(userId)}`);
+      continue;
+    }
+    try {
+      await deleteSupabaseAuthUser(config, userId);
+      deleted += 1;
+    } catch (error) {
+      failed += 1;
+      console.error(`[AuthCleanup] user_id=${JSON.stringify(userId)} error=${errorMessage(error).slice(0, 300)}`);
+    }
+  }
+
+  const result = { scanned: Array.isArray(candidates) ? candidates.length : 0, deleted, failed, skipped: false };
+  console.log(`[AuthCleanup] scanned=${result.scanned} deleted=${deleted} failed=${failed} cutoff=${cutoff}`);
+  return result;
+}
+
+export async function runScheduledMaintenance(env) {
+  const results = await Promise.allSettled([
+    runMediaGc(env),
+    runUnverifiedAuthCleanup(env),
+  ]);
+  results.forEach((result, index) => {
+    if (result.status === "rejected") {
+      const task = index === 0 ? "MediaGC" : "AuthCleanup";
+      console.error(`[Maintenance] task=${task} error=${errorMessage(result.reason).slice(0, 300)}`);
+    }
+  });
 }
 
 function bearerToken(request) {
@@ -278,32 +483,6 @@ function parseVisionResult(content) {
   };
 }
 
-async function callGemini(env, parts, { jsonMode = false, imageMode = false, model, timeoutMs = 12000 } = {}) {
-  if (!env.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not configured");
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model || env.GEMINI_MODEL || "gemini-3.5-flash")}:generateContent?key=${encodeURIComponent(env.GEMINI_API_KEY)}`;
-  const generationConfig = { temperature: 0.15 };
-  if (jsonMode) generationConfig.responseMimeType = "application/json";
-  if (imageMode) generationConfig.responseModalities = ["TEXT", "IMAGE"];
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort("Upstream request timed out"), timeoutMs);
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contents: [{ role: "user", parts }], generationConfig }),
-      signal: controller.signal,
-    });
-    return await readJsonResponse(response, "Gemini");
-  } catch (error) {
-    if (controller.signal.aborted) {
-      throw new Error(`Gemini request timed out after ${timeoutMs} ms`);
-    }
-    throw error;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 async function callQwen(env, content, jsonMode = false, timeoutMs = 12000, modelOverride = "", endpointOverride = "") {
   if (!env.QWEN_API_KEY) throw new Error("QWEN_API_KEY is not configured");
   const controller = new AbortController();
@@ -344,15 +523,13 @@ function isUpstreamTimeout(error) {
 async function vision(env, body, qwenRoute, timeoutMs = DEFAULT_VISION_TIMEOUT_MS) {
   if (!body.image_base64) return json({ error: "image_base64 is required" }, 400);
   const mimeType = body.mime_type || "image/jpeg";
-  const prompt = `Identify the main physical object. The title must be a specific common English name for the visible object. Never use generic placeholders such as item, object, scanned item, scanned items, unknown item, or unidentified object. Choose exactly one category from this whitelist: ${ITEM_CATEGORIES.join(", ")}. Return only JSON: {"title":"specific short English object name","category":"one whitelisted category","labels":["semantic tag"]}.`;
+  const prompt = `Identify the main physical object. The title must be a specific common English name for the visible object. Never use generic placeholders such as item, object, scanned item, scanned items, unknown item, or unidentified object. Choose exactly one category from this whitelist: ${ITEM_CATEGORIES.join(", ")}. Return only JSON: {"title":"specific short English object name","category":"one whitelisted category","labels":["synonym or semantic tag"]}.`;
   const visionStartedAt = Date.now();
-  const deadline = visionStartedAt + timeoutMs;
   const dataUrl = `data:${mimeType};base64,${body.image_base64}`;
   const model = env.QWEN_MODEL || DEFAULT_QWEN_MODEL;
-  const failures = [];
   const providerStartedAt = Date.now();
   try {
-    const qwenTimeoutMs = Math.max(1, Math.floor(timeoutMs * QWEN_VISION_BUDGET_RATIO));
+    const qwenTimeoutMs = Math.max(1, Math.min(DEFAULT_VISION_PROVIDER_TIMEOUT_MS, timeoutMs));
     const data = await callQwen(env, [
       { type: "image_url", image_url: { url: dataUrl } },
       { type: "text", text: prompt },
@@ -363,38 +540,12 @@ async function vision(env, body, qwenRoute, timeoutMs = DEFAULT_VISION_TIMEOUT_M
   } catch (error) {
     const timedOut = isUpstreamTimeout(error);
     const outcome = timedOut ? "timeout" : "invalid";
-    failures.push(`qwen: ${errorMessage(error)}`);
     console.log(`[AiTiming] feature=vision provider=qwen qwen_region=${qwenRoute.region} model=${model} stream=true provider_ms=${Date.now() - providerStartedAt} total_ms=${Date.now() - visionStartedAt} outcome=${outcome} error=${errorMessage(error).slice(0, 240)}`);
+    return json({
+      error: `Qwen vision failed: ${errorMessage(error)}`,
+      ...(timedOut ? { code: "VISION_TIMEOUT" } : {}),
+    }, timedOut ? 504 : 502);
   }
-
-  const remainingMs = deadline - Date.now();
-  if (remainingMs > 0 && env.GEMINI_API_KEY) {
-    const geminiStartedAt = Date.now();
-    const geminiModel = env.GEMINI_VISION_MODEL || env.GEMINI_MODEL || "gemini-3.5-flash";
-    try {
-      const data = await callGemini(env, [
-        { inlineData: { mimeType, data: body.image_base64 } },
-        { text: prompt },
-      ], { jsonMode: true, model: geminiModel, timeoutMs: remainingMs });
-      const result = parseVisionResult(extractText(data));
-      console.log(`[AiTiming] feature=vision provider=gemini model=${geminiModel} timeout_ms=${remainingMs} provider_ms=${Date.now() - geminiStartedAt} total_ms=${Date.now() - visionStartedAt} outcome=success accepted_title=${JSON.stringify(result.title)} category=${JSON.stringify(result.category)}`);
-      return json({ choices: [{ message: { content: JSON.stringify(result) } }] });
-    } catch (error) {
-      failures.push(`gemini: ${errorMessage(error)}`);
-      const outcome = isUpstreamTimeout(error) ? "timeout" : "invalid";
-      console.log(`[AiTiming] feature=vision provider=gemini model=${geminiModel} timeout_ms=${remainingMs} provider_ms=${Date.now() - geminiStartedAt} total_ms=${Date.now() - visionStartedAt} outcome=${outcome} error=${errorMessage(error).slice(0, 240)}`);
-    }
-  } else if (!env.GEMINI_API_KEY) {
-    failures.push("gemini: GEMINI_API_KEY is not configured");
-  } else {
-    failures.push("gemini: shared vision deadline exhausted");
-  }
-
-  const timedOut = failures.some((failure) => isUpstreamTimeout(failure)) || Date.now() >= deadline;
-  return json({
-    error: `Vision providers failed: ${failures.join(" | ")}`,
-    ...(timedOut ? { code: "VISION_TIMEOUT" } : {}),
-  }, timedOut ? 504 : 502);
 }
 
 async function title(env, body, qwenRoute) {
@@ -430,6 +581,10 @@ async function classifyEmoji(env, body, qwenRoute) {
 
 async function matting(env, body) {
   if (!body.image_base64) return json({ error: "image_base64 is required" }, 400);
+  if (!isMattingEnabled(env)) {
+    console.log("[AiTiming] feature=matting outcome=disabled provider_ms=0");
+    return json({ error: "Background removal is temporarily disabled", code: "MATTING_DISABLED" }, 503);
+  }
   const mattingApiKey = env.PICWISH_GLOBAL_API_KEY;
   if (!mattingApiKey) return json({ error: "PICWISH_GLOBAL_API_KEY is not configured" }, 500);
   const providerStartedAt = Date.now();
@@ -515,24 +670,11 @@ async function processImage(env, body, qwenRoute) {
   return json({ recognition, vision: visionResult, matting: mattingResult }, status);
 }
 
-async function generateImage(env, body) {
-  const prompt = String(body.prompt || "").trim();
-  if (!prompt) return json({ error: "prompt is required" }, 400);
-  try {
-    const data = await callGemini(env, [{ text: prompt }], {
-      imageMode: true,
-      model: env.GEMINI_IMAGE_MODEL || "gemini-3.1-flash-image",
-    });
-    const part = data?.candidates?.[0]?.content?.parts?.find((item) => item.inlineData || item.inline_data);
-    const base64 = part?.inlineData?.data || part?.inline_data?.data;
-    if (!base64) throw new Error("Gemini did not return image data");
-    return json({ base64, result_base64: base64 });
-  } catch (error) {
-    return json({ error: `Image generation failed: ${errorMessage(error)}` }, 502);
-  }
-}
-
 export default {
+  async scheduled(_controller, env, ctx) {
+    ctx.waitUntil(runScheduledMaintenance(env));
+  },
+
   async fetch(request, env) {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
     if (request.method === "GET") return json({
@@ -540,8 +682,8 @@ export default {
       service: "noma-ai",
       version: "23",
       capabilities: {
-        vision: Boolean(env.QWEN_API_KEY || env.GEMINI_API_KEY),
-        matting: Boolean(env.PICWISH_GLOBAL_API_KEY),
+        vision: Boolean(env.QWEN_API_KEY),
+        matting: isMattingEnabled(env) && Boolean(env.PICWISH_GLOBAL_API_KEY),
       },
     });
     if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -610,7 +752,7 @@ export default {
       return withQuota(response, access, { auth: authMs, provider: providerMs, total: totalMs });
     }
 
-    if (body.type === "title" || body.type === "generate-image" || body.type === "emoji-classify") {
+    if (body.type === "title" || body.type === "emoji-classify") {
       try {
         await authenticate(request, env);
       } catch {
@@ -621,8 +763,7 @@ export default {
       }
       const qwenRoute = resolveQwenRoute(request, env);
       if (body.type === "title") return title(env, body, qwenRoute);
-      if (body.type === "emoji-classify") return classifyEmoji(env, body, qwenRoute);
-      return generateImage(env, body);
+      return classifyEmoji(env, body, qwenRoute);
     }
 
     return json({ error: "Unsupported request type" }, 400);

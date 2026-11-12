@@ -7,10 +7,22 @@
   "vars": {
     "QWEN_ENDPOINT": "https://cn-beijing.maas.qianwenaiapi.com/compatible-mode/v1/chat/completions",
     "QWEN_MODEL": "qwen3.7-flash",
+    "MATTING_ENABLED": "true",
+    "AUTH_UNVERIFIED_RETENTION_HOURS": "24",
+    "MEDIA_GC_RETENTION_DAYS": "3",
     "SUPABASE_URL": "https://rthvexnnsebtfxcfpung.supabase.co",
     "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_QBCoMyZvh6Px_3AFff_yTg_5BOpG8FY"
   },
   "placement": {
     "mode": "smart"
+  },
+  "r2_buckets": [
+    {
+      "binding": "NOMA_MEMORY_IMAGES",
+      "bucket_name": "noma-memory-images"
+    }
+  ],
+  "triggers": {
+    "crons": ["0 19 * * *"]
   }
 }

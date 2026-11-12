@@ -96,7 +96,13 @@ interface CaptureScannerProps {
     subLocationImg?: string;
     subLocationHighlight?: { x: number; y: number };
   }) => void | Promise<void>;
-  onCutoutComplete?: (result: { name: string; category: string; stickerUrl?: string }) => void;
+  onCutoutComplete?: (result: {
+    name: string;
+    category: string;
+    stickerUrl?: string;
+    labels?: string[];
+    attributes?: RecognitionResult["attributes"];
+  }) => void;
   onSwitchToEmoji?: () => void;
   layer?: number;
 }
@@ -276,7 +282,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 }) => {
   // Call keyboard reset aggressively when capture page is open to guarantee layout restoration
   useKeyboardReset(false, isOpen);
-  const { reserveAiScan } = useAuth();
+  const { checkAiScanAccess } = useAuth();
 
   const [selectedItemIndex, setSelectedItemIndex] = useState<number>(0);
   const [isCapturing, setIsCapturing] = useState<boolean>(false);
@@ -383,6 +389,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     name: string;
     category: string;
     stickerUrl?: string;
+    labels?: string[];
+    attributes?: RecognitionResult["attributes"];
   } | null>(null);
   const [tempIdentifiedCategory, setTempIdentifiedCategory] = useState<string>("");
   const [isCategorySelectorOpen, setIsCategorySelectorOpen] = useState<boolean>(false);
@@ -440,9 +448,9 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     return () => window.clearTimeout(timer);
   }, [aiAccessNotice]);
 
-  const reserveAiCapture = (): "available" | "quota" | "unavailable" => {
+  const checkAiCaptureAccess = (): "available" | "quota" | "unavailable" => {
     if (!isApiEnabled()) return "unavailable";
-    return reserveAiScan();
+    return checkAiScanAccess();
   };
 
   const showPhotoThumbnailNotice = (reason: "quota" | "unavailable") => {
@@ -1641,6 +1649,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       title: result.recognition?.title,
       category: result.recognition?.category,
       stickerUrl,
+      labels: result.recognition?.labels,
+      attributes: result.recognition?.attributes,
     }));
   };
 
@@ -3144,7 +3154,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       isPreset = true;
     }
     const scanId = isPreset ? undefined : createAiScanId();
-    const aiCaptureAccess = isPreset ? "available" : reserveAiCapture();
+    const aiCaptureAccess = isPreset ? "available" : checkAiCaptureAccess();
     itemNameEditedRef.current = false;
     acceptedRecognitionTitleRef.current = "";
     setResolvedCaptureResult(null);
@@ -3339,7 +3349,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     let scanId: string | undefined;
     let processingPromise: ReturnType<typeof processCapturedImage> | undefined;
     if (file.type !== "image/png") {
-      aiCaptureAccess = reserveAiCapture();
+      aiCaptureAccess = checkAiCaptureAccess();
       if (aiCaptureAccess === "available") {
         scanId = createAiScanId();
         processingPromise = processCapturedImage(file, scanId);
@@ -3404,7 +3414,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
           return;
         }
 
-        if (aiCaptureAccess === null) aiCaptureAccess = reserveAiCapture();
+        if (aiCaptureAccess === null) aiCaptureAccess = checkAiCaptureAccess();
         const shouldUseAi = aiCaptureAccess === "available";
         if (shouldUseAi && !scanId) scanId = createAiScanId();
         if (shouldUseAi && !processingPromise) {

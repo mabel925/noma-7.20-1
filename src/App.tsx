@@ -8,16 +8,11 @@ import { VirtualKeyboard } from "./components/VirtualKeyboard";
 import { AddItemFlowV13 } from "./components/AddItemFlowV13";
 import { useKeyboardReset } from "./hooks/useKeyboardReset";
 import { memoryStorage, type MemoryPageCursor } from "./services/memoryStorage";
-import { NOMA_AI_URL } from "./services/backendUrls";
-import { isApiEnabled } from "./services/aiService";
+import { searchChatMemory } from "./services/chatSearch";
+import type { ChatMessage, ChatSpaceResult, MemoryOpenTarget } from "./types/chat";
 
 import { Wifi, Battery, Signal, RefreshCw, Sparkles, Target, Info } from "lucide-react";
 import { motion, AnimatePresence, useAnimation } from "motion/react";
-
-interface ChatMessage {
-  sender: "noma" | "user";
-  text: string;
-}
 
 import { MemoryList, MemoryItem } from "./components/MemoryList";
 import { CloseIcon } from "./components/CloseIcon";
@@ -27,6 +22,14 @@ import { preloadDeferredAssets, preloadStartupAssets, subscribeStartupPreload } 
 import { checkForAppUpdate } from "./services/appUpdate";
 
 const HOME_BACKGROUND_URL = "/home-bg.jpg";
+const chatMessageId = () => `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const withChatSearchTimeout = <T,>(task: Promise<T>, timeoutMs = 4000): Promise<T> => new Promise((resolve, reject) => {
+  const timer = window.setTimeout(() => reject(new Error("Chat search timed out")), timeoutMs);
+  task.then(
+    (value) => { window.clearTimeout(timer); resolve(value); },
+    (error) => { window.clearTimeout(timer); reject(error); },
+  );
+});
 
 const DEFAULT_MEMORIES: MemoryItem[] = [
   {
@@ -36,7 +39,6 @@ const DEFAULT_MEMORIES: MemoryItem[] = [
     price: "$1499.00",
     date: "Today",
     emoji: "💻",
-    stickerUrl: "https://images.unsplash.com/photo-1587614382346-4ec70e388b28?w=300&auto=format&fit=crop&q=80",
     parentLocationName: "Bedroom",
     subLocationName: "Nightstand",
     parentLocationImg: "https://images.unsplash.com/photo-1540518614846-7eded433c457?w=500&auto=format&fit=crop&q=80",
@@ -49,7 +51,6 @@ const DEFAULT_MEMORIES: MemoryItem[] = [
     price: "$45.00",
     date: "Yesterday",
     emoji: "🧣",
-    stickerUrl: "https://images.unsplash.com/photo-1608096293090-b5529597e281?w=300&auto=format&fit=crop&q=80",
     parentLocationName: "Bedroom",
     subLocationName: "Wardrobe",
     parentLocationImg: "https://images.unsplash.com/photo-1540518614846-7eded433c457?w=500&auto=format&fit=crop&q=80",
@@ -62,7 +63,6 @@ const DEFAULT_MEMORIES: MemoryItem[] = [
     price: "$15.00",
     date: "July 2, 2026",
     emoji: "📕",
-    stickerUrl: "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=300&auto=format&fit=crop&q=80",
     parentLocationName: "Living Room",
     subLocationName: "Cabinet Drawer",
     parentLocationImg: "https://images.unsplash.com/photo-1583847268964-b28dc8f51f92?w=500&auto=format&fit=crop&q=80",
@@ -75,7 +75,6 @@ const DEFAULT_MEMORIES: MemoryItem[] = [
     price: "$2400.00",
     date: "June 28, 2026",
     emoji: "📷",
-    stickerUrl: "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=300&auto=format&fit=crop&q=80",
     parentLocationName: "Main Bedroom",
     subLocationName: "Desk Tray",
     parentLocationImg: "https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=500&auto=format&fit=crop&q=80",
@@ -88,7 +87,6 @@ const DEFAULT_MEMORIES: MemoryItem[] = [
     price: "$180.00",
     date: "Yesterday",
     emoji: "🧥",
-    stickerUrl: "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=300&auto=format&fit=crop&q=80",
     parentLocationName: "Main Bedroom",
     subLocationName: "Wardrobe",
     parentLocationImg: "https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=500&auto=format&fit=crop&q=80",
@@ -101,7 +99,6 @@ const DEFAULT_MEMORIES: MemoryItem[] = [
     price: "$0.00",
     date: "June 25, 2026",
     emoji: "📜",
-    stickerUrl: "https://images.unsplash.com/photo-1586075010923-2dd4570fb338?w=300&auto=format&fit=crop&q=80",
     parentLocationName: "Main Bedroom",
     subLocationName: "Safe Box",
     parentLocationImg: "https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=500&auto=format&fit=crop&q=80",
@@ -114,7 +111,6 @@ const DEFAULT_MEMORIES: MemoryItem[] = [
     price: "$299.00",
     date: "June 24, 2026",
     emoji: "🎧",
-    stickerUrl: "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=300&auto=format&fit=crop&q=80",
     parentLocationName: "Main Bedroom",
     subLocationName: "Cabinet",
     parentLocationImg: "https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=500&auto=format&fit=crop&q=80",
@@ -127,7 +123,6 @@ const DEFAULT_MEMORIES: MemoryItem[] = [
     price: "$12.00",
     date: "June 23, 2026",
     emoji: "📔",
-    stickerUrl: "https://images.unsplash.com/photo-1517842645767-c639042777db?w=300&auto=format&fit=crop&q=80",
     parentLocationName: "Main Bedroom",
     subLocationName: "Storage Box",
     parentLocationImg: "https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=500&auto=format&fit=crop&q=80",
@@ -195,6 +190,7 @@ export default function App() {
   const [isCaptureOpen, setIsCaptureOpen] = useState<boolean>(false);
   const [isMemoryOpen, setIsMemoryOpen] = useState<boolean>(false);
   const [hasOpenedMemory, setHasOpenedMemory] = useState<boolean>(false);
+  const [memoryOpenTarget, setMemoryOpenTarget] = useState<MemoryOpenTarget | null>(null);
   const [isStandaloneMode, setIsStandaloneMode] = useState<boolean>(false);
   const launchStartedAtRef = React.useRef(performance.now());
   const [areStageAssetsReady, setAreStageAssetsReady] = useState(false);
@@ -396,6 +392,9 @@ export default function App() {
     if (!user || !isHomeReady) return () => { cancelled = true; };
     persistedMemorySnapshotsRef.current.delete(user.id);
     if (user.isMock) {
+      customMemoriesRef.current = DEFAULT_MEMORIES;
+      memorySnapshotRef.current = DEFAULT_MEMORIES;
+      setCustomMemories(DEFAULT_MEMORIES);
       setIsMemoryHydrated(true);
       setHydratedUserId(user.id);
       return () => { cancelled = true; };
@@ -499,10 +498,17 @@ export default function App() {
 
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
+      id: "chat-welcome",
       sender: "noma",
       text: "Hi, I'm noma. Snap a photo of the items scattered around your space, and I'll help you find the perfect home for them.",
     },
   ]);
+  const [isChatSearching, setIsChatSearching] = useState(false);
+  const chatSearchRequestRef = React.useRef(0);
+  const chatResultContextRef = React.useRef<{
+    items?: MemoryItem[];
+    spaces?: ChatSpaceResult[];
+  }>({});
 
   // Update clock
   useEffect(() => {
@@ -587,175 +593,94 @@ export default function App() {
     }
   }, [toast]);
 
-  // Pre-configured room search knowledgebase
-  const handleNomaSearch = (query: string) => {
+  const handleNomaSearch = async (query: string) => {
     if (!userRef.current) {
-      requireAuth(() => handleNomaSearch(query));
+      requireAuth(() => void handleNomaSearch(query));
       return;
     }
-    const cleanQuery = query.toLowerCase().trim();
+    const currentUser = userRef.current;
+    const requestId = chatSearchRequestRef.current + 1;
+    chatSearchRequestRef.current = requestId;
+    setIsChatSearching(true);
+    const startedAt = performance.now();
+    let source: "context" | "cloud" | "local" = "cloud";
 
-    // Check if user is asking to generate/draw/create/make an image
-    if (
-      cleanQuery.startsWith("generate ") ||
-      cleanQuery.startsWith("draw ") ||
-      cleanQuery.startsWith("create ") ||
-      cleanQuery.startsWith("make ")
-    ) {
-      const prompt = query.substring(query.indexOf(" ") + 1).trim();
-      
-      // Add immediate thinking feedback
-      setTimeout(() => {
-        setMessages((prev) => [
-          ...prev,
-          {
-            sender: "noma",
-            text: `🎨 Drawing "${prompt}" for you using the recommended gemini-3.1-flash-image model... Please wait a moment! ✨`
-          }
-        ]);
-      }, 300);
-
-      // Keep the diagnostic API switch authoritative for every AI route,
-      // including the chat image-generation path which does not use the
-      // shared callNomaBackend helper.
-      const imageGenerationRequest = isApiEnabled()
-        ? fetch(NOMA_AI_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          type: "generate-image",
-          prompt: prompt
-        })
-      })
-        : Promise.resolve(new Response(JSON.stringify({}), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
+    try {
+      let result;
+      const itemContextFollowup = /^(?:where is it|where are they|show it|open it|它在哪|它在哪里|打开它)[?？.!。]*$/i.test(query.trim());
+      const spaceContextFollowup = /^(?:what(?:'s| is) in there|show me that space|open that space|那里有什么|里面有什么|打开那里)[?？.!。]*$/i.test(query.trim());
+      if (itemContextFollowup && chatResultContextRef.current.items?.length) {
+        source = "context";
+        result = { kind: "items" as const, items: chatResultContextRef.current.items };
+      } else if (spaceContextFollowup && chatResultContextRef.current.spaces?.length) {
+        source = "context";
+        result = { kind: "spaces" as const, spaces: chatResultContextRef.current.spaces };
+      } else {
+        try {
+          result = await withChatSearchTimeout(searchChatMemory({
+            ownerId: currentUser.id,
+            isMock: Boolean(currentUser.isMock),
+            query,
+            loadedItems: customMemoriesRef.current,
           }));
-
-      imageGenerationRequest
-        .then((res) => {
-          return res.text().then((body) => {
-            if (!res.ok) {
-              let detail = body.replace(/\s+/g, " ").trim().slice(0, 500);
-              try {
-                const parsed = JSON.parse(body);
-                detail = typeof parsed?.error === "string" ? parsed.error : JSON.stringify(parsed);
-              } catch {
-                // Keep the plain-text Worker response as the diagnostic detail.
-              }
-              throw new Error(`HTTP ${res.status}: ${detail || "(empty response body)"}`);
-            }
-            return JSON.parse(body);
+        } catch (error) {
+          source = "local";
+          console.warn("[ChatSearch] Cloud search failed; using loaded memory fallback.", error);
+          result = await searchChatMemory({
+            ownerId: currentUser.id,
+            isMock: true,
+            query,
+            loadedItems: customMemoriesRef.current,
           });
-        })
-        .then((data) => {
-          let imageBase64 = "";
-          if (data && data.base64) {
-            imageBase64 = data.base64;
-          } else if (data && data.result_base64) {
-            imageBase64 = data.result_base64;
-          } else {
-            // Generate fallback client-side SVG
-            const cleanPrompt = prompt.replace(/"/g, "'");
-            const fallbackSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="100%" height="100%">
-              <defs>
-                <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stop-color="#1e293b"/>
-                  <stop offset="50%" stop-color="#334155"/>
-                  <stop offset="100%" stop-color="#0f172a"/>
-                </linearGradient>
-              </defs>
-              <rect width="100%" height="100%" fill="url(#g)"/>
-              <circle cx="200" cy="200" r="120" fill="none" stroke="#64748b" stroke-width="2" stroke-dasharray="8 4"/>
-              <path d="M 200 130 L 200 270 M 130 200 L 270 200" stroke="#475569" stroke-width="2"/>
-              <text x="50%" y="45%" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="22" font-weight="bold">Noma Space AI</text>
-              <text x="50%" y="55%" text-anchor="middle" fill="#64748b" font-family="system-ui, sans-serif" font-size="14" width="300">${cleanPrompt.length > 30 ? cleanPrompt.slice(0, 30) + '...' : cleanPrompt}</text>
-              <text x="50%" y="65%" text-anchor="middle" fill="#475569" font-family="system-ui, sans-serif" font-size="11">Visualizing Concept...</text>
-            </svg>`;
-            imageBase64 = `data:image/svg+xml;base64,${window.btoa(unescape(encodeURIComponent(fallbackSvg)))}`;
-          }
+        }
+      }
+      if (chatSearchRequestRef.current !== requestId) return;
 
-          setMessages((prev) => [
-            ...prev,
-            {
-              sender: "noma",
-              text: `✨ Success! Generated a beautiful custom sticker of "${prompt}" using the brand-new gemini-3.1-flash-image model. The asset has been logged and pinned into Noma's permanent memory bank! 🖼️`
-            }
-          ]);
-          // Save to memory bank!
-          const stickerObj = {
-            name: prompt,
-            category: "AI Generated",
-            price: "$0.00",
-            date: new Date().toLocaleDateString(),
-            emoji: "🎨",
-            stickerUrl: imageBase64,
-            parentLocationName: "书房",
-            subLocationName: "书桌"
-          };
-          handleItemAdded(stickerObj);
-        })
-        .catch((err) => {
-          console.error("AI Generation error:", err);
-          setMessages((prev) => [
-            ...prev,
-            {
-              sender: "noma",
-              text: `❌ Oh dear, I couldn't generate that image: ${err.message || String(err)}. Please ensure Cloudflare Worker backend is fully operational.`
-            }
-          ]);
-        });
-      return;
+      if (result.kind === "items") {
+        chatResultContextRef.current = { items: result.items };
+        setMessages((previous) => [...previous, {
+          id: chatMessageId(),
+          sender: "noma",
+          text: result.items.length === 1 ? "Find it!!" : `You have ${result.items.length} of them. Take a look below.`,
+          items: result.items,
+        }]);
+      } else if (result.kind === "spaces") {
+        chatResultContextRef.current = { spaces: result.spaces };
+        setMessages((previous) => [...previous, {
+          id: chatMessageId(),
+          sender: "noma",
+          text: result.spaces.length === 1
+            ? "I found that space. Take a look below."
+            : `I found ${result.spaces.length} spaces matching that. Which one do you want to check?`,
+          spaces: result.spaces,
+        }]);
+      } else if (result.kind === "unsupported") {
+        chatResultContextRef.current = {};
+        setMessages((previous) => [...previous, {
+          id: chatMessageId(),
+          sender: "noma",
+          text: "Noma only keeps an eye on your things and spaces. Ask me what you own or where something is, and I'll look through your memory.",
+        }]);
+      } else {
+        chatResultContextRef.current = {};
+        setMessages((previous) => [...previous, {
+          id: chatMessageId(),
+          sender: "noma",
+          text: `I don't remember seeing “${query}” yet. Tap + to introduce it to me, and I won't forget it next time.`,
+        }]);
+      }
+      const resultCount = result.kind === "items"
+        ? result.items.length
+        : result.kind === "spaces" ? result.spaces.length : 0;
+      console.info("[ChatSearch]", {
+        source,
+        outcome: result.kind,
+        resultCount,
+        durationMs: Math.round(performance.now() - startedAt),
+      });
+    } finally {
+      if (chatSearchRequestRef.current === requestId) setIsChatSearching(false);
     }
-
-    let reply = "";
-
-    // Check custom memory items first
-    const customMatch = customMemories.find(m => 
-      cleanQuery.includes(m.name.toLowerCase()) || 
-      m.name.toLowerCase().includes(cleanQuery) ||
-      (m.emoji && cleanQuery.includes(m.emoji))
-    );
-
-    if (customMatch) {
-      reply = `${customMatch.emoji} Yes! I remember saving your "${customMatch.name}"! You recorded it on [${customMatch.date}] at a value of [${customMatch.price}]. It has been scanned and is safely logged in your virtual room vault!`;
-    } else if (cleanQuery.includes("key") || cleanQuery.includes("keys")) {
-      reply = "I spotted those shiny brass keys on your third bookshelf, tucked right beside the green ivy!";
-    } else if (
-      cleanQuery.includes("cup") ||
-      cleanQuery.includes("mug") ||
-      cleanQuery.includes("coffee") ||
-      cleanQuery.includes("tea")
-    ) {
-      reply = "Your warm coffee in the blue ceramic mug is resting safely on the wooden tea table!";
-    } else if (
-      cleanQuery.includes("candle") ||
-      cleanQuery.includes("light") ||
-      cleanQuery.includes("fire")
-    ) {
-      reply = "That vanilla-scented candle has a clean glowing flame, sitting near your books in the lower shelf.";
-    } else if (cleanQuery.includes("book") || cleanQuery.includes("books")) {
-      reply = "You're reading it right now! I am holding your favourite turquoise book of fairy tales.";
-    } else if (
-      cleanQuery.includes("noma") ||
-      cleanQuery.includes("who") ||
-      cleanQuery.includes("hello") ||
-      cleanQuery.includes("hi")
-    ) {
-      reply = "Hello! I'm Noma, your visual memory companion. Ask me where any item in your room is, and I'll recall!";
-    } else {
-      reply = `I don't remember seeing "${query}" around the cozy room just yet. Try searching for 'keys', 'coffee', 'book' or 'candle'!`;
-    }
-
-    // Add Noma's response after a slight thinking delay
-    setTimeout(() => {
-      setMessages((prev) => [
-        ...prev,
-        { sender: "noma", text: reply },
-      ]);
-    }, 700);
   };
 
   const handleSend = () => {
@@ -763,15 +688,15 @@ export default function App() {
     const currentInput = inputValue;
     if (!userRef.current) {
       requireAuth(() => {
-      setMessages((prev) => [...prev, { sender: "user", text: currentInput }]);
+      setMessages((prev) => [...prev, { id: chatMessageId(), sender: "user", text: currentInput }]);
       setInputValue("");
-      handleNomaSearch(currentInput);
+      void handleNomaSearch(currentInput);
       });
       return;
     }
-    setMessages((prev) => [...prev, { sender: "user", text: currentInput }]);
+    setMessages((prev) => [...prev, { id: chatMessageId(), sender: "user", text: currentInput }]);
     setInputValue("");
-    handleNomaSearch(currentInput);
+    void handleNomaSearch(currentInput);
   };
 
   const handleKeyPress = (char: string) => {
@@ -787,16 +712,6 @@ export default function App() {
   };
 
   // Quick preset keyword taps
-  const handlePresetSearch = (preset: string) => {
-    if (!userRef.current) {
-      requireAuth(() => handlePresetSearch(preset));
-      return;
-    }
-    setInputValue("");
-    setMessages((prev) => [...prev, { sender: "user", text: preset }]);
-    handleNomaSearch(preset);
-  };
-
   // Add item save to Noma's searchable memory bank
   const handleItemAdded = async (
     nameOrItem: string | Omit<MemoryItem, "id">,
@@ -865,6 +780,7 @@ export default function App() {
       setMessages((prev) => [
         ...prev,
         {
+          id: chatMessageId(),
           sender: "noma",
           text: `✨ I've successfully registered your custom item: "${newItem.name}" (${newItem.emoji})! Value: [${newItem.price}] logged [${newItem.date}] in [${newItem.parentLocationName}]. It has been scanned and is safely recorded in our virtual room archive. Try asking me "Where is my ${newItem.name}?" to find it!`,
         }
@@ -962,6 +878,8 @@ export default function App() {
             hasMore={hasMoreMemories}
             isLoadingMore={isLoadingMoreMemories}
             onLoadMore={() => void loadMoreMemories()}
+            openTarget={memoryOpenTarget}
+            onOpenTargetHandled={() => setMemoryOpenTarget(null)}
           />
         )}
 
@@ -1113,8 +1031,15 @@ export default function App() {
             onMemoryCoreClick={openMemory}
             isChatActive={isChatActive}
             isCaptureOpen={isCaptureOpen}
-            onPresetSearch={handlePresetSearch}
-            isAuthenticated={Boolean(user)}
+            isSearching={isChatSearching}
+            onItemResultClick={(item) => {
+              setMemoryOpenTarget({ requestId: Date.now(), kind: "item", item });
+              openMemory();
+            }}
+            onSpaceResultClick={(space: ChatSpaceResult) => {
+              setMemoryOpenTarget({ requestId: Date.now(), kind: "space", space });
+              openMemory();
+            }}
           />
         )}
 

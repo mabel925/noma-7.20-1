@@ -42,6 +42,8 @@ type ItemRow = {
   parent_location_img?: string | null;
   sub_location_img?: string | null;
   sub_location_highlight?: { x: number; y: number } | null;
+  aliases?: string[] | null;
+  attributes?: MemoryItem["attributes"] | null;
   space_id?: string | null;
   created_at: string;
   updated_at: string;
@@ -72,6 +74,8 @@ const sameItemData = (left: MemoryItem, right: MemoryItem) => (
   && (left.parentLocationImg || "") === (right.parentLocationImg || "")
   && (left.subLocationImg || "") === (right.subLocationImg || "")
   && sameHighlight(left.subLocationHighlight, right.subLocationHighlight)
+  && JSON.stringify(left.aliases || []) === JSON.stringify(right.aliases || [])
+  && JSON.stringify(left.attributes || {}) === JSON.stringify(right.attributes || {})
 );
 
 const createId = () => {
@@ -120,6 +124,13 @@ const toItemRow = (ownerId: string, item: MemoryItem | StoredMemoryItem, existin
     parent_location_img: persistenceMediaValue(item.parentLocationImg),
     sub_location_img: persistenceMediaValue(item.subLocationImg),
     sub_location_highlight: item.subLocationHighlight || null,
+    aliases: (item.aliases || []).map((value) => value.trim()).filter(Boolean).slice(0, 12),
+    attributes: {
+      colors: (item.attributes?.colors || []).map((value) => value.trim()).filter(Boolean).slice(0, 4),
+      materials: (item.attributes?.materials || []).map((value) => value.trim()).filter(Boolean).slice(0, 4),
+      features: (item.attributes?.features || []).map((value) => value.trim()).filter(Boolean).slice(0, 6),
+      brand: item.attributes?.brand?.trim().slice(0, 80) || "",
+    },
     space_id: subLocationName ? subId : parentLocationName ? parentId : null,
     created_at: existing?.created_at || (item as Partial<StoredMemoryItem>).createdAt || nowIso(),
     updated_at: nowIso(),
@@ -196,6 +207,8 @@ const fromItemRow = (row: ItemRow): StoredMemoryItem => ({
   parentLocationImg: displayMediaValue(row.parent_location_img),
   subLocationImg: displayMediaValue(row.sub_location_img),
   subLocationHighlight: row.sub_location_highlight || undefined,
+  aliases: row.aliases || [],
+  attributes: row.attributes || {},
   // Keep the legacy names during the compatibility period; relation IDs are
   // now also written for reporting and future relational reads.
   ownerId: row.user_id,
@@ -327,6 +340,26 @@ export const memoryStorage = {
       cursor = page.nextCursor;
     } while (cursor);
     return items;
+  },
+
+  async searchItems(ownerId: string, query: string, limit = 100): Promise<StoredMemoryItem[]> {
+    requireOwner(ownerId);
+    const pageSize = Math.min(100, Math.max(1, limit));
+    const { data, error } = await supabase.rpc("list_my_items", {
+      p_cursor_updated_at: null,
+      p_cursor_id: null,
+      p_limit: pageSize,
+      p_query: query.trim(),
+      p_category: null,
+      p_space_id: null,
+    });
+    throwStorageError("search items", error);
+    const rows = ((data || []) as ItemRow[]).slice(0, pageSize);
+    const hasPrivateImages = rows.some((row) =>
+      [row.sticker_url, row.parent_location_img, row.sub_location_img].some((value) => Boolean(mediaKeyFromValue(value)))
+    );
+    if (hasPrivateImages) await mediaStorage.ensureReadSession();
+    return rows.map(fromItemRow);
   },
 
   async syncItems(

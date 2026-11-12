@@ -1,11 +1,17 @@
 import { NOMA_AI_URL } from "./backendUrls";
-import { AiAccessError, getAiAuthHeaders } from "./aiAuth";
+import { AiAccessError, getAiRequestAuth } from "./aiAuth";
 import { classifyEmojiLocally, EMOJI_CATALOG, EMOJI_KEY_SET, normalizeItemCategory, type EmojiKind } from "../data/emojiCatalog";
 
 export interface RecognitionResult {
   title: string;
   category: string;
   labels: string[];
+  attributes?: {
+    colors?: string[];
+    materials?: string[];
+    features?: string[];
+    brand?: string;
+  };
 }
 
 export interface EmojiClassificationResult {
@@ -222,6 +228,22 @@ export function isApiEnabled(): boolean {
 const NOMA_BACKEND_URL = NOMA_AI_URL;
 const AI_REQUEST_TIMEOUT_MS = 18_000;
 
+const publishAiAccess = (response: Response, userId: string) => {
+  const numberHeader = (name: string) => {
+    const value = response.headers.get(name);
+    if (value === null || value.trim() === "") return undefined;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  };
+  const planCode = response.headers.get("X-Noma-Plan") || undefined;
+  const limit = numberHeader("X-Noma-AI-Limit");
+  const remaining = numberHeader("X-Noma-AI-Remaining");
+  if (!planCode && limit === undefined && remaining === undefined) return;
+  window.dispatchEvent(new CustomEvent("noma-ai-access-update", {
+    detail: { userId, planCode, limit, remaining },
+  }));
+};
+
 function getRequestOrigin(): string {
   return typeof window === "undefined" ? "server" : window.location.origin;
 }
@@ -287,16 +309,18 @@ export async function callNomaBackend(type: "process-image" | "matting" | "visio
   console.log(`[Noma Backend] Sending request of type "${type}" to ${NOMA_BACKEND_URL}. origin=${getRequestOrigin()} apiEnabled=${isApiEnabled()}`);
 
   let response: Response;
+  let requestUserId: string;
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
   try {
-    const authHeaders = await getAiAuthHeaders(scanId);
+    const auth = await getAiRequestAuth(scanId);
+    requestUserId = auth.userId;
     response = await fetch(NOMA_BACKEND_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "X-Noma-Client-Build": getClientBuildId(),
-        ...authHeaders,
+        ...auth.headers,
       },
       body: JSON.stringify({
         type,
@@ -315,6 +339,7 @@ export async function callNomaBackend(type: "process-image" | "matting" | "visio
     window.clearTimeout(timeout);
   }
 
+  publishAiAccess(response, requestUserId);
   const responseText = await response.text();
   if (!response.ok) {
     let detail = responseText.replace(/\s+/g, " ").trim().slice(0, 500);
@@ -368,7 +393,7 @@ export async function classifyEmojiText(title: string, kind: EmojiKind): Promise
 /**
  * Parse vision content string which can be a JSON string, a markdown JSON block, or raw plain text.
  */
-export function parseVisionContent(content: string): { title: string; category: string; labels: string[] } {
+export function parseVisionContent(content: string): RecognitionResult {
   console.log("[AI Parser] Parsing vision content string:", content);
   
   let title = "Scanned Item";
@@ -405,7 +430,15 @@ export function parseVisionContent(content: string): { title: string; category: 
         labels = [parsed.labels];
       }
       
-      return { title, category: normalizeItemCategory(category, title, labels), labels };
+      const attributes = parsed.attributes && typeof parsed.attributes === "object"
+        ? {
+            colors: Array.isArray(parsed.attributes.colors) ? parsed.attributes.colors.map(String).filter(Boolean).slice(0, 4) : [],
+            materials: Array.isArray(parsed.attributes.materials) ? parsed.attributes.materials.map(String).filter(Boolean).slice(0, 4) : [],
+            features: Array.isArray(parsed.attributes.features) ? parsed.attributes.features.map(String).filter(Boolean).slice(0, 6) : [],
+            brand: String(parsed.attributes.brand || "").trim().slice(0, 80),
+          }
+        : undefined;
+      return { title, category: normalizeItemCategory(category, title, labels), labels, attributes };
     } catch (e) {
       console.warn("[AI Parser] Content looked like JSON but failed to parse, falling back to plain text:", e);
     }
@@ -501,14 +534,11 @@ export async function processCapturedImage(
   imageInput: File | Blob | string,
   scanId: string,
 ): Promise<CapturedImageProcessingResult> {
-  const prepared = await prepareImageVariants(imageInput, [512, 384]);
-  const mattingBase64 = stripBase64Prefix(prepared[512]);
-  const visionBase64 = stripBase64Prefix(prepared[384]);
-  if (!mattingBase64 || !visionBase64) throw new Error("Image preparation returned no data");
+  const sharedBase64 = stripBase64Prefix(await prepareImage(imageInput, 512));
+  if (!sharedBase64) throw new Error("Image preparation returned no data");
 
   const result = await callNomaBackend("process-image", {
-    image_base64: mattingBase64,
-    vision_image_base64: visionBase64,
+    image_base64: sharedBase64,
     mime_type: "image/jpeg",
   }, scanId);
 
@@ -536,6 +566,7 @@ export async function processCapturedImage(
           directLabels,
         ),
         labels: directLabels.length > 0 ? directLabels : [directTitle],
+        attributes: directRecognition.attributes,
       };
       visionError = null;
     }

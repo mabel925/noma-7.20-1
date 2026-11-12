@@ -45,7 +45,7 @@ export const SystemSettingsPanel: React.FC<SystemSettingsPanelProps> = ({
             <div>
               <h4 className="text-xs font-semibold text-neutral-100">密钥已托管到 Cloudflare Workers</h4>
               <p className="text-[11px] text-neutral-400 leading-relaxed mt-1">
-                识物、标题生成和抠图请求都会直接发送到统一 Worker，前端不再保存、输入或校验 Gemini 相关密钥。
+                识物、标题生成和抠图请求都会直接发送到统一 Worker，前端不保存或校验第三方 API 密钥。
               </p>
             </div>
           </div>

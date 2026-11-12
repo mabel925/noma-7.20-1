@@ -15,8 +15,9 @@ export type AuthUser = {
 export const DEFAULT_AVATAR_URL = "/default-avatar.jpg";
 
 const MOCK_AUTH_ENABLED = import.meta.env.DEV && new URLSearchParams(window.location.search).get("mockAuth") === "1";
-const LOCAL_OTP_BYPASS_ENABLED = import.meta.env.DEV
-  && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+// Development previews may be opened through localhost, 0.0.0.0, or a LAN IP.
+// Vite replaces DEV with false in production builds, so the bypass cannot ship active.
+const LOCAL_OTP_BYPASS_ENABLED = import.meta.env.DEV;
 const LOCAL_OTP_CODE = "000000";
 const MOCK_AUTH_USER: AuthUser = {
   id: "00000000-0000-4000-8000-000000000001",
@@ -44,7 +45,7 @@ type AuthContextValue = {
   aiAccessUnavailable: boolean;
   isLoginOpen: boolean;
   authDialogMode: "login" | "account";
-  reserveAiScan: () => "available" | "quota" | "unavailable";
+  checkAiScanAccess: () => "available" | "quota" | "unavailable";
   requireAuth: (action?: () => void) => boolean;
   openLogin: () => void;
   closeLogin: () => void;
@@ -78,6 +79,21 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
   const [isLoginOpen, setIsLoginOpen] = React.useState(false);
   const [authDialogMode, setAuthDialogMode] = React.useState<"login" | "account">("login");
   const pendingActionRef = React.useRef<(() => void) | null>(null);
+  const aiAccessRequestRef = React.useRef<Promise<AiAccessSnapshot> | null>(null);
+
+  const loadAccountAccess = React.useCallback(() => {
+    if (aiAccessRequestRef.current) return aiAccessRequestRef.current;
+    const request = (async () => {
+      const { error } = await supabase.rpc("bootstrap_my_account");
+      if (error) throw error;
+      return readAiAccess();
+    })();
+    aiAccessRequestRef.current = request;
+    request.finally(() => {
+      if (aiAccessRequestRef.current === request) aiAccessRequestRef.current = null;
+    }).catch(() => undefined);
+    return request;
+  }, []);
 
   React.useEffect(() => {
     if (MOCK_AUTH_ENABLED || LOCAL_OTP_BYPASS_ENABLED) return;
@@ -131,11 +147,6 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
     setAiAccess(null);
     setAiAccessLoading(true);
     setAiAccessUnavailable(false);
-    const loadAccountAccess = async () => {
-      const { error } = await supabase.rpc("bootstrap_my_account");
-      if (error) throw error;
-      return readAiAccess();
-    };
     loadAccountAccess()
       .then((access) => {
         if (cancelled) return;
@@ -155,25 +166,45 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
     return () => {
       cancelled = true;
     };
-  }, [isBackgroundStartupReady, user?.id, user?.isMock]);
+  }, [isBackgroundStartupReady, loadAccountAccess, user?.id, user?.isMock]);
 
-  const reserveAiScan = React.useCallback((): "available" | "quota" | "unavailable" => {
+  React.useEffect(() => {
+    const syncAiAccess = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        userId: string;
+        planCode?: string;
+        limit?: number;
+        remaining?: number;
+      }>).detail;
+      if (!detail || !user || detail.userId !== user.id) return;
+      setAiAccess((current) => {
+        if (!current) return current;
+        const limit = Number.isFinite(detail.limit) ? Number(detail.limit) : current.aiScanLimit;
+        const remaining = Number.isFinite(detail.remaining) ? Number(detail.remaining) : current.aiScansRemaining;
+        return {
+          ...current,
+          planCode: detail.planCode || current.planCode,
+          aiScanLimit: limit,
+          aiScansRemaining: remaining,
+          aiScansUsed: limit !== null && remaining !== null
+            ? Math.max(0, limit - remaining)
+            : current.aiScansUsed,
+        };
+      });
+    };
+    window.addEventListener("noma-ai-access-update", syncAiAccess);
+    return () => window.removeEventListener("noma-ai-access-update", syncAiAccess);
+  }, [user?.id]);
+
+  const checkAiScanAccess = React.useCallback((): "available" | "quota" | "unavailable" => {
     if (!user) return "unavailable";
     if (aiAccess?.aiScansRemaining !== null && aiAccess?.aiScansRemaining !== undefined && aiAccess.aiScansRemaining <= 0) {
       return "quota";
     }
-
-    if (aiAccess?.aiScansRemaining !== null && aiAccess?.aiScansRemaining !== undefined) {
-      setAiAccess((current) => current ? {
-        ...current,
-        aiScansRemaining: Math.max(0, (current.aiScansRemaining ?? 1) - 1),
-        aiScansUsed: current.aiScansUsed + 1,
-      } : current);
-    }
     // The Worker remains authoritative for quota and authentication. A slow or
     // temporarily unavailable access snapshot must not silently disable vision.
     return "available";
-  }, [aiAccess, aiAccessLoading, aiAccessUnavailable, user]);
+  }, [aiAccess, user]);
 
   const openLogin = React.useCallback(() => {
     setAuthDialogMode(user ? "account" : "login");
@@ -267,14 +298,29 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
     });
     if (error) throw error;
 
-    const { error: bootstrapError } = await supabase.rpc("bootstrap_my_account");
-    if (bootstrapError) throw bootstrapError;
+    const { error: otherSessionsError } = await supabase.auth.signOut({ scope: "others" });
+    if (otherSessionsError) throw otherSessionsError;
+
+    // Finish account and plan loading before releasing the pending action.
+    // This keeps the first capture from becoming the user's effective access check.
+    setAiAccessLoading(true);
+    setAiAccessUnavailable(false);
+    try {
+      const access = await loadAccountAccess();
+      setAiAccess(access);
+    } catch (accessError) {
+      setAiAccess(null);
+      setAiAccessUnavailable(true);
+      throw accessError;
+    } finally {
+      setAiAccessLoading(false);
+    }
 
     const pendingAction = pendingActionRef.current;
     pendingActionRef.current = null;
     setIsLoginOpen(false);
     window.setTimeout(() => pendingAction?.(), 0);
-  }, []);
+  }, [loadAccountAccess]);
 
   const signOut = React.useCallback(async () => {
     pendingActionRef.current = null;
@@ -292,7 +338,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       aiAccessUnavailable,
       isLoginOpen,
       authDialogMode,
-      reserveAiScan,
+      checkAiScanAccess,
       requireAuth,
       openLogin,
       closeLogin,
@@ -309,7 +355,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       aiAccessUnavailable,
       isLoginOpen,
       authDialogMode,
-      reserveAiScan,
+      checkAiScanAccess,
       requireAuth,
       openLogin,
       closeLogin,

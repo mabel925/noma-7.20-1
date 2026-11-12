@@ -35,16 +35,22 @@ export const createAiScanId = () => {
   return `scan-${randomId}`;
 };
 
-export const getAiAuthHeaders = async (scanId?: string): Promise<Record<string, string>> => {
+export const getAiRequestAuth = async (scanId?: string) => {
   const { data, error } = await supabase.auth.getSession();
   if (error || !data.session?.access_token) {
     throw new AiAccessError("AI_AUTH_REQUIRED", "Please sign in before using Noma AI", 401);
   }
   return {
-    Authorization: `Bearer ${data.session.access_token}`,
-    ...(scanId ? { "X-Noma-Scan-Id": scanId } : {}),
+    userId: data.session.user.id,
+    headers: {
+      Authorization: `Bearer ${data.session.access_token}`,
+      ...(scanId ? { "X-Noma-Scan-Id": scanId } : {}),
+    } as Record<string, string>,
   };
 };
+
+export const getAiAuthHeaders = async (scanId?: string): Promise<Record<string, string>> =>
+  (await getAiRequestAuth(scanId)).headers;
 
 export const readAiAccess = async (): Promise<AiAccessSnapshot> => {
   const { data, error } = await supabase.rpc("get_my_access");

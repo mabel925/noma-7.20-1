@@ -13,6 +13,7 @@ import { PhotoUploadIcon } from "./PhotoUploadIcon";
 import { CaptureShutterButton } from "./CaptureShutterButton";
 import { CollapseLocationIcon, ExpandLocationIcon } from "./LocationViewIcons";
 import { classifyEmojiLocally, EMOJI_CATALOG, emojiAsset, refreshEmojiAssetUrl, type EmojiKind } from "../data/emojiCatalog";
+import type { MemoryOpenTarget } from "../types/chat";
 
 export const COLOR_BLUR_IMAGE_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/colorblur.png";
 export const MATRIX_DOT_IMAGE_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/%E7%9F%A9%E9%98%B5%E5%9C%86%E7%82%B9.png";
@@ -285,6 +286,13 @@ export interface MemoryItem {
   parentLocationImg?: string;
   subLocationImg?: string;
   subLocationHighlight?: { x: number; y: number };
+  aliases?: string[];
+  attributes?: {
+    colors?: string[];
+    materials?: string[];
+    features?: string[];
+    brand?: string;
+  };
 }
 
 interface MemoryListProps {
@@ -298,6 +306,8 @@ interface MemoryListProps {
   hasMore?: boolean;
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
+  openTarget?: MemoryOpenTarget | null;
+  onOpenTargetHandled?: () => void;
 }
 
 const normalizeCategory = (cat: string): string => {
@@ -371,24 +381,71 @@ export const MatrixDotBackground: React.FC<{ rounded?: boolean }> = ({ rounded =
   />
 );
 
-const MemorySelectedTabLine = () => (
+const LocationHeaderGradientCard: React.FC<{ className?: string }> = ({ className = "" }) => {
+  const gradientId = React.useId().replace(/:/g, "");
+
+  return (
+    <svg
+      width="100"
+      height="100"
+      viewBox="0 0 100 100"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-hidden="true"
+    >
+      <rect
+        width="90.8981"
+        height="90.8981"
+        rx="16"
+        transform="matrix(-0.988228 -0.152986 -0.152986 0.988228 101.477 11.6489)"
+        fill={`url(#${gradientId})`}
+      />
+      <defs>
+        <linearGradient
+          id={gradientId}
+          x1="75.7484"
+          y1="11.222"
+          x2="16.833"
+          y2="85.8482"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop stopColor="#F5B4D9" />
+          <stop offset="0.655616" stopColor="#FEC7A7" />
+          <stop offset="1" stopColor="#A1EBD8" />
+        </linearGradient>
+      </defs>
+    </svg>
+  );
+};
+
+const MemorySelectedTabLine: React.FC<{ isSelected: boolean }> = ({ isSelected }) => {
+  const gradientId = `memory-tab-selected-line-${React.useId().replace(/:/g, "")}`;
+
+  return (
   <motion.svg
-    layoutId="tabSelectedUnderline"
     width="62"
     height="17"
     viewBox="0 0 62 17"
     fill="none"
     xmlns="http://www.w3.org/2000/svg"
     className="absolute bottom-[-5px] left-1/2 z-0 h-[17px] w-[62px] -translate-x-1/2 pointer-events-none select-none"
-    transition={{ type: "spring", stiffness: 300, damping: 30 }}
+    initial={false}
+    animate={{
+      clipPath: isSelected
+        ? ["inset(0% 100% 0% 0%)", "inset(0% 0% 0% 0%)"]
+        : ["inset(0% 0% 0% 0%)", "inset(0% 0% 0% 100%)"],
+    }}
+    transition={{ type: "tween", duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+    aria-hidden="true"
   >
     <path
       d="M31.1671 2.45151C32.3027 2.27348 33.4401 2.76032 34.0958 3.70444C34.7514 4.64862 34.8097 5.88422 34.2462 6.88608L33.0323 9.04233L57.0841 2.51987C58.6832 2.08621 60.3311 3.03113 60.7647 4.63022C61.1984 6.22932 60.2535 7.87723 58.6544 8.31089L27.6944 16.7074C26.5277 17.0238 25.2848 16.6085 24.5421 15.6546C23.7994 14.7009 23.7016 13.3948 24.294 12.3412L25.9825 9.33823L5.33408 12.5775C3.69728 12.8342 2.16214 11.7153 1.90537 10.0785C1.64866 8.44167 2.76759 6.90652 4.4044 6.64976L31.1671 2.45151Z"
-      fill="url(#memory-tab-selected-line-gradient)"
+      fill={`url(#${gradientId})`}
     />
     <defs>
       <linearGradient
-        id="memory-tab-selected-line-gradient"
+        id={gradientId}
         x1="57.98"
         y1="2.79004"
         x2="49.5873"
@@ -401,7 +458,8 @@ const MemorySelectedTabLine = () => (
       </linearGradient>
     </defs>
   </motion.svg>
-);
+  );
+};
 
 const useDetailModalScale = () => {
   const [scale, setScale] = React.useState(1);
@@ -596,17 +654,17 @@ const ItemSticker: React.FC<{
           }}
           onClick={onTitleClick}
         >
-          <span>
+          <span className="relative inline-block">
             {displayTitle}
             {isTitleEditing && (
               <span className="ml-[2px] inline-block h-[0.72em] w-[2px] bg-[#232121] align-[-0.08em] animate-cursor-blink-black" />
             )}
+            {titleTrailingAction && (
+              <span className="absolute left-full top-1/2 ml-[6px] flex h-[30px] w-[30px] -translate-y-1/2 items-center justify-center">
+                {titleTrailingAction}
+              </span>
+            )}
           </span>
-          {titleTrailingAction && (
-            <span className="ml-[6px] flex h-[30px] w-[30px] shrink-0 items-center justify-center">
-              {titleTrailingAction}
-            </span>
-          )}
         </div>
       </div>
     </div>
@@ -2272,12 +2330,8 @@ const LocationDetailModal: React.FC<{
   };
 
   return (
-    <motion.div
+    <div
       className="absolute inset-0 z-[180] overflow-y-auto overscroll-contain bg-[#E9E6E1]"
-      initial={{ opacity: 0, y: 18 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 18 }}
-      transition={{ type: "tween", duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
     >
       <MatrixDotBackground />
       <div className="relative z-10 min-h-full px-[15px] pb-[28px]">
@@ -2306,29 +2360,52 @@ const LocationDetailModal: React.FC<{
         </div>
 
         <div className="flex flex-col items-center text-center">
-          <motion.div layout className={`relative flex items-center justify-center ${isEditing ? "mt-[47px]" : "mt-[17px]"}`} animate={{ width: isEditing ? 228 : 174, height: isEditing ? 228 : 128 }}>
-            <div className="absolute left-[55px] top-[32px] z-[1] h-[94px] w-[112px] rotate-[8deg] rounded-[26px] bg-[linear-gradient(135deg,#FFB0B0_0%,#FFD2B4_50%,#8DEBD9_100%)] opacity-95" />
-            <div className={`relative z-10 overflow-hidden ${isEditing ? "h-[228px] w-[228px] rounded-[32px] border-[6px]" : "h-[114px] w-[114px] rotate-[-9deg] rounded-[26px] border-[3px]"} border-white ${!isEditing ? "shadow-[0_16px_32px_rgba(35,33,33,0.12)]" : ""} ${isEmojiImageUrl(draftImage) ? "bg-[#E9E6E1]" : "bg-neutral-100"}`}>
-              <SkeletonImage src={draftImage} alt={location.name} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
-              {isEditing && (
-                <div className="absolute inset-0 z-20 flex items-center justify-center">
-                  <RetakePhotoButton onClick={(event) => { event.stopPropagation(); setIsRetakeCaptureOpen(true); }} label="Retake location photo" icon={<RestartIcon className="h-[22px] w-[22px]" color="#FFFFFF" />} />
-                </div>
-              )}
-            </div>
+          <motion.div
+            initial={{ y: 32, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ type: "tween", duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <motion.div
+              layout
+              initial={false}
+              className={`relative flex items-center justify-center ${isEditing ? "mt-[47px]" : "mt-[17px]"}`}
+              animate={{ width: isEditing ? 228 : 174, height: isEditing ? 228 : 128 }}
+            >
+              <LocationHeaderGradientCard className="absolute left-[55px] top-[22px] z-[1] h-[100px] w-[100px]" />
+              <div className={`relative z-10 -translate-x-[10px] overflow-hidden ${isEditing ? "h-[228px] w-[228px] rounded-[20px] border-[6px]" : "h-[114px] w-[114px] rotate-[-9deg] rounded-[20px] border-[3px]"} border-white ${!isEditing ? "shadow-[0_16px_32px_rgba(35,33,33,0.12)]" : ""} ${isEmojiImageUrl(draftImage) ? "bg-[#E9E6E1]" : "bg-neutral-100"}`}>
+                <SkeletonImage src={draftImage} alt={location.name} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                {isEditing && (
+                  <div className="absolute inset-0 z-20 flex items-center justify-center">
+                    <RetakePhotoButton onClick={(event) => { event.stopPropagation(); setIsRetakeCaptureOpen(true); }} label="Retake location photo" icon={<RestartIcon className="h-[22px] w-[22px]" color="#FFFFFF" />} />
+                  </div>
+                )}
+              </div>
+            </motion.div>
           </motion.div>
-          <div className={`${isEditing ? "mt-[70px]" : "mt-[12px]"} flex max-w-[320px] items-center justify-center text-[24px] font-sans font-extrabold leading-tight tracking-tight text-[#232121]`}>
-            {location.sourceField === "parent" && <span className="mr-[4px] text-[21px]">📍</span>}
-            <span className="max-w-[270px] truncate">{truncateLocationTitle(location.name)}</span>
-            {!isEditing && <button type="button" onClick={() => { setDraftImage(image); setReplacementMode(isEmojiImageUrl(image) ? "emoji" : "camera"); setIsEditing(true); }} className="ml-[10px] flex h-[18px] w-[18px] shrink-0 items-center justify-center active:scale-95" aria-label="Edit location image"><EditPencilIcon /></button>}
-          </div>
-          {location.parentName && location.sourceField === "sub" && (
-            <div className="mt-[6px] text-[14px] font-sans text-[#232121]/50">in {location.parentName}</div>
-          )}
+          <motion.div
+            initial={{ y: 32, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ type: "tween", duration: 0.38, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
+            className="flex flex-col items-center"
+          >
+            <div className={`${isEditing ? "mt-[70px]" : "mt-[12px]"} flex max-w-[320px] items-center justify-center text-[24px] font-sans font-extrabold leading-tight tracking-tight text-[#232121]`}>
+              {location.sourceField === "parent" && <span className="mr-[4px] text-[21px]">📍</span>}
+              <span className="max-w-[270px] truncate">{truncateLocationTitle(location.name)}</span>
+              {!isEditing && <button type="button" onClick={() => { setDraftImage(image); setReplacementMode(isEmojiImageUrl(image) ? "emoji" : "camera"); setIsEditing(true); }} className="ml-[10px] flex h-[18px] w-[18px] shrink-0 items-center justify-center active:scale-95" aria-label="Edit location image"><EditPencilIcon /></button>}
+            </div>
+            {location.parentName && location.sourceField === "sub" && (
+              <div className="mt-[6px] text-[14px] font-sans text-[#232121]/50">in {location.parentName}</div>
+            )}
+          </motion.div>
         </div>
 
         {!isEditing && (
-        <div className="mt-[26px] flex flex-col gap-[16px]">
+        <motion.div
+          initial={{ y: 32, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ type: "tween", duration: 0.38, delay: 0.16, ease: [0.22, 1, 0.36, 1] }}
+          className="mt-[26px] flex flex-col gap-[16px]"
+        >
           {locationItems.length > 0 && (
             <section>
               <DirectLocationItemsCard
@@ -2356,7 +2433,7 @@ const LocationDetailModal: React.FC<{
               </div>
             </section>
           )}
-        </div>
+        </motion.div>
         )}
       </div>
 
@@ -2402,7 +2479,7 @@ const LocationDetailModal: React.FC<{
           setPendingDeleteSubLocation(null);
         }}
       />
-    </motion.div>
+    </div>
   );
 };
 
@@ -2752,7 +2829,7 @@ const MemoryDetailModal: React.FC<{
                   <button
                     type="button"
                     onClick={openItemImageEditor}
-                    className="absolute left-1/2 top-[76px] z-30 flex h-[44px] w-[44px] items-center justify-center rounded-full bg-black/60 text-white active:scale-95"
+                    className="absolute left-1/2 top-[36px] z-30 flex h-[44px] w-[44px] items-center justify-center rounded-full bg-black/60 text-white active:scale-95"
                     style={{ transform: "translateX(calc(-50% - 25px))" }}
                     aria-label="Reset item image"
                     title="Reset item image"
@@ -2837,10 +2914,10 @@ const MemoryDetailModal: React.FC<{
             <MatrixDotBackground rounded />
             <div
               ref={locationPhotoRef}
-              className="relative z-10 h-[390px] w-[320px] shrink-0 rounded-[36px] bg-[rgba(204,196,190,0.5)]"
+              className="relative z-10 h-[390px] w-[320px] shrink-0 rounded-[28px] bg-[rgba(204,196,190,0.5)]"
             >
               <div
-                className={`absolute inset-0 z-10 overflow-hidden rounded-[36px] ${activeLocationIsEmoji ? "bg-[#E9E6E1]" : "bg-neutral-200"}`}
+                className={`absolute inset-0 z-10 overflow-hidden rounded-[28px] ${activeLocationIsEmoji ? "bg-[#E9E6E1]" : "bg-neutral-200"}`}
               >
                 <SkeletonImage
                   src={activeLocationImage}
@@ -3003,6 +3080,8 @@ export const MemoryList: React.FC<MemoryListProps> = ({
   hasMore = false,
   isLoadingMore = false,
   onLoadMore,
+  openTarget = null,
+  onOpenTargetHandled,
 }) => {
   const [activeTab, setActiveTab] = useState<"spaces" | "items">("spaces");
   const [activeCategory, setActiveCategory] = useState<string>("All");
@@ -3101,6 +3180,65 @@ export const MemoryList: React.FC<MemoryListProps> = ({
       parentName: promotedSub ? "" : name,
     };
   });
+
+  React.useLayoutEffect(() => {
+    if (!isOpen || !openTarget) return;
+    setIsMemoryKeyboardOpen(false);
+    setIsSearchOpen(false);
+    setSelectedParentSpace(null);
+    setSelectedSpaceDetail(null);
+    setParentLocationDetail(null);
+
+    if (openTarget.kind === "item") {
+      setSelectedLocationDetail(null);
+      setSelectedDetailItem(openTarget.item);
+      onOpenTargetHandled?.();
+      return;
+    }
+
+    setSelectedDetailItem(null);
+    const result = openTarget.space;
+    if (result.kind === "child") {
+      setSelectedLocationDetail({
+        key: result.id,
+        name: result.name,
+        imgUrl: result.imageUrl || emojiAsset(classifyEmojiLocally(result.name, "sub-space").icon_key),
+        itemCount: result.itemCount,
+        subLocations: [],
+        items: result.items,
+        directItems: result.items,
+        sourceField: "sub",
+        parentName: result.parentName,
+      });
+      onOpenTargetHandled?.();
+      return;
+    }
+
+    const subLocations: SubLocationSummary[] = result.subSpaces.map((subSpace) => {
+      const items = result.items.filter((item) => item.subLocationName === subSpace.name);
+      return {
+        name: subSpace.name,
+        parentName: result.name,
+        imgUrl: items.find((item) => item.subLocationImg)?.subLocationImg || "",
+        parentImgUrl: result.imageUrl,
+        itemCount: subSpace.itemCount,
+        items,
+        subLocationHighlight: items.find((item) => item.subLocationHighlight)?.subLocationHighlight,
+      };
+    });
+    setSelectedLocationDetail({
+      key: result.id,
+      name: result.name,
+      imgUrl: result.imageUrl || emojiAsset(classifyEmojiLocally(result.name, "parent-space").icon_key),
+      itemCount: result.itemCount,
+      subLocations,
+      items: result.items,
+      directItems: result.items.filter((item) => !item.subLocationName?.trim()),
+      sourceField: "parent",
+      parentName: result.name,
+    });
+    onOpenTargetHandled?.();
+  }, [isOpen, onOpenTargetHandled, openTarget]);
 
   // Filtered Items for Items tab
   const itemsCategories = ["All", "Electronics", "Apparel", "Docs", "Housewares", "Others"];
@@ -3616,7 +3754,6 @@ export const MemoryList: React.FC<MemoryListProps> = ({
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ type: "tween", duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
-              onPointerDown={() => setIsMemoryKeyboardOpen(true)}
               onClick={() => setIsMemoryKeyboardOpen(true)}
               className="flex-1 min-w-0 h-[50px] rounded-full bg-white flex items-center px-[27px] gap-[22px] cursor-text"
             >
@@ -3656,7 +3793,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
           </div>
 
           <button
-            onPointerDown={openMemorySearch}
+            type="button"
             onClick={openMemorySearch}
             className="w-[22px] h-[22px] active:scale-95 flex items-center justify-center transition-all cursor-pointer border-0 outline-none bg-transparent hover:opacity-70"
           >
@@ -3891,9 +4028,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
             >
               Spaces
             </span>
-            {activeTab === "spaces" && (
-              <MemorySelectedTabLine />
-            )}
+            <MemorySelectedTabLine isSelected={activeTab === "spaces"} />
           </div>
 
           {/* Items Tab */}
@@ -3915,9 +4050,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
             >
               Items
             </span>
-            {activeTab === "items" && (
-              <MemorySelectedTabLine />
-            )}
+            <MemorySelectedTabLine isSelected={activeTab === "items"} />
           </div>
         </div>
 
@@ -4173,6 +4306,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
       <AnimatePresence>
         {selectedLocationDetail && (
           <LocationDetailModal
+            key={`${selectedLocationDetail.sourceField}:${selectedLocationDetail.key}`}
             location={selectedLocationDetail}
             onClose={closeLocationDetail}
             onOpenItem={openDetail}

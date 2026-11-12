@@ -31,6 +31,8 @@ type DraftEntity = {
   emojiIconKey?: string;
   lastSkinMode?: Mode;
   pendingEmojiTitle?: boolean;
+  aliases?: string[];
+  attributes?: MemoryItem["attributes"];
 };
 type DraftItem = Omit<MemoryItem, "id">;
 
@@ -1088,6 +1090,8 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
         subLocationName: subSpace.name.trim(),
         parentLocationImg: parentSpace.name ? resolveSpaceSkin(parentSpace, finalTransitionSource || spaceMode) : undefined,
         subLocationImg: subSpace.name ? resolveSpaceSkin(subSpace, finalTransitionSource || spaceMode) : undefined,
+        aliases: item.aliases,
+        attributes: item.attributes,
       });
       onClose();
     } finally {
@@ -1543,8 +1547,8 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
             }))}
             onClose={onClose}
             onSwitchToEmoji={() => changeItemMode("emoji")}
-            onCutoutComplete={({ name, category, stickerUrl }) => {
-              setItem((current) => ({ ...current, name, category, imageUrl: stickerUrl }));
+            onCutoutComplete={({ name, category, stickerUrl, labels, attributes }) => {
+              setItem((current) => ({ ...current, name, category, imageUrl: stickerUrl, aliases: labels, attributes }));
               setIsItemReveal(false);
               setIsActionReveal(true);
               setStage("识别emoji");

@@ -4,11 +4,9 @@ import { motion, AnimatePresence } from "motion/react";
 import { useKeyboardReset } from "../hooks/useKeyboardReset";
 import { MemoryCoreButton } from "./MemoryCoreButton";
 import { CloseIcon } from "./CloseIcon";
-
-interface ChatMessage {
-  sender: "noma" | "user";
-  text: string;
-}
+import { classifyEmojiLocally, emojiAsset } from "../data/emojiCatalog";
+import type { MemoryItem } from "./MemoryList";
+import type { ChatMessage, ChatSpaceResult } from "../types/chat";
 
 interface ChatFlowProps {
   inputValue: string;
@@ -19,9 +17,149 @@ interface ChatFlowProps {
   onMemoryCoreClick: () => void;
   isChatActive: boolean;
   isCaptureOpen: boolean;
-  onPresetSearch: (preset: string) => void;
-  isAuthenticated?: boolean;
+  isSearching?: boolean;
+  onItemResultClick: (item: MemoryItem) => void;
+  onSpaceResultClick: (space: ChatSpaceResult) => void;
 }
+
+const isChineseTitle = (value: string) => /[\u3400-\u9fff]/.test(value);
+
+const ChatItemSticker: React.FC<{ item: MemoryItem; onClick?: () => void; compact?: boolean }> = ({
+  item,
+  onClick,
+  compact = false,
+}) => {
+  const [imageFailed, setImageFailed] = React.useState(false);
+  const content = (
+    <>
+      <div className={`absolute inset-x-0 top-0 flex items-center justify-center ${compact ? "h-[42px]" : "h-[70px]"}`}>
+        {item.stickerUrl && !imageFailed ? (
+          <img
+            src={item.stickerUrl}
+            alt=""
+            className="h-full w-full object-contain"
+            referrerPolicy="no-referrer"
+            draggable={false}
+            onError={() => setImageFailed(true)}
+          />
+        ) : (
+          <span className={`${compact ? "text-[28px]" : "text-[44px]"} leading-none`} aria-hidden="true">{item.emoji || "📦"}</span>
+        )}
+      </div>
+      <span
+        className={`absolute bottom-[1px] left-1/2 z-10 max-w-[90px] -translate-x-1/2 whitespace-nowrap leading-none text-[#171515] ${compact ? "text-[12px]" : "text-[17px]"} ${isChineseTitle(item.name) ? "font-zihun-biantao" : "font-alkatra"}`}
+        style={{
+          WebkitTextStroke: compact ? "3px white" : "4px white",
+          paintOrder: "stroke fill",
+          filter: "drop-shadow(0 1px 0 rgba(0,0,0,0.18))",
+        }}
+      >
+        {item.name}
+      </span>
+    </>
+  );
+  const className = `relative shrink-0 overflow-visible ${compact ? "h-[52px] w-[54px]" : "h-[88px] w-[78px]"}`;
+
+  return onClick ? (
+    <button type="button" onClick={onClick} className={`${className} active:scale-95 transition-transform`} aria-label={`Open ${item.name}`}>
+      {content}
+    </button>
+  ) : (
+    <div className={className} aria-label={item.name}>{content}</div>
+  );
+};
+
+const ChatItemResults: React.FC<{
+  items: MemoryItem[];
+  onItemClick: (item: MemoryItem) => void;
+}> = ({ items, onItemClick }) => (
+  <div className="ml-auto mr-[32px] mt-[27px] flex w-[270px] flex-wrap gap-x-[4px] gap-y-[2px] pr-1" aria-label={`${items.length} matching items`}>
+    {items.map((item) => (
+      <ChatItemSticker key={item.id} item={item} onClick={() => onItemClick(item)} />
+    ))}
+  </div>
+);
+
+const spaceImage = (space: ChatSpaceResult) => space.imageUrl || emojiAsset(
+  classifyEmojiLocally(space.name, space.kind === "parent" ? "parent-space" : "sub-space").icon_key,
+);
+
+const ChatSpaceCard: React.FC<{
+  space: ChatSpaceResult;
+  onClick: () => void;
+}> = ({ space, onClick }) => {
+  const previewItems = space.items.slice(0, 3);
+  const remaining = Math.max(0, space.itemCount - previewItems.length);
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="h-[154px] w-[272px] shrink-0 overflow-hidden rounded-[24px] bg-white px-[14px] py-[16px] text-left shadow-[0_8px_24px_rgba(35,33,33,0.08)] active:scale-[0.98] transition-transform"
+      aria-label={`Open ${space.name}`}
+    >
+      <div className="flex items-center gap-[12px]">
+        <img
+          src={spaceImage(space)}
+          alt=""
+          className="h-[56px] w-[56px] shrink-0 rounded-[9px] bg-[#E9E6E1] object-cover"
+          referrerPolicy="no-referrer"
+          draggable={false}
+        />
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[18px] font-bold leading-tight text-[#232121]">
+            {space.kind === "parent" && <span className="mr-1 text-[15px]">📍</span>}
+            {space.name}{space.kind === "child" ? ` (${space.itemCount} items)` : ""}
+          </div>
+          <div className="mt-[8px] truncate text-[14px] font-medium leading-none text-[#232121]/50">
+            {space.kind === "parent" ? `${space.itemCount} items inside` : <><span className="mr-1">📍</span>{space.parentName}</>}
+          </div>
+        </div>
+      </div>
+
+      {space.kind === "parent" ? (
+        <div className="mt-[20px] flex gap-[9px] overflow-hidden">
+          {space.subSpaces.length > 0 ? space.subSpaces.map((child) => (
+            <span key={`${space.id}-${child.name}`} className="h-[38px] shrink-0 rounded-full bg-[#232121]/5 px-[20px] flex items-center text-[13px] font-medium text-neutral-500 whitespace-nowrap">
+              {child.name} ({child.itemCount} items)
+            </span>
+          )) : (
+            <span className="h-[38px] rounded-full bg-[#232121]/5 px-[20px] flex items-center text-[13px] font-medium text-neutral-500">No sub-spaces</span>
+          )}
+        </div>
+      ) : (
+        <div className="mt-[13px] flex h-[52px] items-center gap-[9px] overflow-hidden">
+          {previewItems.map((item) => (
+            <ChatItemSticker key={item.id} item={item} compact />
+          ))}
+          {remaining > 0 && (
+            <span className="ml-auto flex h-[50px] w-[50px] shrink-0 items-center justify-center rounded-[17px] bg-[#F3F1EC] text-[18px] font-bold text-[#232121]">+{remaining}</span>
+          )}
+        </div>
+      )}
+    </button>
+  );
+};
+
+const ChatSpaceResults: React.FC<{
+  spaces: ChatSpaceResult[];
+  onSpaceClick: (space: ChatSpaceResult) => void;
+}> = ({ spaces, onSpaceClick }) => (
+  <div
+    className="chat-space-results mt-[27px] w-full overflow-x-auto no-scrollbar pb-1 touch-pan-x"
+    style={{
+      WebkitOverflowScrolling: "touch",
+      paddingLeft: "max(0px, calc(100% - 302px))",
+    }}
+    aria-label={`${spaces.length} matching spaces`}
+  >
+    <div className="flex w-max gap-[10px]">
+      {spaces.map((space) => (
+        <ChatSpaceCard key={space.id} space={space} onClick={() => onSpaceClick(space)} />
+      ))}
+    </div>
+  </div>
+);
 
 export const ChatFlow: React.FC<ChatFlowProps> = ({
   inputValue,
@@ -32,13 +170,24 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
   onMemoryCoreClick,
   isChatActive,
   isCaptureOpen,
-  onPresetSearch,
-  isAuthenticated = false,
+  isSearching = false,
+  onItemResultClick,
+  onSpaceResultClick,
 }) => {
   const [isFocused, setIsFocused] = React.useState(false);
   const outerRef = React.useRef<HTMLDivElement>(null);
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
   const [frameHeight, setFrameHeight] = React.useState(844);
+  const [showSearching, setShowSearching] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!isSearching) {
+      setShowSearching(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setShowSearching(true), 300);
+    return () => window.clearTimeout(timer);
+  }, [isSearching]);
 
   // Call the global aggressive keyboard reset logic
   useKeyboardReset(isChatActive, isCaptureOpen);
@@ -109,7 +258,7 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
       <AnimatePresence>
         {isChatActive && (
           <div 
-            className="absolute inset-x-0 top-0 bottom-[354px] z-50 pointer-events-none flex flex-col justify-end px-4 pb-2"
+            className="absolute inset-x-0 top-0 bottom-[260px] z-50 pointer-events-none flex flex-col justify-end px-4 pb-2"
           >
             <motion.div
               initial={{ opacity: 0, y: 15 }}
@@ -120,20 +269,20 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                 duration: 0.4,
                 ease: [0.16, 1, 0.3, 1],
               }}
-              className="self-end pointer-events-auto flex flex-col"
+              className="self-end pointer-events-auto mr-[-16px] flex flex-col"
               style={{
-                width: "270px",
+                width: "calc(100% + 32px)",
                 maxHeight: "100%",
               }}
             >
               <div className="w-full h-full overflow-y-auto no-scrollbar flex flex-col justify-end gap-4 py-2 px-0">
                 <div className="flex flex-col gap-[27px]">
                   <AnimatePresence initial={false}>
-                    {messages.map((msg, index) => {
+                    {[...messages, ...(showSearching ? [{ id: "chat-searching", sender: "noma" as const, text: "Looking through your memory…" }] : [])].map((msg, index) => {
                       const isNoma = msg.sender === "noma";
                       return (
                         <motion.div
-                          key={index}
+                          key={msg.id}
                           initial={{ opacity: 0, y: 10 }}
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -10 }}
@@ -142,53 +291,45 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                             duration: 0.25,
                             ease: "easeOut",
                           }}
-                          className={`flex w-full ${isNoma ? "justify-start" : "justify-end"}`}
+                          className="w-full"
                           style={
                             index === 0
                               ? {
                                   marginTop: "auto",
-                                  marginBottom: messages.length === 1 && isNoma ? "30px" : undefined,
+                                  marginBottom: messages.length === 1 && isNoma ? "20px" : undefined,
                                 }
                               : undefined
                           }
                         >
-                          <div
-                            className={`relative max-w-[222px] px-[18px] py-[12px] transition-all duration-300 ${
-                              isNoma
-                                ? "bg-white text-[#1F2937] rounded-[20px]"
-                                : "bg-[#E7F1FE] text-[#1F2937] rounded-[20px]"
-                            }`}
-                            style={{
-                              fontSize: "14px",
-                              lineHeight: "19px",
-                              fontFamily: "Inter, sans-serif",
-                              filter: "drop-shadow(0px 6px 15px rgba(0, 0, 0, 0.05))",
-                            }}
-                          >
-                            <p className="whitespace-pre-wrap break-words">{msg.text}</p>
-                            
-                            {/* Custom bottom pointed tail (right-angled triangle) */}
-                            {isNoma ? (
-                              <svg
-                                width="12"
-                                height="12"
-                                viewBox="0 0 12 12"
-                                fill="none"
-                                className="absolute bottom-[-11px] left-[24px] pointer-events-none"
+                          <div className="w-full">
+                            <div className={`ml-auto mr-[32px] flex w-[270px] ${isNoma ? "justify-start" : "justify-end"}`}>
+                              <div
+                                className={`relative max-w-[222px] px-[18px] py-[12px] transition-all duration-300 ${
+                                  isNoma
+                                    ? "bg-white text-[#1F2937] rounded-[20px]"
+                                    : "bg-[#E7F1FE] text-[#1F2937] rounded-[20px]"
+                                }`}
+                                style={{
+                                  fontSize: "14px",
+                                  lineHeight: "19px",
+                                  fontFamily: "Inter, sans-serif",
+                                  filter: "drop-shadow(0px 6px 15px rgba(0, 0, 0, 0.05))",
+                                }}
                               >
-                                <path d="M 0 0 L 12 0 L 0 12 Z" fill="white" />
-                              </svg>
-                            ) : (
-                              <svg
-                                width="12"
-                                height="12"
-                                viewBox="0 0 12 12"
-                                fill="none"
-                                className="absolute bottom-[-11px] right-[24px] pointer-events-none"
-                              >
-                                <path d="M 0 0 L 12 0 L 12 12 Z" fill="#E7F1FE" />
-                              </svg>
-                            )}
+                                <p className="whitespace-pre-wrap break-words">{msg.text}</p>
+                                {isNoma ? (
+                                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="absolute bottom-[-11px] left-[24px] pointer-events-none">
+                                    <path d="M 0 0 L 12 0 L 0 12 Z" fill="white" />
+                                  </svg>
+                                ) : (
+                                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="absolute bottom-[-11px] right-[24px] pointer-events-none">
+                                    <path d="M 0 0 L 12 0 L 12 12 Z" fill="#E7F1FE" />
+                                  </svg>
+                                )}
+                              </div>
+                            </div>
+                            {isNoma && msg.items?.length ? <ChatItemResults items={msg.items} onItemClick={onItemResultClick} /> : null}
+                            {isNoma && msg.spaces?.length ? <ChatSpaceResults spaces={msg.spaces} onSpaceClick={onSpaceResultClick} /> : null}
                           </div>
                         </motion.div>
                       );
@@ -212,38 +353,6 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
           transition: "transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1)"
         }}
       >
-        {/* 1. Quick Suggestion Pills wrapped in fixed-height container to prevent layout shifts */}
-        <div className="h-[40px] relative w-full flex items-center shrink-0">
-          <AnimatePresence>
-            {isChatActive && isAuthenticated && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: inputValue ? 0 : 1 }}
-                exit={{ opacity: 0 }}
-                transition={{
-                  type: "tween",
-                  duration: 0.3,
-                  ease: "easeOut",
-                }}
-                className="chat-recommendation-layer absolute inset-0 flex gap-2 overflow-x-auto overflow-y-hidden no-scrollbar py-1 w-full justify-start items-center pl-[20px] pr-6"
-                style={{ pointerEvents: inputValue ? "none" : "auto" }}
-              >
-                {["keys 🔑", "coffee ☕", "candle 🕯️", "book 📖"].map((tag) => (
-                  <button
-                    key={tag}
-                    onClick={() => onPresetSearch(tag.split(" ")[0])}
-                    className="chat-recommendation-chip bg-white/10 hover:bg-white/20 active:bg-white/30 border border-white/20 text-white font-sans text-[13px] px-3.5 py-1.5 rounded-full shadow-sm transition-all focus:outline-none cursor-pointer whitespace-nowrap"
-                  >
-                    {tag}
-                  </button>
-                ))}
-                {/* Trailing item spacer to prevent any scrolling truncation or cuts at right edge */}
-                <div className="w-4 shrink-0 h-1" />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
         {/* 2. Chat Search Input Pill Bar */}
         <AnimatePresence>
           {isChatActive && (
