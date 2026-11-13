@@ -89,6 +89,7 @@ export const VirtualKeyboard: React.FC<VirtualKeyboardProps> = ({
   const [layoutName, setLayoutName] = React.useState<KeyboardLayoutName>("default");
   const [pinyinBuffer, setPinyinBuffer] = React.useState("");
   const keyboardRef = React.useRef<KeyboardReactInterface | null>(null);
+  const sendPressedRef = React.useRef(false);
   const actionsRef = React.useRef({
     onChange,
     onKeyPress,
@@ -152,6 +153,7 @@ export const VirtualKeyboard: React.FC<VirtualKeyboardProps> = ({
   const handleKeyPress = React.useCallback(
     (button: string) => {
       playClickSound();
+      sendPressedRef.current = button === "{send}";
 
       if (button === "{shift}") {
         if (mode === "numeric") return;
@@ -181,8 +183,8 @@ export const VirtualKeyboard: React.FC<VirtualKeyboardProps> = ({
       }
 
       if (button === "{send}") {
-        setPinyinBuffer("");
-        actionsRef.current.onSend();
+        // Submit on release so a dialog cannot intercept the remaining events
+        // from the same press that opened it.
         return;
       }
 
@@ -295,6 +297,13 @@ export const VirtualKeyboard: React.FC<VirtualKeyboardProps> = ({
         }}
         layoutName={layoutName}
         onKeyPress={handleKeyPress}
+        onKeyReleased={(button, event) => {
+          const shouldSend = button === "{send}" && sendPressedRef.current && !event?.type.endsWith("cancel");
+          sendPressedRef.current = false;
+          if (!shouldSend) return;
+          setPinyinBuffer("");
+          actionsRef.current.onSend();
+        }}
         onChange={onChange ? handleKeyboardChange : undefined}
         disableButtonHold
         mergeDisplay

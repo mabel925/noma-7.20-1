@@ -48,10 +48,17 @@ body.capture-page-open::before {
   --capture-viewport-top: 0px;
   --capture-viewport-height: var(--app-height);
   --capture-keyboard-shift: 0px;
+  --chat-keyboard-height: 205px;
+  --chat-composer-bottom: calc(var(--chat-keyboard-height) + 12px);
+  --chat-composer-height: 54px;
 }
 
 .pwa-standalone {
   --noma-statusbar-height: max(env(safe-area-inset-top, 0px), 44px);
+}
+
+.pwa-standalone:not(.pwa-preview) {
+  --chat-keyboard-height: 242px;
 }
 
 /* All full-screen layers share one measured viewport height. */
@@ -145,7 +152,7 @@ html, body {
     transform: translateY(0) !important;
   }
 
-  body:not(.pwa-standalone) .capture-top-prompt {
+  body:not(.pwa-standalone) .capture-top-prompt:not(.capture-item-prompt) {
     top: 12px !important;
   }
 
@@ -238,7 +245,7 @@ html, body {
 @keyframes cursor-blink { from, to { border-color: transparent } 50% { border-color: #3b82f6 } }
 @keyframes cursor-blink-black { from, to { opacity: 0; } 50% { opacity: 1; } }
 
-body:not(.pwa-standalone) .chat-flow-container {
+.chat-flow-container {
   bottom: 24px !important;
 }
 
@@ -247,34 +254,22 @@ body:not(.pwa-standalone) .chat-flow-container {
 }
 
 .chat-flow-container.chat-virtual-keyboard-active {
-  bottom: 254px !important;
+  bottom: var(--chat-composer-bottom) !important;
 }
 
-body:not(.pwa-standalone) .chat-flow-container.chat-virtual-keyboard-active,
-.pwa-preview .chat-flow-container.chat-virtual-keyboard-active {
-  bottom: 217px !important;
+.chat-messages-layer {
+  top: var(--noma-statusbar-height);
+  bottom: calc(var(--chat-composer-bottom) + var(--chat-composer-height) + 20px);
 }
 
-.pwa-standalone:not(.pwa-preview) .chat-flow-container.chat-virtual-keyboard-active {
-  bottom: 254px !important;
-}
-
-body:not(.pwa-standalone) .home-keyboard-container {
-  height: 205px !important;
+.home-keyboard-container {
+  height: var(--chat-keyboard-height) !important;
 }
 
 body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indicator,
 .pwa-preview .home-keyboard-container .virtual-keyboard-mock-indicator,
 .pwa-standalone .home-keyboard-container .virtual-keyboard-mock-indicator {
   display: none !important;
-}
-
-.pwa-standalone .home-keyboard-container {
-  height: 242px !important;
-}
-
-.pwa-preview .home-keyboard-container {
-  height: 205px !important;
 }
 
 .noma-simple-keyboard {
@@ -654,6 +649,7 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 /* Physical bottom-sticking overlay defense for shooting/capture page */
 .camera-page-container,
 .camera-wrapper {
+  --capture-header-top: calc(max(56px, env(safe-area-inset-top, 0px)) + 36px);
   position: fixed !important;
   top: var(--capture-viewport-top) !important;
   bottom: auto !important;
@@ -674,6 +670,16 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
   overscroll-behavior: none !important;
   touch-action: none;
   background: #161616 !important; /* 确保背景色填补 */
+}
+
+.capture-item-prompt {
+  top: var(--capture-header-top);
+}
+
+.capture-camera-close {
+  /* A 16px icon at right:15px, with a centered 44px touch target. */
+  right: 1px;
+  top: calc(var(--capture-header-top) - 30px);
 }
 
 .camera-page-container input,

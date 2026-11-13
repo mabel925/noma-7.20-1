@@ -129,7 +129,7 @@ export const AuthDialog: React.FC = () => {
         <motion.div
           className="fixed inset-0 z-[100000] bg-[#232121]/35 backdrop-blur-sm"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-          onMouseDown={closeLogin}
+          onPointerDown={closeLogin}
         />
         <div className="pointer-events-none fixed inset-0 z-[100001] isolate flex items-center justify-center px-6">
           <motion.div

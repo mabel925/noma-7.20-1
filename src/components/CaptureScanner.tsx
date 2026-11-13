@@ -3856,6 +3856,17 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 	      {/* Hidden element to force immediate pre-loading and browser initialization of the Alkatra font */}
 	      <span className="font-alkatra opacity-0 absolute pointer-events-none select-none w-1 h-1 overflow-hidden" aria-hidden="true">AI</span>
 
+      {storageFlowStep === "none" && scanStep === "viewport" && (
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close camera"
+          className="capture-camera-close absolute z-[80] flex h-11 w-11 items-center justify-center text-white active:scale-95 transition-transform"
+        >
+          <CloseIcon className="h-4 w-4" />
+        </button>
+      )}
+
       <AnimatePresence>
         {aiAccessNotice && (
           <motion.div
@@ -3883,7 +3894,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
         {/* Top Header Guidelines Title overlay */}
         {storageFlowStep === "none" && scanStep === "viewport" && !cameraViewportUnavailable && (
-          <div className="capture-top-prompt absolute top-[calc(max(56px,env(safe-area-inset-top))+36px)] inset-x-6 z-20 flex flex-col items-center pointer-events-none">
+          <div className="capture-top-prompt capture-item-prompt absolute inset-x-6 z-20 flex flex-col items-center pointer-events-none">
             <h3 
               id="camera-guide-title"
               className="text-white text-[20px] font-sans font-medium tracking-tight text-center max-w-[240px] leading-snug"

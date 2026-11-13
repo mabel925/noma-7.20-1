@@ -3,6 +3,21 @@ import { SUPABASE_PUBLISHABLE_KEY, supabase } from "./supabaseClient";
 const R2_PREFIX = "r2:";
 const MEDIA_BASE = "/api/media";
 const MAX_UPLOAD_BYTES = 500 * 1024;
+const MEDIA_REQUEST_TIMEOUT_MS = 12_000;
+let readSessionRequest: Promise<void> | null = null;
+
+const fetchMedia = async (url: string, init: RequestInit) => {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), MEDIA_REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    // Consume the body within the timeout, too.
+    const blob = await response.blob();
+    return { response, blob };
+  } finally {
+    window.clearTimeout(timer);
+  }
+};
 
 type ImageProfile = {
   maxDimension: number;
@@ -127,13 +142,39 @@ const uploadBlob = async (key: string, blob: Blob) => {
 };
 
 export const mediaStorage = {
-  async ensureReadSession() {
-    const token = await getAccessToken();
-    const response = await fetch(`${MEDIA_BASE}/session`, {
-      method: "POST",
-      headers: authHeaders(token),
-    });
-    if (!response.ok) throw new Error(`Private image session failed (${response.status}).`);
+  ensureReadSession(): Promise<void> {
+    if (readSessionRequest) return readSessionRequest;
+    const request = (async () => {
+      const token = await getAccessToken();
+      const { response } = await fetchMedia(`${MEDIA_BASE}/session`, {
+        method: "POST",
+        headers: authHeaders(token),
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error(`Private image session failed (${response.status}).`);
+    })();
+    readSessionRequest = request;
+    request.finally(() => { if (readSessionRequest === request) readSessionRequest = null; }).catch(() => undefined);
+    return request;
+  },
+
+  async readImage(url: string): Promise<Blob> {
+    let result = await fetchMedia(url, { credentials: "same-origin", cache: "default" });
+    if (result.response.status === 401 || result.response.status === 403) {
+      // The 30-minute image cookie can expire while the Supabase login is
+      // still valid. Use the current login for this image and renew the cookie.
+      const token = await getAccessToken();
+      result = await fetchMedia(url, {
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: authHeaders(token),
+      });
+      if (result.response.ok) void this.ensureReadSession().catch(() => undefined);
+    }
+    if (!result.response.ok) throw new Error(`Private image request failed (${result.response.status}).`);
+    if (!result.blob.size) throw new Error("Private image response is empty.");
+    return result.blob;
   },
 
   async clearReadSession() {

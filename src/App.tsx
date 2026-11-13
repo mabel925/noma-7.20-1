@@ -354,6 +354,8 @@ export default function App() {
   const [customMemories, setCustomMemories] = useState<MemoryItem[]>([]);
   const [isMemoryHydrated, setIsMemoryHydrated] = useState(false);
   const [hydratedUserId, setHydratedUserId] = useState<string | null>(null);
+  const [memoryLoadError, setMemoryLoadError] = useState<string | null>(null);
+  const [memoryLoadAttempt, setMemoryLoadAttempt] = useState(0);
   const [memoryNextCursor, setMemoryNextCursor] = useState<MemoryPageCursor | null>(null);
   const [hasMoreMemories, setHasMoreMemories] = useState(false);
   const [isLoadingMoreMemories, setIsLoadingMoreMemories] = useState(false);
@@ -389,6 +391,7 @@ export default function App() {
     setCustomMemories([]);
     setIsMemoryHydrated(false);
     setHydratedUserId(null);
+    setMemoryLoadError(null);
     setMemoryNextCursor(null);
     setHasMoreMemories(false);
     if (!user || !isHomeReady) return () => { cancelled = true; };
@@ -425,14 +428,14 @@ export default function App() {
       .catch((error) => {
         console.error("[App] Failed to load cloud memories:", error);
         if (!cancelled) {
-          setIsMemoryHydrated(true);
+          setMemoryLoadError("Couldn't load your memories. Please try again.");
         }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [isHomeReady, user?.id, user?.isMock]);
+  }, [isHomeReady, user?.id, user?.isMock, memoryLoadAttempt]);
 
   // Persist only the delta between local snapshots. Writes are serialized so
   // a slower, older request cannot finish after and overwrite a newer edit.
@@ -874,6 +877,9 @@ export default function App() {
             onClose={() => setIsMemoryOpen(false)}
             memories={customMemories}
             onMemoriesChange={setCustomMemories}
+            isLoading={Boolean(user) && !isMemoryHydrated && !memoryLoadError}
+            loadError={memoryLoadError}
+            onRetryLoad={() => setMemoryLoadAttempt((attempt) => attempt + 1)}
             isAuthenticated={Boolean(user)}
             onRequireAuth={(action) => requireAuth(action)}
             onLogin={openLogin}

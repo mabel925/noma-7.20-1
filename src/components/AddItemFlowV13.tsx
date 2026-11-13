@@ -17,6 +17,7 @@ import { classifyEmojiText, recognizeImage } from "../services/aiService";
 import { createAiScanId } from "../services/aiAuth";
 import { classifyEmojiLocally, EMOJI_CATALOG, emojiAsset, ITEM_CATEGORIES, refreshEmojiAssetUrl, type EmojiKind } from "../data/emojiCatalog";
 import { generateEmojiOutline, getRoundedOutlineShadow, getStickerTitleStyle, isChineseTitle } from "./StickerTitle";
+import { ItemStickerVisual } from "./ItemStickerVisual";
 
 type Stage = "新增物品-默认" | "识别emoji" | "切换emoji" | "新增物品-拍摄模式" | "新增spaces" | "最终结果页";
 type Mode = "emoji" | "camera";
@@ -179,39 +180,17 @@ const ItemSticker = ({ item, compact = false, onImageClick, onTitleClick, reveal
   reveal?: boolean;
   style?: React.CSSProperties;
 }) => {
-  const imageUrl = entityImage(item);
-  const showEmojiOutline = !item.imageUrl;
-  const [emojiOutline, setEmojiOutline] = useState("");
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!showEmojiOutline) {
-      setEmojiOutline("");
-      return;
-    }
-    void generateEmojiOutline(imageUrl).then((result) => {
-      if (!cancelled) setEmojiOutline(result);
-    });
-    return () => { cancelled = true; };
-  }, [imageUrl, showEmojiOutline]);
-
   return (
-  <div className={compact ? "noma-add-item-sticker is-compact" : "noma-add-item-sticker"} style={style}>
-    <button type="button" className={`noma-add-emoji-media${reveal ? " is-revealing" : ""}`} onClick={onImageClick} aria-label={onImageClick ? "Change emoji" : undefined} tabIndex={onImageClick ? 0 : -1}>
-      {showEmojiOutline && emojiOutline && <img className="noma-add-emoji-outline" src={emojiOutline} alt="" aria-hidden="true" />}
-      <img className="noma-add-emoji-image" src={imageUrl} alt="" />
-    </button>
-    <button
-      type="button"
-      className={`noma-add-item-title ${isChineseTitle(item.name) ? "font-zihun-biantao" : "font-alkatra"}`}
-      style={{ ...getStickerTitleStyle(250), zIndex: 3 }}
-      onClick={onTitleClick}
-      tabIndex={onTitleClick ? 0 : -1}
-      aria-label={onTitleClick ? "Edit item title" : undefined}
-    >
-      {item.name || "New Item"}
-    </button>
-  </div>
+    <div className={compact ? "noma-add-item-sticker is-compact" : "noma-add-item-sticker"} style={style}>
+      <ItemStickerVisual
+        name={item.name || "New Item"}
+        imageUrl={entityImage(item)}
+        showEmojiOutline={!item.imageUrl}
+        onImageClick={onImageClick}
+        onTitleClick={onTitleClick}
+        reveal={reveal}
+      />
+    </div>
   );
 };
 

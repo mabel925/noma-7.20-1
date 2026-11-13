@@ -1,7 +1,7 @@
 import React from "react";
 import { Plus } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { useKeyboardReset } from "../hooks/useKeyboardReset";
+import { ItemStickerVisual } from "./ItemStickerVisual";
 import { MemoryCoreButton } from "./MemoryCoreButton";
 import { CloseIcon } from "./CloseIcon";
 import { classifyEmojiLocally, emojiAsset } from "../data/emojiCatalog";
@@ -22,51 +22,24 @@ interface ChatFlowProps {
   onSpaceResultClick: (space: ChatSpaceResult) => void;
 }
 
-const isChineseTitle = (value: string) => /[\u3400-\u9fff]/.test(value);
-
 const ChatItemSticker: React.FC<{ item: MemoryItem; onClick?: () => void; compact?: boolean }> = ({
-  item,
-  onClick,
-  compact = false,
+  item, onClick, compact = false,
 }) => {
-  const [imageFailed, setImageFailed] = React.useState(false);
-  const content = (
-    <>
-      <div className={`absolute inset-x-0 top-0 flex items-center justify-center ${compact ? "h-[42px]" : "h-[70px]"}`}>
-        {item.stickerUrl && !imageFailed ? (
-          <img
-            src={item.stickerUrl}
-            alt=""
-            className="h-full w-full object-contain"
-            referrerPolicy="no-referrer"
-            draggable={false}
-            onError={() => setImageFailed(true)}
-          />
-        ) : (
-          <span className={`${compact ? "text-[28px]" : "text-[44px]"} leading-none`} aria-hidden="true">{item.emoji || "📦"}</span>
-        )}
-      </div>
-      <span
-        className={`absolute bottom-[1px] left-1/2 z-10 max-w-[90px] -translate-x-1/2 whitespace-nowrap leading-none text-[#171515] ${compact ? "text-[12px]" : "text-[17px]"} ${isChineseTitle(item.name) ? "font-zihun-biantao" : "font-alkatra"}`}
-        style={{
-          WebkitTextStroke: compact ? "3px white" : "4px white",
-          paintOrder: "stroke fill",
-          filter: "drop-shadow(0 1px 0 rgba(0,0,0,0.18))",
-        }}
-      >
-        {item.name}
-      </span>
-    </>
-  );
+  const emojiKey = item.emoji && /^[a-z0-9-]+$/i.test(item.emoji) ? item.emoji : "";
+  const emojiUrl = emojiKey ? emojiAsset(emojiKey) : "";
+  const content = <ItemStickerVisual
+    name={item.name}
+    imageUrl={item.stickerUrl || emojiUrl}
+    size={compact ? 50 : 78}
+    showEmojiOutline={Boolean(emojiUrl && (!item.stickerUrl || item.stickerUrl === emojiUrl))}
+    fallbackEmoji={emojiKey ? "📦" : item.emoji || "📦"}
+  />;
   const className = `relative shrink-0 overflow-visible ${compact ? "h-[52px] w-[54px]" : "h-[88px] w-[78px]"}`;
-
   return onClick ? (
     <button type="button" onClick={onClick} className={`${className} active:scale-95 transition-transform`} aria-label={`Open ${item.name}`}>
       {content}
     </button>
-  ) : (
-    <div className={className} aria-label={item.name}>{content}</div>
-  );
+  ) : <div className={className} aria-label={item.name}>{content}</div>;
 };
 
 const ChatItemResults: React.FC<{
@@ -153,7 +126,7 @@ const ChatSpaceResults: React.FC<{
     }}
     aria-label={`${spaces.length} matching spaces`}
   >
-    <div className="flex w-max gap-[10px]">
+    <div className="flex w-max gap-[10px] pr-[32px]">
       {spaces.map((space) => (
         <ChatSpaceCard key={space.id} space={space} onClick={() => onSpaceClick(space)} />
       ))}
@@ -175,9 +148,7 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
   onSpaceResultClick,
 }) => {
   const [isFocused, setIsFocused] = React.useState(false);
-  const outerRef = React.useRef<HTMLDivElement>(null);
-  const messagesEndRef = React.useRef<HTMLDivElement>(null);
-  const [frameHeight, setFrameHeight] = React.useState(844);
+  const messagesRef = React.useRef<HTMLDivElement>(null);
   const [showSearching, setShowSearching] = React.useState(false);
 
   React.useEffect(() => {
@@ -189,68 +160,17 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
     return () => window.clearTimeout(timer);
   }, [isSearching]);
 
-  // Call the global aggressive keyboard reset logic
-  useKeyboardReset(isChatActive, isCaptureOpen);
-
-  // Monitor frame dimensions dynamically to perfectly align above Noma's head
   React.useEffect(() => {
-    if (!outerRef.current) return;
-    const parent = outerRef.current.parentElement;
-    if (!parent) return;
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const h = entry.contentRect.height;
-        if (h > 0) {
-          setFrameHeight(h);
-        }
-      }
-    });
-    observer.observe(parent);
-    const rect = parent.getBoundingClientRect();
-    if (rect.height > 0) {
-      setFrameHeight(rect.height);
-    }
+    if (!isChatActive || isCaptureOpen) return;
+    const list = messagesRef.current;
+    if (!list) return;
+    // Only scroll this list: scrollIntoView also scrolls the app/keyboard shell.
+    const scrollToLatest = () => list.scrollTo({ top: list.scrollHeight, behavior: "smooth" });
+    scrollToLatest();
+    const observer = new ResizeObserver(scrollToLatest);
+    observer.observe(list);
     return () => observer.disconnect();
-  }, []);
-
-  // Smoothly scroll to the newest message whenever history updates
-  React.useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messages, isChatActive]);
-
-  // Defensive Layout Alignment: Use lossless resize/visualViewport triggers
-  // when returning to Chat page (whenever isChatActive is true and isCaptureOpen is false)
-  React.useEffect(() => {
-    if (isChatActive && !isCaptureOpen) {
-      console.log("[LayoutGuard] Triggering lossless resize compensation for pristine Chat page layout.");
-      
-      // 触发窗口尺寸变化事件，强制已有布局逻辑重算
-      window.dispatchEvent(new Event('resize'));
-      
-      // 检查视图窗口对象：如果布局逻辑依赖 visualViewport，添加触发
-      if (window.visualViewport) {
-        window.visualViewport.dispatchEvent(new Event('resize'));
-      }
-
-      // 延迟 50ms 再次调用，确保 DOM 已经完全恢复并重写算正确坐标
-      const timer = setTimeout(() => {
-        window.dispatchEvent(new Event('resize'));
-        if (window.visualViewport) {
-          window.visualViewport.dispatchEvent(new Event('resize'));
-        }
-      }, 50);
-
-      return () => clearTimeout(timer);
-    }
-  }, [isChatActive, isCaptureOpen]);
-
-
-
-  const scaleMultiplier = frameHeight / 1376;
-  // Position chat bubble container perfectly above Noma's head in coordinate space
-  const chatBubbleBottom = 525 * scaleMultiplier;
+  }, [messages, showSearching, isChatActive, isCaptureOpen]);
 
   return (
     <>
@@ -258,7 +178,7 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
       <AnimatePresence>
         {isChatActive && (
           <div 
-            className="absolute inset-x-0 top-0 bottom-[260px] z-50 pointer-events-none flex flex-col justify-end px-4 pb-2"
+            className="chat-messages-layer absolute inset-x-0 z-50 pointer-events-none flex flex-col justify-end"
           >
             <motion.div
               initial={{ opacity: 0, y: 15 }}
@@ -269,16 +189,15 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                 duration: 0.4,
                 ease: [0.16, 1, 0.3, 1],
               }}
-              className="self-end pointer-events-auto mr-[-16px] flex flex-col"
+              className="pointer-events-auto flex min-h-0 w-full flex-col"
               style={{
-                width: "calc(100% + 32px)",
                 maxHeight: "100%",
               }}
             >
-              <div className="w-full h-full overflow-y-auto no-scrollbar flex flex-col justify-end gap-4 py-2 px-0">
-                <div className="flex flex-col gap-[27px]">
+              <div ref={messagesRef} className="min-h-0 w-full overflow-y-auto no-scrollbar flex flex-col overscroll-contain">
+                <div className="mt-auto flex shrink-0 flex-col gap-[27px] pt-2 pb-3">
                   <AnimatePresence initial={false}>
-                    {[...messages, ...(showSearching ? [{ id: "chat-searching", sender: "noma" as const, text: "Looking through your memory…" }] : [])].map((msg, index) => {
+                    {[...messages, ...(showSearching ? [{ id: "chat-searching", sender: "noma" as const, text: "Looking through your memory…" }] : [])].map((msg) => {
                       const isNoma = msg.sender === "noma";
                       return (
                         <motion.div
@@ -292,14 +211,6 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                             ease: "easeOut",
                           }}
                           className="w-full"
-                          style={
-                            index === 0
-                              ? {
-                                  marginTop: "auto",
-                                  marginBottom: messages.length === 1 && isNoma ? "20px" : undefined,
-                                }
-                              : undefined
-                          }
                         >
                           <div className="w-full">
                             <div className={`ml-auto mr-[32px] flex w-[270px] ${isNoma ? "justify-start" : "justify-end"}`}>
@@ -336,7 +247,6 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                     })}
                   </AnimatePresence>
                 </div>
-                <div ref={messagesEndRef} />
               </div>
             </motion.div>
           </div>
@@ -345,8 +255,7 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
 
       {/* 2. 输入和交互图层 (Input & Interaction Layer) */}
       <div
-        ref={outerRef}
-        className={`chat-flow-container absolute inset-x-0 bottom-[254px] z-40 flex flex-col gap-4 select-none transform ${
+        className={`chat-flow-container absolute inset-x-0 z-40 flex flex-col gap-4 select-none transform ${
           isChatActive ? "translate-y-0 opacity-100" : "translate-y-[242px] opacity-0 pointer-events-none"
         } ${isChatActive && !isCaptureOpen ? "chat-virtual-keyboard-active" : ""}`}
         style={{

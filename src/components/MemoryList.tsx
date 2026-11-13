@@ -14,6 +14,8 @@ import { CaptureShutterButton } from "./CaptureShutterButton";
 import { CollapseLocationIcon, ExpandLocationIcon } from "./LocationViewIcons";
 import { classifyEmojiLocally, EMOJI_CATALOG, emojiAsset, refreshEmojiAssetUrl, type EmojiKind } from "../data/emojiCatalog";
 import type { MemoryOpenTarget } from "../types/chat";
+import { reconcileLocationSnapshot } from "../services/locationSnapshot";
+import { mediaStorage } from "../services/mediaStorage";
 
 export const COLOR_BLUR_IMAGE_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/colorblur.png";
 export const MATRIX_DOT_IMAGE_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/%E7%9F%A9%E9%98%B5%E5%9C%86%E7%82%B9.png";
@@ -77,21 +79,26 @@ const decodeImage = (src: string) => new Promise<HTMLImageElement>((resolve, rej
   image.decoding = "async";
   image.referrerPolicy = "no-referrer";
 
-  const finish = async () => {
+  const timer = window.setTimeout(() => {
     if (settled) return;
     settled = true;
-    try {
-      await image.decode?.();
-    } catch {
-      // A completed load still provides a drawable image on browsers with flaky decode().
-    }
+    image.src = "";
+    reject(new Error("Image loading timed out."));
+  }, 12_000);
+  const finish = () => {
+    if (settled) return;
+    settled = true;
+    window.clearTimeout(timer);
+    // onload already means the image is drawable. Safari's decode() may hang
+    // even after onload; never hold a whole space on that second promise.
     resolve(image);
   };
 
-  image.onload = () => { void finish(); };
+  image.onload = finish;
   image.onerror = () => {
     if (settled) return;
     settled = true;
+    window.clearTimeout(timer);
     reject(new Error(`Unable to load image: ${src}`));
   };
   image.src = src;
@@ -113,24 +120,16 @@ const createPersistentImageResource = async (src: string): Promise<PersistentIma
   let isObjectUrl = false;
 
   if (isPrivateMediaUrl(src)) {
-    try {
-      const response = await fetch(src, { credentials: "same-origin", cache: "force-cache" });
-      if (!response.ok) throw new Error(`Image request failed (${response.status})`);
-      displaySrc = URL.createObjectURL(await response.blob());
-      isObjectUrl = true;
-    } catch {
-      displaySrc = src;
-    }
+    displaySrc = URL.createObjectURL(await mediaStorage.readImage(src));
+    isObjectUrl = true;
   }
 
   try {
     const image = await decodeImage(displaySrc);
     return { displaySrc, image, isObjectUrl };
   } catch (error) {
-    if (!isObjectUrl) throw error;
-    URL.revokeObjectURL(displaySrc);
-    const image = await decodeImage(src);
-    return { displaySrc: src, image, isObjectUrl: false };
+    if (isObjectUrl) URL.revokeObjectURL(displaySrc);
+    throw error;
   }
 };
 
@@ -176,6 +175,7 @@ const PersistentImage: React.FC<PersistentImageProps> = ({
   const imageSrc = typeof src === "string" ? src : "";
   const loadSentinelRef = React.useRef<HTMLSpanElement | null>(null);
   const [shouldLoad, setShouldLoad] = React.useState(loading === "eager");
+  const [retryCount, setRetryCount] = React.useState(0);
   const initialResource = imageSrc ? persistentImageCache.get(imageSrc) : undefined;
   const [state, setState] = React.useState<{
     source: string;
@@ -233,7 +233,21 @@ const PersistentImage: React.FC<PersistentImageProps> = ({
         if (!cancelled) setState({ source: imageSrc, displaySrc: "", status: "error" });
       });
     return () => { cancelled = true; };
-  }, [imageSrc, shouldLoad]);
+  }, [imageSrc, shouldLoad, retryCount]);
+
+  React.useEffect(() => {
+    if (state.status !== "error" || state.source !== imageSrc || !shouldLoad) return;
+    const retry = () => setRetryCount((count) => count + 1);
+    const retryWhenVisible = () => { if (document.visibilityState === "visible") retry(); };
+    const timer = retryCount === 0 ? window.setTimeout(retry, 1000) : undefined;
+    window.addEventListener("online", retry);
+    document.addEventListener("visibilitychange", retryWhenVisible);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("online", retry);
+      document.removeEventListener("visibilitychange", retryWhenVisible);
+    };
+  }, [imageSrc, shouldLoad, state.status, state.source, retryCount]);
 
   const cached = imageSrc ? persistentImageCache.get(imageSrc) : undefined;
   const stateMatches = state.source === imageSrc;
@@ -258,6 +272,9 @@ const PersistentImage: React.FC<PersistentImageProps> = ({
           decoding="sync"
           onLoad={onLoad}
           onError={(event) => {
+            const cached = persistentImageCache.get(imageSrc);
+            if (cached?.isObjectUrl) URL.revokeObjectURL(cached.displaySrc);
+            persistentImageCache.delete(imageSrc);
             setState({ source: imageSrc, displaySrc: "", status: "error" });
             onError?.(event);
           }}
@@ -300,6 +317,9 @@ interface MemoryListProps {
   onClose: () => void;
   memories: MemoryItem[];
   onMemoriesChange: React.Dispatch<React.SetStateAction<MemoryItem[]>>;
+  isLoading?: boolean;
+  loadError?: string | null;
+  onRetryLoad?: () => void;
   isAuthenticated?: boolean;
   onRequireAuth?: (action?: () => void) => boolean;
   onLogin?: () => void;
@@ -2331,10 +2351,11 @@ const LocationDetailModal: React.FC<{
 
   return (
     <div
-      className="absolute inset-0 z-[180] overflow-y-auto overscroll-contain bg-[#E9E6E1]"
+      className="absolute inset-0 z-[180] overflow-hidden bg-[#E9E6E1]"
     >
+      <div className="absolute inset-0 overflow-y-auto overscroll-contain">
       <MatrixDotBackground />
-      <div className="relative z-10 min-h-full px-[15px] pb-[28px]">
+      <div className={`relative z-10 min-h-full px-[15px] ${isEditingItems ? "pb-[112px]" : "pb-[28px]"}`}>
         <div
           className="flex items-center justify-between px-[5px]"
           style={{
@@ -2435,6 +2456,7 @@ const LocationDetailModal: React.FC<{
           )}
         </motion.div>
         )}
+      </div>
       </div>
 
       <MemoryItemsEditBubble
@@ -3074,6 +3096,9 @@ export const MemoryList: React.FC<MemoryListProps> = ({
   onClose,
   memories,
   onMemoriesChange,
+  isLoading = false,
+  loadError = null,
+  onRetryLoad,
   isAuthenticated = false,
   onRequireAuth,
   onLogin,
@@ -3104,6 +3129,16 @@ export const MemoryList: React.FC<MemoryListProps> = ({
   const itemsLongPressTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const didItemsLongPressRef = React.useRef(false);
   const didCompleteInitialOpenRef = React.useRef(false);
+  const previousDetailMemoriesRef = React.useRef(memories);
+
+  React.useLayoutEffect(() => {
+    const previousItems = previousDetailMemoriesRef.current;
+    previousDetailMemoriesRef.current = memories;
+    if (previousItems === memories) return;
+    setSelectedLocationDetail((location) => reconcileLocationSnapshot(location, previousItems, memories));
+    setParentLocationDetail((location) => reconcileLocationSnapshot(location, previousItems, memories));
+    setSelectedParentSpace((location) => reconcileLocationSnapshot(location, previousItems, memories));
+  }, [memories]);
 
   // Build location summaries without inventing fallback names. A record with
   // only a second-level location is promoted to a first-level entry; records
@@ -3823,7 +3858,12 @@ export const MemoryList: React.FC<MemoryListProps> = ({
               : "calc(20px + env(safe-area-inset-bottom, 0px))",
         }}
       >
-        {!memories.length ? (
+        {isAuthenticated && (isLoading || loadError) ? (
+          <div className="flex h-full flex-col items-center justify-center px-8 pb-20 text-center text-[#232121]" role="status">
+            <p className="text-[14px] leading-5">{isLoading ? "Loading your memories…" : loadError}</p>
+            {!isLoading && <button type="button" onClick={onRetryLoad} className="mt-5 rounded-full bg-[#232121] px-6 py-3 text-[14px] font-semibold text-white active:scale-95">Try again</button>}
+          </div>
+        ) : !memories.length ? (
           <div className="flex h-full flex-col items-center justify-center px-8 pb-20 text-center text-[#232121]">
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white/70 text-[27px]">✦</div>
             <p className="mt-5 text-[16px] font-semibold">{isAuthenticated ? "暂无内容" : "暂无内容，请登录查看更多"}</p>
@@ -4316,12 +4356,6 @@ export const MemoryList: React.FC<MemoryListProps> = ({
             onDeleteItems={(itemIds) => {
               const ids = new Set(itemIds);
               onMemoriesChange((currentMemories) => currentMemories.filter((item) => !ids.has(item.id)));
-              setSelectedLocationDetail((current) => {
-                if (!current) return current;
-                const items = current.items.filter((item) => !ids.has(item.id));
-                const directItems = current.directItems.filter((item) => !ids.has(item.id));
-                return { ...current, items, directItems, itemCount: Math.max(0, current.itemCount - (current.items.length - items.length)) };
-              });
             }}
           />
         )}

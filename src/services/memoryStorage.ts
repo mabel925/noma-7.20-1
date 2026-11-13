@@ -284,7 +284,7 @@ const syncItemChanges = async (
   changedRows.forEach((item) => persistedById.set(item.id, item));
 
   if (changedRows.some((item) => Boolean(mediaKeyFromValue(item.stickerUrl) || mediaKeyFromValue(item.parentLocationImg) || mediaKeyFromValue(item.subLocationImg)))) {
-    await mediaStorage.ensureReadSession();
+    void mediaStorage.ensureReadSession().catch((error) => console.warn("[Media] Unable to prepare image session:", error));
   }
 
   return nextItems.map((item) => persistedById.get(item.id) || item);
@@ -322,7 +322,7 @@ export const memoryStorage = {
     const hasPrivateImages = rows.some((row) =>
       [row.sticker_url, row.parent_location_img, row.sub_location_img].some((value) => Boolean(mediaKeyFromValue(value)))
     );
-    if (hasPrivateImages) await mediaStorage.ensureReadSession();
+    if (hasPrivateImages) void mediaStorage.ensureReadSession().catch((error) => console.warn("[Media] Unable to prepare image session:", error));
     const lastRow = rows.at(-1);
     return {
       items: rows.map(fromItemRow),
@@ -358,7 +358,7 @@ export const memoryStorage = {
     const hasPrivateImages = rows.some((row) =>
       [row.sticker_url, row.parent_location_img, row.sub_location_img].some((value) => Boolean(mediaKeyFromValue(value)))
     );
-    if (hasPrivateImages) await mediaStorage.ensureReadSession();
+    if (hasPrivateImages) void mediaStorage.ensureReadSession().catch((error) => console.warn("[Media] Unable to prepare image session:", error));
     return rows.map(fromItemRow);
   },
 
