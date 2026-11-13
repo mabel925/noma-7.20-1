@@ -1,6 +1,5 @@
 const BUILD_ID = "__NOMA_BUILD_ID__";
 const CACHE_NAME = `noma-app-${BUILD_ID}`;
-const LEGACY_REFRESH_MARKER = "noma-migration-recognition-title-v1";
 const APP_SHELL = [
   "/",
   "/manifest.json",
@@ -21,24 +20,15 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
       const keys = await caches.keys();
-      const shouldRefreshLegacyClient =
-        keys.includes("noma-app-v28") && !keys.includes(LEGACY_REFRESH_MARKER);
+      // Keep the previous release's assets for documents that are still open
+      // while the new worker takes control, including offline requests.
+      const previousCache = keys.filter((key) => key.startsWith("noma-app-") && key !== CACHE_NAME).at(-1);
       await Promise.all(
         keys
-          .filter((key) => key.startsWith("noma-app-") && key !== CACHE_NAME)
+          .filter((key) => key.startsWith("noma-app-") && key !== CACHE_NAME && key !== previousCache)
           .map((key) => caches.delete(key)),
       );
       await self.clients.claim();
-
-      // Existing v28 clients do not listen for controller changes. Refresh
-      // them once so the recognition-title fix can take effect. The marker is
-      // kept outside the versioned app caches, so future releases use the
-      // normal startup update path below without a forced migration refresh.
-      if (shouldRefreshLegacyClient) {
-        await caches.open(LEGACY_REFRESH_MARKER);
-        const clients = await self.clients.matchAll({type: "window"});
-        await Promise.all(clients.map((client) => client.navigate(client.url)));
-      }
     })()
   );
 });
@@ -62,7 +52,9 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (request.mode === "navigate") {
-    const cachedShellPromise = caches.match("/");
+    // The installed shell belongs to this worker's build. Do not replace it
+    // with a later release's HTML before that release's worker is installed.
+    const cachedShellPromise = caches.open(CACHE_NAME).then((cache) => cache.match("/"));
     const cacheResponse = (response) => {
       if (!response.ok) return response;
       const responseClone = response.clone();
@@ -72,12 +64,6 @@ self.addEventListener("fetch", (event) => {
         .catch(() => undefined)
         .then(() => response);
     };
-    const refreshShell = cachedShellPromise.then((cachedResponse) => {
-      if (!cachedResponse) return undefined;
-      return fetch(request).then(cacheResponse);
-    });
-    event.waitUntil(refreshShell.catch(() => undefined));
-
     event.respondWith(
       cachedShellPromise.then((cachedResponse) => {
         if (cachedResponse) return cachedResponse;

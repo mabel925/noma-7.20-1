@@ -193,6 +193,7 @@ export default function App() {
   const [memoryOpenTarget, setMemoryOpenTarget] = useState<MemoryOpenTarget | null>(null);
   const [isStandaloneMode, setIsStandaloneMode] = useState<boolean>(false);
   const launchStartedAtRef = React.useRef(performance.now());
+  const displayedStartupProgressRef = React.useRef(4);
   const [areStageAssetsReady, setAreStageAssetsReady] = useState(false);
   const [areStartupAssetsReady, setAreStartupAssetsReady] = useState(false);
   const [startupAssetProgress, setStartupAssetProgress] = useState({ loaded: 0, total: 1 });
@@ -272,7 +273,8 @@ export default function App() {
     const fill = document.getElementById("startup-progress-fill");
     const label = document.getElementById("startup-progress-label");
     const progressbar = splash?.querySelector<HTMLElement>('[role="progressbar"]');
-    const roundedProgress = Math.min(100, Math.round(startupProgress));
+    const roundedProgress = Math.max(displayedStartupProgressRef.current, Math.min(100, Math.round(startupProgress)));
+    displayedStartupProgressRef.current = roundedProgress;
     if (fill) fill.style.width = `${roundedProgress}%`;
     if (label) label.textContent = `${roundedProgress}%`;
     progressbar?.setAttribute("aria-valuenow", String(roundedProgress));

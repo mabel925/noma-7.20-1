@@ -130,13 +130,25 @@
       (() => {
         const splash = document.getElementById('startup-splash');
         const image = document.getElementById('startup-splash-image');
-        const revealProgress = () => requestAnimationFrame(() => requestAnimationFrame(() => {
-          const progress = splash?.querySelector('.startup-progress');
-          if (progress) {
-            const { top } = progress.getBoundingClientRect();
-            progress.style.top = `${Math.round(top)}px`;
-            progress.style.bottom = 'auto';
+        const progress = splash?.querySelector('.startup-progress');
+        if (progress) {
+          const standalone = navigator.standalone === true
+            || window.matchMedia('(display-mode: standalone)').matches
+            || window.matchMedia('(display-mode: fullscreen)').matches;
+          const ios = /iPad|iPhone|iPod/.test(navigator.userAgent)
+            || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+          let launchHeight = window.innerHeight;
+          const screenDelta = window.screen.height - launchHeight;
+          if (standalone && ios && screenDelta >= 0 && screenDelta <= 160) {
+            launchHeight = window.screen.height;
           }
+          const bottom = parseFloat(window.getComputedStyle(progress).bottom) || 42;
+          // Fix the position before image decoding or viewport-sync callbacks.
+          // iOS may report a shorter innerHeight during its launch animation.
+          progress.style.top = `${Math.round(launchHeight - bottom - progress.offsetHeight)}px`;
+          progress.style.bottom = 'auto';
+        }
+        const revealProgress = () => requestAnimationFrame(() => requestAnimationFrame(() => {
           splash?.classList.add('is-image-ready');
         }));
         const revealAfterDecode = () => {

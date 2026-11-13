@@ -9,6 +9,7 @@
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
+    "test:startup": "node --test tests/startup.test.mjs",
     "test:worker": "node --test cloudflare/noma-ai-worker.test.mjs tests/capture-result.test.mjs tests/qwen-stream.test.mjs"
   },
   "dependencies": {

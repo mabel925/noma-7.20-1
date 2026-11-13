@@ -21,17 +21,8 @@ export const checkForAppUpdate = (): Promise<void> => {
     return updateCheckPromise;
   }
 
-  const hadController = Boolean(navigator.serviceWorker.controller);
-  let reloadStarted = false;
-  navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (!hadController || reloadStarted) return;
-    // Never pull a user who has reached the home screen back into startup.
-    // The activated worker will serve the new release on the next launch.
-    if (document.documentElement.dataset.nomaHomeReady === "true") return;
-    reloadStarted = true;
-    window.location.reload();
-  });
-
+  // An update may activate during startup, but this document must finish its
+  // single launch. The new app shell is used on the next navigation/open.
   const updateOperation = navigator.serviceWorker
     .register("/sw.js", { updateViaCache: "none" })
     .then(async (registration) => {
