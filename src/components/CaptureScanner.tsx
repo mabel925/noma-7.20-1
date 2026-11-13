@@ -26,6 +26,7 @@ import {
 const LIGHTSPOT_IMAGE_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/lightspot.png";
 const PRICE_CURRENCIES = ["$", "€", "£", "¥", "₩"] as const;
 const COLOR_BLUR_SIZE = "min(100vw, 512px)";
+const RECOGNITION_FAILURE_NOTICE = "noma couldn't recognize it. Please enter a name.";
 
 const CaptureDefaultInput = ({
   value,
@@ -774,11 +775,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         classificationRequestIdRef.current += 1;
         classificationPromiseRef.current = null;
         commitFallbackTitle();
-        setAiAccessNotice(
-          isChinese
-            ? "识物超时，已使用默认名称。"
-            : "Object recognition timed out. Using the default name.",
-        );
+        setAiAccessNotice(RECOGNITION_FAILURE_NOTICE);
       }
     }
     const sourceLayout = getCoverLayoutFromDimensions(sourceWidth, sourceHeight);
@@ -1579,11 +1576,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       setCustomCategory(getLocalizedCategory(recognition.category));
     }
     if (error) {
-      setAiAccessNotice(
-        isChinese
-          ? `识物失败：${error.slice(0, 90)}`
-          : `Object recognition failed: ${error.slice(0, 90)}`,
-      );
+      setAiAccessNotice(RECOGNITION_FAILURE_NOTICE);
     }
   };
 
@@ -3286,12 +3279,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     } catch (err: any) {
       const accessError = reportAiAccessError(err);
       if (!accessError) {
-        const detail = err instanceof Error ? err.message : String(err);
-        setAiAccessNotice(
-          isChinese
-            ? `识物失败：${detail.slice(0, 90)}`
-            : `Object recognition failed: ${detail.slice(0, 90)}`,
-        );
+        setAiAccessNotice(RECOGNITION_FAILURE_NOTICE);
       }
       console.warn("[Classifier] Handled exception or rate-limit in auto-recognize item:", err.message || err);
       if (requestId === classificationRequestIdRef.current && !itemNameEditedRef.current) {
