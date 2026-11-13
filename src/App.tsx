@@ -856,11 +856,6 @@ export default function App() {
 
         {/* 4. FLOATING CONCEPTS/UI ELEMENTS LAYER (Overlaying the Stage) */}
         
-        {/* Top Transparent Gradient Overlay Mask */}
-        <div 
-          className="absolute top-0 inset-x-0 h-[260px] bg-gradient-to-b from-black/10 to-transparent pointer-events-none z-35"
-        />
-
         {/* Noma Header Logo & Memory Polyhedron */}
         {!isMemoryOpen && (
           <Header

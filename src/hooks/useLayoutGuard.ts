@@ -5,6 +5,11 @@ export function useLayoutGuard(isOpen: boolean) {
   useLayoutEffect(() => {
     if (!isOpen) return;
 
+    // Dismiss an editor before measuring the capture viewport, not in a later
+    // passive effect after the first camera frame has already been laid out.
+    const editor = document.activeElement as HTMLElement | null;
+    if (editor?.matches('input, textarea, [contenteditable="true"]')) editor.blur();
+
     // 1. Store original values to restore on unmount (Lifecycle Guard)
     const originalHtmlOverflow = document.documentElement.style.overflow;
     const originalBodyOverflow = document.body.style.overflow;

@@ -8,8 +8,8 @@ import { createCaptureResult } from "../services/captureResult.js";
 import { MemoryItemLimitError } from "../services/memoryStorage";
 import { useAuth } from "../auth/AuthContext";
 import { motion, AnimatePresence } from "motion/react";
-import { useKeyboardReset } from "../hooks/useKeyboardReset";
 import { useLayoutGuard } from "../hooks/useLayoutGuard";
+import { acquireCamera, playCameraPreview, type CameraLease } from "../services/cameraSession";
 import { TagSwitchIcon } from "./TagSwitchIcon";
 import { EditPencilIcon } from "./EditPencilIcon";
 import { CloseIcon } from "./CloseIcon";
@@ -106,6 +106,7 @@ interface CaptureScannerProps {
   }) => void;
   onSwitchToEmoji?: () => void;
   layer?: number;
+  layoutManaged?: boolean;
 }
 
 interface ExistingMemoryLocationSource {
@@ -280,9 +281,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   onCutoutComplete,
   onSwitchToEmoji,
   layer = 50,
+  layoutManaged = false,
 }) => {
-  // Call keyboard reset aggressively when capture page is open to guarantee layout restoration
-  useKeyboardReset(false, isOpen);
   const { checkAiScanAccess } = useAuth();
 
   const [selectedItemIndex, setSelectedItemIndex] = useState<number>(0);
@@ -365,7 +365,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     : Math.max(0, RESULT_INPUT_BOTTOM_GAP - browserChromeInset - 70);
 
   // Apply our custom layout guard to guarantee layout/scroll scrubbing and dynamic app height calculation
-  useLayoutGuard(isOpen);
+  useLayoutGuard(isOpen && !layoutManaged);
 
   useEffect(() => {
     const frame = document.getElementById("noma-iphone-frame");
@@ -475,6 +475,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   // Video feed references
   const videoRef = useRef<HTMLVideoElement>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
+  const cameraLeaseRef = useRef<CameraLease | null>(null);
   const [cameraActive, setCameraActive] = useState<boolean>(false);
   const [cameraError, setCameraError] = useState<boolean>(false);
   const [cameraErrorMessage, setCameraErrorMessage] = useState<string>("");
@@ -1710,17 +1711,16 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     }
   };
 
-  // Try to start live browser webcam stream if available
-  useEffect(() => {
-    const shouldRunCamera = 
+  const shouldRunCamera =
       isOpen && (
         (storageFlowStep === "none" && scanStep === "viewport" && !uploadedImageUrl) ||
         (storageFlowStep === "sub_capture" && !subLocationImg) ||
         (storageFlowStep === "parent_capture" && !parentLocationImg)
       );
-
+  // Camera ownership follows preview visibility, not unrelated item/location updates.
+  useEffect(() => {
     let cancelled = false;
-    let requestTimeout: number | null = null;
+    const controller = new AbortController();
 
     if (shouldRunCamera) {
       setCameraError(false);
@@ -1739,37 +1739,31 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
             : "Camera access is unavailable here. You can still upload a photo."
         );
       } else {
-        const attachStream = async (stream: MediaStream) => {
+        const attachStream = async (lease: CameraLease) => {
+          const stream = lease.stream;
           const video = videoRef.current;
           if (cancelled || !video) {
-            stream.getTracks().forEach((track) => track.stop());
+            lease.release();
             return;
           }
 
-          cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+          cameraLeaseRef.current?.release();
+          cameraLeaseRef.current = lease;
           cameraStreamRef.current = stream;
-          video.srcObject = stream;
-          video.muted = true;
-          video.setAttribute("playsinline", "true");
-          video.setAttribute("webkit-playsinline", "true");
 
           try {
-            if (video.readyState < HTMLMediaElement.HAVE_METADATA) {
-              await new Promise<void>((resolve) => {
-                video.addEventListener("loadedmetadata", () => resolve(), { once: true });
-              });
-            }
-            await video.play();
+            await playCameraPreview(video, stream, controller.signal);
             if (cancelled) {
-              stream.getTracks().forEach((track) => track.stop());
+              lease.release();
               return;
             }
-            if (requestTimeout !== null) window.clearTimeout(requestTimeout);
             setCameraActive(true);
             setCameraPermissionPending(false);
           } catch (err) {
+            if (cancelled) return;
             console.warn("Camera stream could not play:", err);
-            stream.getTracks().forEach((track) => track.stop());
+            lease.release();
+            cameraLeaseRef.current = null;
             cameraStreamRef.current = null;
             if (!cancelled) {
               setCameraActive(false);
@@ -1782,26 +1776,9 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
         const requestCamera = async () => {
           try {
-            const stream = await navigator.mediaDevices.getUserMedia({
-              video: {
-                facingMode: { ideal: "environment" },
-                width: { ideal: 640 },
-                height: { ideal: 480 },
-              },
-            });
-            await attachStream(stream);
+            await attachStream(await acquireCamera(controller.signal));
           } catch (err) {
             if (cancelled) return;
-
-            // Some mobile browsers reject camera constraints even when permission is available.
-            if ((err as DOMException)?.name === "OverconstrainedError") {
-              try {
-                await attachStream(await navigator.mediaDevices.getUserMedia({ video: true }));
-                return;
-              } catch (fallbackError) {
-                err = fallbackError;
-              }
-            }
 
             console.warn("Could not access physical camera, using cinematic fallback simulator:", err);
             setCameraActive(false);
@@ -1817,14 +1794,6 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
           }
         };
 
-        requestTimeout = window.setTimeout(() => {
-          if (cancelled) return;
-          setCameraActive(false);
-          setCameraPermissionPending(false);
-          setCameraError(true);
-          setCameraErrorMessage("Camera permission was not granted. Check browser permissions or upload a photo.");
-        }, 5000);
-
         void requestCamera();
       }
     } else {
@@ -1833,20 +1802,32 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
     return () => {
       cancelled = true;
-      if (requestTimeout !== null) window.clearTimeout(requestTimeout);
+      controller.abort();
       stopCamera();
     };
-  }, [isOpen, scanStep, uploadedImageUrl, storageFlowStep, subLocationImg, parentLocationImg]);
+  }, [shouldRunCamera]);
 
   const stopCamera = () => {
-    const stream = cameraStreamRef.current || (videoRef.current?.srcObject as MediaStream | null);
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-    }
+    cameraLeaseRef.current?.release();
+    cameraLeaseRef.current = null;
     cameraStreamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
     setCameraActive(false);
   };
+
+  // A location handoff can replace the video node while the same camera lease
+  // remains active. Bind that node without requesting permission again.
+  useEffect(() => {
+    const stream = cameraStreamRef.current;
+    const video = videoRef.current;
+    if (!shouldRunCamera || !stream || !video || video.srcObject === stream) return;
+    const controller = new AbortController();
+    setCameraActive(false);
+    void playCameraPreview(video, stream, controller.signal).then(() => {
+      if (!controller.signal.aborted) setCameraActive(true);
+    }).catch(() => undefined);
+    return () => controller.abort();
+  }, [shouldRunCamera, storageFlowStep]);
 
   /**
    * Helper to dynamically calculate target scale factor to perfectly match the size
@@ -3850,7 +3831,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
   return createPortal(
     <div 
-      className="camera-page-container camera-wrapper absolute inset-0 bg-[#161616] overflow-hidden select-none animate-fade-in pb-0"
+      className="camera-page-container camera-wrapper absolute inset-0 bg-[#161616] overflow-hidden select-none pb-0"
       style={{ height: "var(--app-height, 100vh)", paddingBottom: "0px", zIndex: layer }}
     >
 	      {/* Hidden element to force immediate pre-loading and browser initialization of the Alkatra font */}

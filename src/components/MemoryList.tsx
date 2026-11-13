@@ -16,6 +16,7 @@ import { classifyEmojiLocally, EMOJI_CATALOG, emojiAsset, refreshEmojiAssetUrl, 
 import type { MemoryOpenTarget } from "../types/chat";
 import { reconcileLocationSnapshot } from "../services/locationSnapshot";
 import { mediaStorage } from "../services/mediaStorage";
+import { acquireCamera, playCameraPreview, type CameraLease } from "../services/cameraSession";
 
 export const COLOR_BLUR_IMAGE_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/colorblur.png";
 export const MATRIX_DOT_IMAGE_URL = "https://pub-532cb82eb9f14c308250afaead82a168.r2.dev/%E7%9F%A9%E9%98%B5%E5%9C%86%E7%82%B9.png";
@@ -1043,10 +1044,12 @@ const LocationRetakeCapture: React.FC<{
   const [shutterFlash, setShutterFlash] = React.useState(false);
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const streamRef = React.useRef<MediaStream | null>(null);
+  const cameraLeaseRef = React.useRef<CameraLease | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const stopCamera = React.useCallback(() => {
-    streamRef.current?.getTracks().forEach((track) => track.stop());
+    cameraLeaseRef.current?.release();
+    cameraLeaseRef.current = null;
     streamRef.current = null;
     setCameraActive(false);
   }, []);
@@ -1058,6 +1061,7 @@ const LocationRetakeCapture: React.FC<{
     }
 
     let cancelled = false;
+    const controller = new AbortController();
     const startCamera = async () => {
       if (!navigator.mediaDevices?.getUserMedia) {
         setCameraError("Camera access is unavailable in this browser. You can still upload a photo.");
@@ -1065,21 +1069,23 @@ const LocationRetakeCapture: React.FC<{
       }
 
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: "environment" } },
-          audio: false,
-        });
+        const lease = await acquireCamera(controller.signal);
         if (cancelled) {
-          stream.getTracks().forEach((track) => track.stop());
+          lease.release();
           return;
         }
+        const stream = lease.stream;
+        cameraLeaseRef.current = lease;
         streamRef.current = stream;
         if (videoRef.current) {
-          videoRef.current.srcObject = stream;
+          await playCameraPreview(videoRef.current, stream, controller.signal);
         }
+        if (cancelled) return;
         setCameraActive(true);
         setCameraError("");
       } catch {
+        if (cancelled) return;
+        stopCamera();
         setCameraError("Could not start the camera. Check browser permissions or upload a photo.");
       }
     };
@@ -1088,6 +1094,7 @@ const LocationRetakeCapture: React.FC<{
 
     return () => {
       cancelled = true;
+      controller.abort();
       stopCamera();
     };
   }, [phase, stopCamera]);
@@ -1285,10 +1292,12 @@ const LocationImageEditFlow: React.FC<{
   const [shutterFlash, setShutterFlash] = React.useState(false);
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const streamRef = React.useRef<MediaStream | null>(null);
+  const cameraLeaseRef = React.useRef<CameraLease | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const stopCamera = React.useCallback(() => {
-    streamRef.current?.getTracks().forEach((track) => track.stop());
+    cameraLeaseRef.current?.release();
+    cameraLeaseRef.current = null;
     streamRef.current = null;
     setCameraActive(false);
   }, []);
@@ -1299,31 +1308,35 @@ const LocationImageEditFlow: React.FC<{
       return;
     }
     let cancelled = false;
+    const controller = new AbortController();
     const startCamera = async () => {
       if (!navigator.mediaDevices?.getUserMedia) {
         setCameraError("Camera is unavailable. You can upload a photo instead.");
         return;
       }
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: "environment" } },
-          audio: false,
-        });
+        const lease = await acquireCamera(controller.signal);
         if (cancelled) {
-          stream.getTracks().forEach((track) => track.stop());
+          lease.release();
           return;
         }
+        const stream = lease.stream;
+        cameraLeaseRef.current = lease;
         streamRef.current = stream;
-        if (videoRef.current) videoRef.current.srcObject = stream;
+        if (videoRef.current) await playCameraPreview(videoRef.current, stream, controller.signal);
+        if (cancelled) return;
         setCameraActive(true);
         setCameraError("");
       } catch {
+        if (cancelled) return;
+        stopCamera();
         setCameraError("Could not start the camera. You can upload a photo instead.");
       }
     };
     void startCamera();
     return () => {
       cancelled = true;
+      controller.abort();
       stopCamera();
     };
   }, [mode, phase, stopCamera]);

@@ -18,6 +18,7 @@ import { createAiScanId } from "../services/aiAuth";
 import { classifyEmojiLocally, EMOJI_CATALOG, emojiAsset, ITEM_CATEGORIES, refreshEmojiAssetUrl, type EmojiKind } from "../data/emojiCatalog";
 import { generateEmojiOutline, getRoundedOutlineShadow, getStickerTitleStyle, isChineseTitle } from "./StickerTitle";
 import { ItemStickerVisual } from "./ItemStickerVisual";
+import { acquireCamera, type CameraLease } from "../services/cameraSession";
 
 type Stage = "新增物品-默认" | "识别emoji" | "切换emoji" | "新增物品-拍摄模式" | "新增spaces" | "最终结果页";
 type Mode = "emoji" | "camera";
@@ -307,6 +308,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
   const finalSpaceEditRestoreRef = useRef("");
   const videoRef = useRef<HTMLVideoElement>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
+  const cameraLeaseRef = useRef<CameraLease | null>(null);
   const hadSpaceInfoRef = useRef(false);
   const spaceActionRevealTimerRef = useRef<number | null>(null);
   const suppressSpaceCardClickRef = useRef<SpaceField | null>(null);
@@ -491,6 +493,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
   useEffect(() => {
     if (!cameraVisible) return;
     let cancelled = false;
+    const controller = new AbortController();
     const host = window.location.hostname;
     const isLocalOrigin = host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0";
     const canRequestCamera = Boolean(navigator.mediaDevices?.getUserMedia)
@@ -504,17 +507,23 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
     }
     const start = async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
+        const lease = await acquireCamera(controller.signal);
         if (cancelled) {
-          stream.getTracks().forEach((track) => track.stop());
+          lease.release();
           return;
         }
+        const stream = lease.stream;
+        cameraLeaseRef.current = lease;
         cameraStreamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           await videoRef.current.play().catch(() => undefined);
         }
       } catch (error) {
+        if (cancelled) return;
+        cameraLeaseRef.current?.release();
+        cameraLeaseRef.current = null;
+        cameraStreamRef.current = null;
         console.warn("[Noma 1.3] Camera preview unavailable; photo picker remains available:", error);
         if (!cancelled) {
           setSpaceCameraError((error as DOMException)?.name === "NotAllowedError"
@@ -526,7 +535,9 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
     void start();
     return () => {
       cancelled = true;
-      cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+      controller.abort();
+      cameraLeaseRef.current?.release();
+      cameraLeaseRef.current = null;
       cameraStreamRef.current = null;
     };
   }, [cameraVisible, spaceCameraRetry]);
@@ -1517,6 +1528,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
         {stage === "新增物品-拍摄模式" && (
           <CaptureScanner
             isOpen
+            layoutManaged
             layer={20020}
             existingMemories={existingMemories.map((memory) => ({
               parentLocationName: memory.parentLocationName || "",
