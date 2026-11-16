@@ -8,7 +8,7 @@ export type StartupPreloadProgress = {
 
 const CRITICAL_IMAGE_ASSETS = [
   "/startup.jpg",
-  "/home-bg.jpg",
+  "/bg-table.jpg",
   "/home-logo.png",
   "/default-avatar.jpg",
   "/noma-fallback.png",

@@ -20,7 +20,8 @@ import { useAuth } from "./auth/AuthContext";
 import { isStandalonePwa, syncDisplayModeClasses } from "./utils/appViewport";
 import { preloadDeferredAssets, preloadStartupAssets, subscribeStartupPreload } from "./services/startupPreload";
 
-const HOME_BACKGROUND_URL = "/home-bg.jpg";
+const HOME_BACKGROUND_URL = "/bg-table.jpg";
+const CHAT_BACKGROUND_SCALE = 1.05;
 const chatMessageId = () => `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const withChatSearchTimeout = <T,>(task: Promise<T>, timeoutMs = 4000): Promise<T> => new Promise((resolve, reject) => {
   const timer = window.setTimeout(() => reject(new Error("Chat search timed out")), timeoutMs);
@@ -318,7 +319,7 @@ export default function App() {
   const bgVariants = {
     visible: {
       y: -keyboardOffset,
-      scale: 1.05
+      scale: CHAT_BACKGROUND_SCALE
     },
     hidden: {
       y: 0,
@@ -806,6 +807,7 @@ export default function App() {
             isChatActive={isChatActive && !isMemoryOpen && !isCaptureOpen}
             bgRoomUrl={HOME_BACKGROUND_URL}
             bgChatUrl={HOME_BACKGROUND_URL}
+            viewportScale={isCustomKeyboardVisible ? CHAT_BACKGROUND_SCALE : 1}
             onReady={handleHomeReady}
           />
         </motion.div>

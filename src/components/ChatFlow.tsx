@@ -46,7 +46,7 @@ const ChatItemResults: React.FC<{
   items: MemoryItem[];
   onItemClick: (item: MemoryItem) => void;
 }> = ({ items, onItemClick }) => (
-  <div className="ml-auto mr-[32px] mt-[27px] flex w-[270px] flex-wrap gap-x-[4px] gap-y-[2px] pr-1" aria-label={`${items.length} matching items`}>
+  <div className="chat-content-column mt-[27px] flex flex-wrap gap-x-[4px] gap-y-[2px] pr-1" aria-label={`${items.length} matching items`}>
     {items.map((item) => (
       <ChatItemSticker key={item.id} item={item} onClick={() => onItemClick(item)} />
     ))}
@@ -122,11 +122,11 @@ const ChatSpaceResults: React.FC<{
     className="chat-space-results mt-[27px] w-full overflow-x-auto no-scrollbar pb-1 touch-pan-x"
     style={{
       WebkitOverflowScrolling: "touch",
-      paddingLeft: "max(0px, calc(100% - 302px))",
+      paddingLeft: "max(0px, calc(100% - var(--chat-content-width) - var(--chat-content-right)))",
     }}
     aria-label={`${spaces.length} matching spaces`}
   >
-    <div className="flex w-max gap-[10px] pr-[32px]">
+    <div className="flex w-max gap-[10px] pr-[var(--chat-content-right)]">
       {spaces.map((space) => (
         <ChatSpaceCard key={space.id} space={space} onClick={() => onSpaceClick(space)} />
       ))}
@@ -150,6 +150,7 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
   const [isFocused, setIsFocused] = React.useState(false);
   const messagesRef = React.useRef<HTMLDivElement>(null);
   const [showSearching, setShowSearching] = React.useState(false);
+  const isWelcomeOnly = messages.length === 1 && messages[0].id === "chat-welcome" && !showSearching;
 
   React.useEffect(() => {
     if (!isSearching) {
@@ -178,7 +179,7 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
       <AnimatePresence>
         {isChatActive && (
           <div 
-            className="chat-messages-layer absolute inset-x-0 z-50 pointer-events-none flex flex-col justify-end"
+            className={`chat-messages-layer absolute inset-x-0 z-50 pointer-events-none flex flex-col ${isWelcomeOnly ? "chat-messages-layer--welcome justify-start" : "justify-end"}`}
           >
             <motion.div
               initial={{ opacity: 0, y: 15 }}
@@ -213,7 +214,7 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                           className="w-full"
                         >
                           <div className="w-full">
-                            <div className={`ml-auto mr-[32px] flex w-[270px] ${isNoma ? "justify-start" : "justify-end"}`}>
+                            <div className={`chat-content-column flex ${isNoma ? "justify-start" : "justify-end"}`}>
                               <div
                                 className={`relative max-w-[222px] px-[18px] py-[12px] transition-all duration-300 ${
                                   isNoma

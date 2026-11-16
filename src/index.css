@@ -51,6 +51,8 @@ body.capture-page-open::before {
   --chat-keyboard-height: 205px;
   --chat-composer-bottom: calc(var(--chat-keyboard-height) + 12px);
   --chat-composer-height: 54px;
+  --chat-content-right: 10px;
+  --chat-content-width: 270px;
 }
 
 .pwa-standalone {
@@ -260,6 +262,17 @@ html, body {
 .chat-messages-layer {
   top: var(--noma-statusbar-height);
   bottom: calc(var(--chat-composer-bottom) + var(--chat-composer-height) + 20px);
+}
+
+.chat-content-column {
+  width: min(var(--chat-content-width), calc(100% - 2 * var(--chat-content-right)));
+  margin-left: auto;
+  margin-right: var(--chat-content-right);
+}
+
+/* The opening greeting sits beside noma, before the conversation fills up. */
+.chat-messages-layer--welcome {
+  top: max(var(--noma-statusbar-height), calc(var(--app-height) * 0.225 + 62px));
 }
 
 .home-keyboard-container {

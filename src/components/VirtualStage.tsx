@@ -2,7 +2,7 @@ import React, { useRef, useState, useEffect, useLayoutEffect, useCallback } from
 import { motion } from "motion/react";
 import { PagNomaSprite } from "./PagNomaSprite";
 
-const ROOM_NATIVE_WIDTH = 2064;
+const ROOM_NATIVE_WIDTH = 1347;
 const ROOM_NATIVE_HEIGHT = 2532;
 const NOMA_NATIVE_WIDTH = 600;
 const HOME_BACKGROUND_FALLBACK_URL = "/startup.jpg";
@@ -11,6 +11,7 @@ interface VirtualStageProps {
   isChatActive: boolean;
   bgRoomUrl: string;
   bgChatUrl: string;
+  viewportScale?: number;
   onReady?: () => void;
 }
 
@@ -18,6 +19,7 @@ export const VirtualStage: React.FC<VirtualStageProps> = ({
   isChatActive,
   bgRoomUrl,
   bgChatUrl,
+  viewportScale = 1,
   onReady,
 }) => {
   const stageRef = useRef<HTMLDivElement>(null);
@@ -116,35 +118,15 @@ export const VirtualStage: React.FC<VirtualStageProps> = ({
   const scaleMultiplier = bgNaturalHeight > 0 ? H_frame / bgNaturalHeight : 1;
   const nomaWidth = NOMA_NATIVE_WIDTH * scaleMultiplier;
 
-  // State 1: Default status. Left edge is aligned at 0, scale is 1.0, top is 0.
-  // State 2: Chat active status. Height is scaled by 0.84. Right edge is aligned with W_frame.
-  // Using transformOrigin: "left top", the scaled stage resides in [T_x, T_x + 0.84 * W_stage].
-  // Setting T_x = W_frame - 0.84 * W_stage places the right edge exactly at W_frame.
-  // Translate up-left coordinates gracefully (y-axis offset of -135px to push up with the keyboard).
-  // Background container is NOT scaled per user's request: "背景容器不要缩放"
   const transformScale = 1.0;
-
-  // Detect PWA standalone mode dynamically to keep layouts and translations synchronized
-  const [isPwa, setIsPwa] = useState<boolean>(false);
-  useEffect(() => {
-    const checkStandalone = () => {
-      const isStandalone = 
-        (window.navigator as any).standalone || 
-        window.matchMedia("(display-mode: standalone)").matches ||
-        document.body.classList.contains("pwa-standalone") ||
-        document.documentElement.classList.contains("pwa-standalone");
-      setIsPwa(!!isStandalone);
-    };
-    checkStandalone();
-    const observer = new MutationObserver(() => {
-      checkStandalone();
-    });
-    observer.observe(document.body, { attributes: true, attributeFilter: ["class"] });
-    return () => observer.disconnect();
-  }, []);
 
   // 当 Chat 激活时，水平平移量设定为 -60px，保证在屏幕左侧优雅展现角色，不会因为过大的位移被移出屏幕。
   const T_x = isChatActive ? -60 : 0;
+  // Keep the character's existing travel. Move only the image to align its
+  // right edge to the screen, compensating for the outer Chat zoom.
+  const backgroundX = isChatActive
+    ? W_frame - W_stage - T_x - W_frame / 2 * (1 - 1 / viewportScale)
+    : 0;
 
   const stageReady = backgroundReady && nomaReady;
   const displayRoomUrl = backgroundFailed ? HOME_BACKGROUND_FALLBACK_URL : bgRoomUrl;
@@ -176,6 +158,9 @@ export const VirtualStage: React.FC<VirtualStageProps> = ({
           src={displayRoomUrl}
           alt="Room background"
           className="absolute inset-0 w-full h-full object-cover opacity-100"
+          initial={false}
+          animate={{ x: backgroundX }}
+          transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
           onLoad={() => setBackgroundReady(true)}
           referrerPolicy="no-referrer"
         />
@@ -186,6 +171,7 @@ export const VirtualStage: React.FC<VirtualStageProps> = ({
             alt="Cozy room"
             className="absolute inset-0 w-full h-full object-cover"
             animate={{
+              x: backgroundX,
               opacity: isChatActive ? 0 : 1,
             }}
             transition={{
@@ -202,6 +188,7 @@ export const VirtualStage: React.FC<VirtualStageProps> = ({
             alt="Scenic outdoor meadow"
             className="absolute inset-0 w-full h-full object-cover"
             animate={{
+              x: backgroundX,
               opacity: isChatActive ? 1 : 0,
             }}
             transition={{
