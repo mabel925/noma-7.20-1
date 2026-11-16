@@ -68,7 +68,7 @@ const ChatSpaceCard: React.FC<{
     <button
       type="button"
       onClick={onClick}
-      className="h-[154px] w-[272px] shrink-0 overflow-hidden rounded-[24px] bg-white px-[14px] py-[16px] text-left shadow-[0_8px_24px_rgba(35,33,33,0.08)] active:scale-[0.98] transition-transform"
+      className="h-[154px] w-[260px] shrink-0 overflow-hidden rounded-[24px] bg-white px-[14px] py-[16px] text-left shadow-[0_8px_24px_rgba(35,33,33,0.08)] active:scale-[0.98] transition-transform"
       aria-label={`Open ${space.name}`}
     >
       <div className="flex items-center gap-[12px]">
@@ -91,7 +91,7 @@ const ChatSpaceCard: React.FC<{
       </div>
 
       {space.kind === "parent" ? (
-        <div className="mt-[20px] flex gap-[9px] overflow-hidden">
+        <div className="mt-[20px] -mr-[14px] flex gap-[9px] overflow-x-auto no-scrollbar touch-pan-x">
           {space.subSpaces.length > 0 ? space.subSpaces.map((child) => (
             <span key={`${space.id}-${child.name}`} className="h-[38px] shrink-0 rounded-full bg-[#232121]/5 px-[20px] flex items-center text-[13px] font-medium text-neutral-500 whitespace-nowrap">
               {child.name} ({child.itemCount} items)
