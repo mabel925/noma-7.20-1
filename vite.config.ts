@@ -24,7 +24,8 @@ const inlineStartupImagePlugin = () => {
         if (!html.includes(source)) {
           throw new Error('Startup splash image source is missing from index.html');
         }
-        return html.replace(source, `src="data:image/jpeg;base64,${startupImage}"`);
+        return html.replace(source, `src="data:image/jpeg;base64,${startupImage}"`)
+          .replace('<head>', `<head><meta name="noma-build-id" content="${pwaBuildId}">`);
       },
     },
   };

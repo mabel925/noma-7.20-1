@@ -128,6 +128,17 @@
     </div>
     <script>
       (() => {
+        let handoff = null;
+        try {
+          const saved = sessionStorage.getItem('noma-startup-update');
+          sessionStorage.removeItem('noma-startup-update');
+          const value = saved ? JSON.parse(saved) : null;
+          const buildId = document.querySelector('meta[name="noma-build-id"]')?.content;
+          if (value && value.buildId === buildId && Date.now() - value.savedAt < 15000
+            && Date.now() - value.savedAt >= 0 && Number.isFinite(value.startedAt)) handoff = value;
+        } catch {}
+        document.documentElement.dataset.nomaLaunchStartedAt = String(handoff?.startedAt || Date.now());
+        if (handoff) document.documentElement.dataset.nomaUpdateHandoff = 'true';
         const splash = document.getElementById('startup-splash');
         const image = document.getElementById('startup-splash-image');
         const progress = splash?.querySelector('.startup-progress');
@@ -145,8 +156,17 @@
           const bottom = parseFloat(window.getComputedStyle(progress).bottom) || 42;
           // Fix the position before image decoding or viewport-sync callbacks.
           // iOS may report a shorter innerHeight during its launch animation.
-          progress.style.top = `${Math.round(launchHeight - bottom - progress.offsetHeight)}px`;
+          progress.style.top = handoff?.top || `${Math.round(launchHeight - bottom - progress.offsetHeight)}px`;
           progress.style.bottom = 'auto';
+          if (handoff) {
+            const value = Math.min(85, Math.max(15, Number(handoff.progress) || 15));
+            const fill = document.getElementById('startup-progress-fill');
+            const label = document.getElementById('startup-progress-label');
+            if (fill) { fill.style.transition = 'none'; fill.style.width = `${value}%`; }
+            if (label) label.textContent = `${value}%`;
+            progress.setAttribute('aria-valuenow', String(value));
+            requestAnimationFrame(() => { if (fill) fill.style.transition = ''; });
+          }
         }
         const revealProgress = () => requestAnimationFrame(() => requestAnimationFrame(() => {
           splash?.classList.add('is-image-ready');

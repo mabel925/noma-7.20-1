@@ -8,41 +8,121 @@ const updateSource = await readFile(new URL("../src/services/appUpdate.ts", impo
 const swSource = await readFile(new URL("../public/sw.js", import.meta.url), "utf8");
 const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
 
-test("activating an update during launch checks once without reloading the document", async () => {
+function updateHarness({ currentBuild = "old", targetBuild = "new", offline = false, blockedStorage = false, handoff = false, noActivation = false } = {}) {
   const serviceWorker = new EventTarget();
-  serviceWorker.controller = {};
+  const timers = new Map();
+  let timerId = 0;
   let checks = 0;
   let reloads = 0;
-  const installing = new EventTarget();
-  installing.state = "installing";
-  serviceWorker.register = async () => ({
-    installing,
+  let requests = 0;
+  let saved = null;
+  const progress = { style: { top: "785px" }, value: "4", getAttribute() { return this.value; }, setAttribute(_, value) { this.value = value; } };
+  const worker = (buildId) => ({
+    postMessage: (_, ports) => queueMicrotask(() => ports[0].send({ buildId })),
+  });
+  serviceWorker.controller = worker(currentBuild);
+  const activate = () => {
+    serviceWorker.controller = worker(targetBuild);
+    serviceWorker.dispatchEvent(new Event("controllerchange"));
+  };
+  const registration = {
     update: async () => {
       checks += 1;
-      setTimeout(() => {
-        installing.state = "activated";
-        installing.dispatchEvent(new Event("statechange"));
-        serviceWorker.dispatchEvent(new Event("controllerchange"));
-      }, 0);
+      if (!noActivation) queueMicrotask(activate);
     },
-  });
+  };
+  serviceWorker.register = async () => registration;
+  class FakeMessageChannel {
+    constructor() {
+      this.port1 = { close() {}, onmessage: null };
+      this.port2 = { close() {}, send: (data) => this.port1.onmessage?.({ data }) };
+    }
+  }
   const { outputText } = ts.transpileModule(updateSource.replaceAll("import.meta.env.PROD", "true"), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   });
   const context = vm.createContext({
-    exports: {}, console,
+    exports: {}, console: { warn() {} }, AbortController, MessageChannel: FakeMessageChannel,
+    sessionStorage: { setItem: (_, value) => { if (blockedStorage) throw new Error("Blocked"); saved = JSON.parse(value); } },
+    fetch: async (url, init) => {
+      requests += 1;
+      assert.equal(url, "/version.json");
+      assert.equal(init.cache, "no-store");
+      if (offline) throw new Error("Offline");
+      return new Response(JSON.stringify({ buildId: targetBuild }));
+    },
     navigator: { serviceWorker },
-    document: { documentElement: { dataset: {} } },
-    window: { setTimeout, clearTimeout, location: { reload: () => { reloads += 1; } } },
+    document: {
+      documentElement: { dataset: { nomaUpdateHandoff: String(handoff) } },
+      querySelector: (selector) => selector.includes("meta") ? { content: currentBuild } : progress,
+      getElementById: () => ({ style: {} }),
+    },
+    window: {
+      setTimeout: (callback) => { const id = ++timerId; timers.set(id, callback); return id; },
+      clearTimeout: (id) => timers.delete(id),
+      location: { reload: () => { reloads += 1; } },
+    },
   });
   vm.runInContext(outputText, context);
-  await Promise.all([context.exports.checkForAppUpdate(), context.exports.checkForAppUpdate()]);
-  serviceWorker.dispatchEvent(new Event("controllerchange"));
-  assert.equal(checks, 1);
-  assert.equal(reloads, 0);
+  return {
+    check: context.exports.checkForAppUpdate, activate, progress,
+    timeout: () => [...timers.values()].forEach((callback) => callback()),
+    get checks() { return checks; }, get requests() { return requests; },
+    get reloads() { return reloads; }, get saved() { return saved; },
+  };
+}
+
+test("a downloaded update hands off this launch once before the app mounts", async () => {
+  const h = updateHarness();
+  const results = await Promise.all([h.check(), h.check()]);
+  assert.deepEqual(results, ["reloading", "reloading"]);
+  assert.equal(h.checks, 1);
+  assert.equal(h.requests, 1);
+  assert.equal(h.reloads, 1);
+  assert.equal(h.saved.buildId, "new");
+  assert.equal(h.saved.progress, 15);
+  assert.equal(h.saved.top, "785px");
+  h.activate();
+  assert.equal(h.reloads, 1);
 });
 
-function serviceWorkerHarness() {
+test("the current release and first install enter the app without a reload", async () => {
+  const h = updateHarness({ currentBuild: "new" });
+  assert.equal(await h.check(), "ready");
+  assert.equal(h.reloads, 0);
+});
+
+test("offline launch enters the cached app without a reload", async () => {
+  const h = updateHarness({ offline: true });
+  assert.equal(await h.check(), "ready");
+  assert.equal(h.reloads, 0);
+});
+
+test("a slow update releases the launch deadline and cannot reload an active app later", async () => {
+  const h = updateHarness({ noActivation: true });
+  const launch = h.check();
+  await new Promise(setImmediate);
+  h.timeout();
+  assert.equal(await launch, "ready");
+  h.activate();
+  await new Promise(setImmediate);
+  assert.equal(h.reloads, 0);
+});
+
+test("blocked handoff storage safely defers an update", async () => {
+  const h = updateHarness({ blockedStorage: true });
+  assert.equal(await h.check(), "ready");
+  assert.equal(h.reloads, 0);
+});
+
+test("the new document does not recheck or reload a carried launch", async () => {
+  const h = updateHarness({ currentBuild: "new", targetBuild: "even-newer", handoff: true });
+  assert.equal(await h.check(), "ready");
+  assert.equal(h.requests, 0);
+  assert.equal(h.reloads, 0);
+});
+
+function serviceWorkerHarness({ failEntry = false } = {}) {
   const handlers = new Map();
   const stores = new Map([
     ["noma-app-old", new Map([["/", new Response("old shell")], ["https://noma.test/assets/old.js", new Response("old bundle")]])],
@@ -51,6 +131,8 @@ function serviceWorkerHarness() {
   const navigations = [];
   let networkRequests = 0;
   let claimed = 0;
+  let skipped = 0;
+  const downloads = [];
   const caches = {
     keys: async () => [...stores.keys()],
     delete: async (key) => stores.delete(key),
@@ -60,6 +142,13 @@ function serviceWorkerHarness() {
       return {
         match: async (key) => store.get(typeof key === "string" ? key : key.url)?.clone(),
         put: async (key, value) => store.set(typeof key === "string" ? key : key.url, value),
+        addAll: async (requests) => {
+          for (const request of requests) {
+            downloads.push(request);
+            if (failEntry && request.url.endsWith(".js")) throw new Error("Entry download failed");
+            store.set(request.url, new Response("entry bytes"));
+          }
+        },
       };
     },
     match: async (key) => {
@@ -71,10 +160,16 @@ function serviceWorkerHarness() {
   };
   const context = vm.createContext({
     URL, Response, console, caches,
-    fetch: async () => { networkRequests += 1; return new Response("uninstalled future shell"); },
+    Request: class extends Request { constructor(url, options) { super(new URL(url, "https://noma.test"), options); } },
+    fetch: async (request) => {
+      networkRequests += 1;
+      if (request === "/") return new Response('<head><meta name="noma-build-id" content="__NOMA_BUILD_ID__"></head><script type="module" src="/assets/new.js"></script>');
+      return new Response("uninstalled future shell");
+    },
     self: {
       location: { origin: "https://noma.test" },
       addEventListener: (type, handler) => handlers.set(type, handler),
+      skipWaiting: async () => { skipped += 1; },
       clients: {
         claim: async () => { claimed += 1; },
         matchAll: async () => [{ url: "https://noma.test/", navigate: (url) => navigations.push(url) }],
@@ -82,8 +177,36 @@ function serviceWorkerHarness() {
     },
   });
   vm.runInContext(swSource, context);
-  return { handlers, stores, navigations, get networkRequests() { return networkRequests; }, get claimed() { return claimed; } };
+  return { handlers, stores, navigations, downloads, get skipped() { return skipped; }, get networkRequests() { return networkRequests; }, get claimed() { return claimed; } };
 }
+
+test("worker installation downloads the matching shell and entry bundle before activation", async () => {
+  const h = serviceWorkerHarness();
+  let install;
+  h.handlers.get("install")({ waitUntil: (task) => { install = task; } });
+  await install;
+  assert.equal(h.skipped, 1);
+  assert(h.downloads.some((request) => request.url === "https://noma.test/assets/new.js"));
+  assert(h.downloads.every((request) => request.cache === "reload"));
+  assert.match(await h.stores.get("noma-app-__NOMA_BUILD_ID__").get("/").text(), /new.js/);
+});
+
+test("failed entry download prevents the new worker from taking over", async () => {
+  const h = serviceWorkerHarness({ failEntry: true });
+  let install;
+  h.handlers.get("install")({ waitUntil: (task) => { install = task; } });
+  await assert.rejects(install, /Entry download failed/);
+  assert.equal(h.skipped, 0);
+});
+
+test("version checks always reach the network even when an old response is cached", async () => {
+  const h = serviceWorkerHarness();
+  h.stores.get("noma-app-old").set("https://noma.test/version.json", new Response("stale version"));
+  let response;
+  h.handlers.get("fetch")({ request: { url: "https://noma.test/version.json", method: "GET" }, respondWith: (task) => { response = task; } });
+  assert.equal(await (await response).text(), "uninstalled future shell");
+  assert.equal(h.networkRequests, 1);
+});
 
 test("worker activation never navigates open clients, including legacy installations", async () => {
   const harness = serviceWorkerHarness();
@@ -141,7 +264,7 @@ test("iPhone launch progress has the same fixed position before and after viewpo
     const context = vm.createContext({
       window,
       navigator: { standalone: true, userAgent: "iPhone", platform: "iPhone", maxTouchPoints: 5 },
-      document: { getElementById: (id) => id === "startup-splash" ? splash : image },
+      document: { documentElement: { dataset: {} }, getElementById: (id) => id === "startup-splash" ? splash : image },
       requestAnimationFrame: (callback) => callback(),
     });
     vm.runInContext(script, context);
@@ -154,4 +277,42 @@ test("iPhone launch progress has the same fixed position before and after viewpo
     return initialTop;
   }
   assert.equal(await launch(794), await launch(874));
+});
+
+test("the early splash restores handoff progress and position once without starting a second launch", () => {
+  const script = html.match(/<script>\s*([\s\S]*?)<\/script>/)?.[1];
+  const startedAt = Date.now() - 900;
+  let saved = JSON.stringify({ buildId: "new", startedAt, savedAt: Date.now(), progress: 15, top: "785px" });
+  const storage = { getItem: () => saved, removeItem: () => { saved = null; } };
+  function run(buildId = "new") {
+    const progress = { style: {}, offsetHeight: 37, value: "4", setAttribute(_, value) { this.value = value; } };
+    const fill = { style: {} };
+    const label = { textContent: "4%" };
+    const root = { dataset: {} };
+    const image = { complete: false, addEventListener() {} };
+    const splash = { querySelector: () => progress };
+    const context = vm.createContext({
+      sessionStorage: storage,
+      navigator: { standalone: true, userAgent: "iPhone", maxTouchPoints: 5 },
+      window: { innerHeight: 794, screen: { height: 874 }, matchMedia: () => ({ matches: true }), getComputedStyle: () => ({ bottom: "52px" }) },
+      document: {
+        documentElement: root, querySelector: () => ({ content: buildId }),
+        getElementById: (id) => ({ "startup-splash": splash, "startup-splash-image": image, "startup-progress-fill": fill, "startup-progress-label": label })[id],
+      },
+      requestAnimationFrame: (callback) => callback(),
+    });
+    vm.runInContext(script, context);
+    return { progress, root, fill, label };
+  }
+  const resumed = run();
+  assert.equal(resumed.root.dataset.nomaLaunchStartedAt, String(startedAt));
+  assert.equal(resumed.root.dataset.nomaUpdateHandoff, "true");
+  assert.equal(resumed.progress.style.top, "785px");
+  assert.equal(resumed.progress.value, "15");
+  assert.equal(resumed.fill.style.width, "15%");
+  assert.equal(resumed.label.textContent, "15%");
+  assert.equal(saved, null);
+  assert.equal(run().root.dataset.nomaUpdateHandoff, undefined);
+  saved = JSON.stringify({ buildId: "wrong", startedAt, savedAt: Date.now(), progress: 15, top: "785px" });
+  assert.equal(run().root.dataset.nomaUpdateHandoff, undefined);
 });

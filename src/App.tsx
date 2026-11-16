@@ -19,7 +19,6 @@ import { CloseIcon } from "./components/CloseIcon";
 import { useAuth } from "./auth/AuthContext";
 import { isStandalonePwa, syncDisplayModeClasses } from "./utils/appViewport";
 import { preloadDeferredAssets, preloadStartupAssets, subscribeStartupPreload } from "./services/startupPreload";
-import { checkForAppUpdate } from "./services/appUpdate";
 
 const HOME_BACKGROUND_URL = "/home-bg.jpg";
 const chatMessageId = () => `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -192,12 +191,13 @@ export default function App() {
   const [hasOpenedMemory, setHasOpenedMemory] = useState<boolean>(false);
   const [memoryOpenTarget, setMemoryOpenTarget] = useState<MemoryOpenTarget | null>(null);
   const [isStandaloneMode, setIsStandaloneMode] = useState<boolean>(false);
-  const launchStartedAtRef = React.useRef(performance.now());
-  const displayedStartupProgressRef = React.useRef(4);
+  const launchStartedAtRef = React.useRef(Number(document.documentElement.dataset.nomaLaunchStartedAt) || Date.now());
+  const displayedStartupProgressRef = React.useRef(Number(document.querySelector('#startup-splash [role="progressbar"]')?.getAttribute("aria-valuenow")) || 4);
   const [areStageAssetsReady, setAreStageAssetsReady] = useState(false);
   const [areStartupAssetsReady, setAreStartupAssetsReady] = useState(false);
   const [startupAssetProgress, setStartupAssetProgress] = useState({ loaded: 0, total: 1 });
-  const [isVersionCheckReady, setIsVersionCheckReady] = useState(false);
+  // main.tsx finishes the bounded update gate before mounting React.
+  const isVersionCheckReady = true;
   const [isAuthGateReady, setIsAuthGateReady] = useState(!authLoading);
   const [didStartupTimeout, setDidStartupTimeout] = useState(false);
   const [isHomeReady, setIsHomeReady] = useState(false);
@@ -228,14 +228,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    void checkForAppUpdate().finally(() => {
-      if (!cancelled) setIsVersionCheckReady(true);
-    });
-    return () => { cancelled = true; };
-  }, []);
-
-  useEffect(() => {
     if (!authLoading) {
       setIsAuthGateReady(true);
       return;
@@ -252,7 +244,7 @@ export default function App() {
     const timer = window.setTimeout(() => {
       console.warn("[Startup] Critical startup tasks exceeded 10 seconds; entering the home fallback.");
       setDidStartupTimeout(true);
-    }, 10000);
+    }, Math.max(0, 10000 - (Date.now() - launchStartedAtRef.current)));
     return () => window.clearTimeout(timer);
   }, [isHomeReady]);
 
@@ -286,7 +278,7 @@ export default function App() {
       && areStartupAssetsReady
       && areStageAssetsReady;
     if (!criticalTasksReady && !didStartupTimeout) return;
-    const elapsed = performance.now() - launchStartedAtRef.current;
+    const elapsed = Date.now() - launchStartedAtRef.current;
     const timer = window.setTimeout(() => setIsHomeReady(true), Math.max(240, 650 - elapsed));
     return () => window.clearTimeout(timer);
   }, [areStageAssetsReady, areStartupAssetsReady, didStartupTimeout, isAuthGateReady, isVersionCheckReady]);

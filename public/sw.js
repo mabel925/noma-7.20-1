@@ -9,10 +9,23 @@ const APP_SHELL = [
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches
-      .open(CACHE_NAME)
-      .then((cache) => cache.addAll(APP_SHELL))
-      .then(() => self.skipWaiting())
+    (async () => {
+      const cache = await caches.open(CACHE_NAME);
+      const shell = await fetch("/", { cache: "reload" });
+      if (!shell.ok) throw new Error("Unable to download the app shell.");
+      const html = await shell.clone().text();
+      const shellBuild = html.match(/<meta name="noma-build-id" content="([^"]+)"/)?.[1];
+      if (shellBuild !== BUILD_ID) throw new Error("The app shell and worker builds differ.");
+      // Installing a worker is not enough: its entry bundle must also be ready
+      // before the startup coordinator hands this launch to the new document.
+      const entries = [...html.matchAll(/<(?:script|link)\b[^>]*(?:src|href)="(\/assets\/[^"#]+)"[^>]*>/g)]
+        .map((match) => match[1]);
+      if (!entries.some((entry) => entry.endsWith(".js"))) throw new Error("App entry bundle is missing.");
+      await cache.addAll([...new Set([...APP_SHELL.filter((url) => url !== "/"), ...entries])]
+        .map((url) => new Request(url, { cache: "reload" })));
+      await cache.put("/", shell);
+      await self.skipWaiting();
+    })()
   );
 });
 
@@ -35,6 +48,7 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("message", (event) => {
   if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
+  if (event.data?.type === "GET_BUILD_ID") event.ports?.[0]?.postMessage({ buildId: BUILD_ID });
 });
 
 self.addEventListener("fetch", (event) => {
@@ -48,6 +62,12 @@ self.addEventListener("fetch", (event) => {
   // Authenticated API and private R2 responses must never enter the shared
   // app-shell cache. Their own HTTP cache headers control browser caching.
   if (url.pathname.startsWith("/api/")) {
+    return;
+  }
+
+  // A cached version.json would conceal every subsequent deployment.
+  if (url.pathname === "/version.json") {
+    event.respondWith(fetch(request, { cache: "no-store" }));
     return;
   }
 
