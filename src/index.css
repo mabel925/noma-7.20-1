@@ -43,6 +43,43 @@ body.capture-page-open::before {
 }
 
 :root {
+  --install-surface: #E9E6E1;
+  --install-ink: #232121;
+  --install-muted: rgba(35, 33, 33, 0.6);
+  --install-soft: rgba(35, 33, 33, 0.055);
+  --install-white: #fff;
+  --install-scrim: rgba(35, 33, 33, 0.4);
+  --install-border: rgba(255, 255, 255, 0.55);
+  --install-shadow: 0 8px 28px rgba(35, 33, 33, 0.14);
+  --install-sheet-shadow: 0 -12px 48px rgba(35, 33, 33, 0.18);
+  --install-gutter: 20px;
+  --install-gap: 16px;
+  --install-small-gap: 8px;
+  --install-nudge-radius: 24px;
+  --install-sheet-radius: 36px;
+  --install-step-radius: 14px;
+  --install-pill-radius: 999px;
+  --install-target: 44px;
+  --install-icon: 20px;
+  --install-app-icon: 64px;
+  --install-nudge-icon: 42px;
+  --install-small-type: 13px;
+  --install-body-type: 14px;
+  --install-action-type: 15px;
+  --install-title-type: 28px;
+  --install-line-height: 1.5;
+  --install-weight: 600;
+  --install-nudge-top: 84px;
+  --install-nudge-inset: 12px;
+  --install-nudge-right-pad: 52px;
+  --install-sheet-width: 420px;
+  --install-sheet-padding: 28px;
+  --install-sheet-max-height: 90dvh;
+  --install-action-height: 50px;
+  --install-border-width: 1px;
+  --install-motion-duration: 220ms;
+  --install-motion-easing: cubic-bezier(0.16, 1, 0.3, 1);
+  --install-motion-distance: 12px;
   --noma-statusbar-height: env(safe-area-inset-top, 0px);
   --app-height: 100dvh;
   --capture-viewport-top: 0px;
@@ -53,6 +90,81 @@ body.capture-page-open::before {
   --chat-composer-height: 54px;
   --chat-content-right: 10px;
   --chat-content-width: 270px;
+}
+
+.noma-install-nudge {
+  position: fixed;
+  z-index: 10000;
+  top: calc(var(--noma-statusbar-height) + var(--install-nudge-top));
+  right: var(--install-gutter);
+  left: var(--install-gutter);
+  display: flex;
+  align-items: center;
+  gap: var(--install-nudge-inset);
+  padding: var(--install-nudge-inset) var(--install-nudge-right-pad) var(--install-nudge-inset) var(--install-nudge-inset);
+  border: var(--install-border-width) solid var(--install-border);
+  border-radius: var(--install-nudge-radius);
+  background: var(--install-surface);
+  box-shadow: var(--install-shadow);
+  color: var(--install-ink);
+  font-family: var(--font-sans);
+  animation: noma-install-enter var(--install-motion-duration) var(--install-motion-easing) both;
+}
+.noma-install-nudge > img { width: var(--install-nudge-icon); height: var(--install-nudge-icon); border-radius: var(--install-step-radius); }
+.noma-install-nudge p { margin: 0 0 var(--install-small-gap); font-size: var(--install-body-type); line-height: 1; }
+.noma-install-nudge button { padding: 0; border: 0; background: transparent; color: var(--install-ink); cursor: pointer; font: inherit; font-size: var(--install-small-type); font-weight: var(--install-weight); }
+.noma-install-nudge > div > button { min-height: var(--install-target); margin-block: calc(var(--install-small-gap) * -1); text-align: left; }
+.noma-install-dismiss,
+.noma-install-close { position: absolute; top: var(--install-small-gap); right: var(--install-small-gap); display: grid; width: var(--install-target); height: var(--install-target); place-items: center; padding: 0; border: 0; border-radius: var(--install-pill-radius); color: var(--install-muted); background: transparent; cursor: pointer; }
+.noma-install-dismiss svg,
+.noma-install-close svg { width: var(--install-icon); height: var(--install-icon); }
+.noma-install-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100010;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-top: var(--install-gutter);
+  color: var(--install-ink);
+  background: var(--install-scrim);
+  font-family: var(--font-sans);
+}
+.noma-install-sheet {
+  position: relative;
+  width: 100%;
+  max-width: var(--install-sheet-width);
+  max-height: min(var(--install-sheet-max-height), calc(var(--app-height) - var(--install-gutter)));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--install-sheet-padding) var(--install-sheet-padding) calc(var(--install-sheet-padding) + env(safe-area-inset-bottom, 0px));
+  border-radius: var(--install-sheet-radius) var(--install-sheet-radius) 0 0;
+  background: var(--install-surface);
+  box-shadow: var(--install-sheet-shadow);
+  animation: noma-install-enter var(--install-motion-duration) var(--install-motion-easing) both;
+}
+.noma-install-app-icon { display: block; width: var(--install-app-icon); height: var(--install-app-icon); margin-bottom: var(--install-gap); border-radius: var(--install-step-radius); }
+.noma-install-sheet h2 { margin: 0; padding-right: var(--install-small-gap); font-size: var(--install-title-type); font-weight: var(--install-weight); line-height: 1.2; }
+.noma-install-sheet > p { margin: var(--install-small-gap) 0 0; font-size: var(--install-body-type); line-height: var(--install-line-height); color: var(--install-muted); }
+.noma-install-steps { display: grid; gap: var(--install-gutter); padding: 0; margin: var(--install-sheet-padding) 0; list-style: none; }
+.noma-install-steps li { display: flex; align-items: flex-start; gap: var(--install-gap); }
+.noma-install-step-icon { display: grid; width: var(--install-target); height: var(--install-target); flex: 0 0 var(--install-target); place-items: center; border-radius: var(--install-step-radius); background: var(--install-soft); }
+.noma-install-step-icon svg { width: var(--install-icon); height: var(--install-icon); }
+.noma-install-steps h3 { margin: 0 0 var(--install-small-gap); font-size: var(--install-action-type); font-weight: var(--install-weight); line-height: 1.2; }
+.noma-install-steps p { margin: 0; color: var(--install-muted); font-size: var(--install-body-type); line-height: var(--install-line-height); }
+.noma-install-sheet > .noma-install-note { padding: var(--install-nudge-inset); border-radius: var(--install-step-radius); background: var(--install-soft); font-size: var(--install-small-type); }
+.noma-install-primary { width: 100%; min-height: var(--install-action-height); margin-top: var(--install-small-gap); padding-inline: var(--install-gap); border: 0; border-radius: var(--install-pill-radius); color: var(--install-white); background: var(--install-ink); font: inherit; font-size: var(--install-action-type); font-weight: var(--install-weight); cursor: pointer; }
+.noma-install-primary:disabled { opacity: 0.5; cursor: wait; }
+.noma-install-account-link { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: var(--install-target); margin-top: var(--install-gap); padding: 0; border: 0; color: var(--install-ink); background: transparent; font: inherit; font-size: var(--install-body-type); font-weight: var(--install-weight); cursor: pointer; }
+@keyframes noma-install-enter {
+  from { opacity: 0; transform: translateY(var(--install-motion-distance)); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (min-width: 768px) {
+  .noma-install-nudge { width: calc(var(--install-sheet-width) - var(--install-gutter) * 2); left: 50%; right: auto; margin-left: calc((var(--install-sheet-width) - var(--install-gutter) * 2) / -2); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .noma-install-nudge, .noma-install-sheet { animation: none; }
 }
 
 .pwa-standalone {

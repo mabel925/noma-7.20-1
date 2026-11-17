@@ -7,7 +7,10 @@ import { AuthDialog } from './components/AuthDialog';
 import { installAppViewportSync } from './utils/appViewport';
 import { preloadStartupAssets } from './services/startupPreload';
 import { checkForAppUpdate } from './services/appUpdate';
+import { PwaInstallProvider } from './components/PwaInstallGuide';
+import { installPwaInstallEvents } from './services/pwaInstall';
 
+installPwaInstallEvents();
 installAppViewportSync();
 void preloadStartupAssets();
 
@@ -16,8 +19,10 @@ void checkForAppUpdate().then((result) => {
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
       <AuthProvider>
-        <App />
-        <AuthDialog />
+        <PwaInstallProvider>
+          <App />
+          <AuthDialog />
+        </PwaInstallProvider>
       </AuthProvider>
     </StrictMode>,
   );

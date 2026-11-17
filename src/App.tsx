@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { VirtualStage } from "./components/VirtualStage";
 import { Header } from "./components/Header";
+import { PwaInstallNudge } from "./components/PwaInstallGuide";
 import { ActionButtons } from "./components/ActionButtons";
 import { ChatFlow } from "./components/ChatFlow";
 import { VirtualKeyboard } from "./components/VirtualKeyboard";
@@ -179,7 +180,7 @@ const DEFAULT_MEMORIES: MemoryItem[] = [
 ];
 
 export default function App() {
-  const { user, authLoading, requireAuth, openLogin } = useAuth();
+  const { user, authLoading, requireAuth, openLogin, isLoginOpen } = useAuth();
   const userRef = React.useRef(user);
   React.useEffect(() => {
     userRef.current = user;
@@ -793,6 +794,7 @@ export default function App() {
       id="app-container"
       className="home-container w-full h-[100vh] flex items-center justify-center p-0 md:py-6 md:px-4 no-scrollbar relative overflow-hidden select-none"
     >
+      <PwaInstallNudge active={isHomeReady && !isChatActive && !isMemoryOpen && !isCaptureOpen && !isLoginOpen && !isScanning} />
       {/* 共享动画和布局父容器，不指定 z-index 避免形成层叠上下文，使内部子元素保持原生的层叠深度 */}
       <div className="keyboard-bg-sync-parent absolute inset-0 pointer-events-none md:fixed md:left-1/2 md:top-1/2 md:w-[393px] md:h-[852px] md:-ml-[196.5px] md:-mt-[426px] md:overflow-hidden md:rounded-[36px]">
         <motion.div

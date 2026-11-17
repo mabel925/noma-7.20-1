@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { CloseIcon } from "./CloseIcon";
 import { EditPencilIcon } from "./EditPencilIcon";
 import { useAuth } from "../auth/AuthContext";
+import { usePwaInstall } from "./PwaInstallGuide";
 
 const LOGIN_STEP_TRANSITION = {
   duration: 0.3,
@@ -11,6 +12,7 @@ const LOGIN_STEP_TRANSITION = {
 };
 
 export const AuthDialog: React.FC = () => {
+  const { available: canInstall, openGuide } = usePwaInstall();
   const { user, aiAccess: access, isLoginOpen, authDialogMode, closeLogin, requestOtp, verifyOtp, updateDisplayName, signOut } = useAuth();
   const [email, setEmail] = React.useState("");
   const [token, setToken] = React.useState("");
@@ -186,6 +188,7 @@ export const AuthDialog: React.FC = () => {
                   </div>
                 )}
                 <p className="mt-7 rounded-[16px] bg-white/60 px-4 py-3 text-[13px] leading-5 text-[#232121]/60">Your Memory data is stored in your private cloud account.</p>
+                {canInstall && <button type="button" className="noma-install-account-link" onClick={() => { closeLogin(); openGuide(); }}>Add to Home Screen <span aria-hidden="true">↗</span></button>}
                 <button type="button" onClick={() => { void signOut(); closeLogin(); }} className="mt-7 flex h-[50px] w-full items-center justify-center rounded-full border border-[#232121]/20 text-[15px] font-semibold text-[#232121] active:scale-[0.98]">Sign out</button>
               </>
             ) : (
