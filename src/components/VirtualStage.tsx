@@ -109,10 +109,10 @@ export const VirtualStage: React.FC<VirtualStageProps> = ({
     };
   }, [bgRoomUrl]);
 
-  // The base-state width of virtual stage relative to screen frame height
+  // Cover the viewport even when Safari's controls shorten the visible page.
   const H_frame = parentDimensions.height;
   const W_frame = parentDimensions.width;
-  const W_stage = H_frame * aspectRatio;
+  const W_stage = Math.max(W_frame, H_frame * aspectRatio);
 
   // Calculate Noma's scaled width so its scaling factor exactly matches the background image's scale (H_frame / bgNaturalHeight)
   const scaleMultiplier = bgNaturalHeight > 0 ? H_frame / bgNaturalHeight : 1;
@@ -134,7 +134,7 @@ export const VirtualStage: React.FC<VirtualStageProps> = ({
   return (
     <motion.div 
       ref={stageRef}
-      className="virtual-stage absolute top-0 overflow-hidden transition-opacity duration-300"
+      className="virtual-stage absolute top-0 transition-opacity duration-300"
       style={{
         width: `${W_stage}px`,
         height: `${H_frame}px`,
