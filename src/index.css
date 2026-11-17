@@ -127,8 +127,7 @@ html, body {
     right: 0 !important;
     margin-bottom: 0 !important;
     background-color: #E9E6E1 !important;
-    /* 彻底锁定高度为 213px */
-    height: 213px !important;
+    height: var(--capture-drawer-height, 213px) !important;
     padding-bottom: calc(env(safe-area-inset-bottom, 16px) + 8px) !important;
   }
 
@@ -662,6 +661,7 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 /* Physical bottom-sticking overlay defense for shooting/capture page */
 .camera-page-container,
 .camera-wrapper {
+  --capture-drawer-height: 213px;
   --capture-header-top: calc(max(56px, env(safe-area-inset-top, 0px)) + 36px);
   position: fixed !important;
   top: var(--capture-viewport-top) !important;
@@ -693,6 +693,20 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
   /* A 16px icon at right:15px, with a centered 44px touch target. */
   right: 1px;
   top: calc(var(--capture-header-top) - 30px);
+}
+
+@media (max-width: 767px) {
+  body:not(.pwa-standalone) .camera-page-container {
+    /* Safari already places the page below its status bar. */
+    --capture-header-top: calc(env(safe-area-inset-top, 0px) + 36px);
+    /* Remove the space occupied by visible browser controls, with enough
+       room left for the shutter and drag handle. No keyboard measurement. */
+    --capture-drawer-height: clamp(132px, calc(213px - (100lvh - 100dvh)), 213px);
+  }
+
+  body:not(.pwa-standalone) .storage-capture-drawer {
+    height: var(--capture-drawer-height, 213px) !important;
+  }
 }
 
 .camera-page-container input,
@@ -773,8 +787,13 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
   transition: opacity 180ms ease, visibility 0s linear;
 }
 
-/* In standalone PWA mode the safe-area/status-bar height is already included
-   in --noma-statusbar-height. Do not add the browser-mode offset again. */
+@media (max-width: 767px) {
+  .noma-add-modebar {
+    top: max(env(safe-area-inset-top, 0px), 12px);
+  }
+}
+
+/* In standalone PWA mode content extends under the status bar. */
 .pwa-standalone .noma-add-modebar {
   top: var(--noma-statusbar-height);
 }

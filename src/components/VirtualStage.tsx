@@ -12,6 +12,7 @@ interface VirtualStageProps {
   bgRoomUrl: string;
   bgChatUrl: string;
   viewportScale?: number;
+  active?: boolean;
   onReady?: () => void;
 }
 
@@ -20,6 +21,7 @@ export const VirtualStage: React.FC<VirtualStageProps> = ({
   bgRoomUrl,
   bgChatUrl,
   viewportScale = 1,
+  active = true,
   onReady,
 }) => {
   const stageRef = useRef<HTMLDivElement>(null);
@@ -213,6 +215,7 @@ export const VirtualStage: React.FC<VirtualStageProps> = ({
         }}
       >
         <PagNomaSprite
+          active={active}
           pose={isChatActive ? "chatting" : "reading"}
           onReady={handleNomaReady}
         />

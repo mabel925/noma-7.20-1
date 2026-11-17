@@ -3709,7 +3709,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
   return (
     <motion.div
       initial={{ opacity: 0, y: 15 }}
-      animate={{ opacity: isOpen ? 1 : 0.001, y: 0 }}
+      animate={{ opacity: isOpen ? 1 : 0, y: 0 }}
       transition={{
         type: "tween",
         duration: didCompleteInitialOpenRef.current ? 0 : 0.45,
@@ -3721,7 +3721,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
       className="absolute inset-0 bg-[#E9E6E1] z-[120] flex flex-col overflow-hidden select-none"
       style={{
         pointerEvents: isOpen ? "auto" : "none",
-        willChange: "opacity",
+        visibility: isOpen ? "visible" : "hidden",
       }}
       aria-hidden={!isOpen}
     >

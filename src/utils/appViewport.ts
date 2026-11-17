@@ -46,7 +46,10 @@ export const syncAppViewportHeight = () => {
     }
   }
 
-  document.documentElement.style.setProperty("--app-height", `${Math.round(height)}px`);
+  const nextHeight = `${Math.round(height)}px`;
+  if (document.documentElement.style.getPropertyValue("--app-height") !== nextHeight) {
+    document.documentElement.style.setProperty("--app-height", nextHeight);
+  }
 };
 
 export const installAppViewportSync = () => {

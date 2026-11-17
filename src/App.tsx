@@ -808,6 +808,7 @@ export default function App() {
             bgRoomUrl={HOME_BACKGROUND_URL}
             bgChatUrl={HOME_BACKGROUND_URL}
             viewportScale={isCustomKeyboardVisible ? CHAT_BACKGROUND_SCALE : 1}
+            active={!isMemoryOpen && !isCaptureOpen}
             onReady={handleHomeReady}
           />
         </motion.div>
@@ -836,8 +837,8 @@ export default function App() {
       </div>
       
       {/* Background radial atmosphere lights */}
-      <div className="absolute top-[-20%] left-[-20%] w-[60%] h-[60%] bg-[#4C85E6]/10 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-[-20%] right-[-10%] w-[60%] h-[60%] bg-[#EF4444]/10 rounded-full blur-[120px] pointer-events-none" />
+      <div className="hidden md:block absolute top-[-20%] left-[-20%] w-[60%] h-[60%] bg-[#4C85E6]/10 rounded-full blur-[120px] pointer-events-none" />
+      <div className="hidden md:block absolute bottom-[-20%] right-[-10%] w-[60%] h-[60%] bg-[#EF4444]/10 rounded-full blur-[120px] pointer-events-none" />
 
       {/* 1. CONTAINER PANEL (Full-screen adaptively on mobile using fixed inset-0, clean card mockup on desktop) */}
       <div

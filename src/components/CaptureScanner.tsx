@@ -313,7 +313,6 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const [drawerY, setDrawerY] = useState<number>(0);
   const [isDraggingDrawer, setIsDraggingDrawer] = useState<boolean>(false);
   const dragStartYRef = useRef<number>(0);
-  const CAPTURE_DRAWER_HEIGHT = 213;
   const CAPTURE_VIEW_DRAWER_OVERLAP = 72;
   const RESULT_INPUT_BOTTOM_GAP = 130;
   const RESULT_BUTTON_INPUT_GAP = 26;
@@ -519,8 +518,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     (storageFlowStep === "none" && (scanStep === "viewport" || scanStep === "scanning")) ||
     (storageFlowStep !== "none" && storageFlowStep !== "final_result");
   const cameraViewBottomOffset = hasCaptureDrawer
-    ? Math.max(0, CAPTURE_DRAWER_HEIGHT - CAPTURE_VIEW_DRAWER_OVERLAP)
-    : 0;
+    ? `max(0px, calc(var(--capture-drawer-height, 213px) - ${CAPTURE_VIEW_DRAWER_OVERLAP}px))`
+    : "0px";
   const focusReticleInsetBottom = hasCaptureDrawer ? CAPTURE_VIEW_DRAWER_OVERLAP : 0;
 
   const existingSubLocations = useMemo<ExistingSubLocationOption[]>(() => {
@@ -3890,7 +3889,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
           id="camera-view"
           className="absolute inset-0 flex items-center justify-center"
           style={{
-            bottom: `${cameraViewBottomOffset}px`,
+            bottom: cameraViewBottomOffset,
             backgroundColor: scanStep === "disintegrating" || scanStep === "sticker" || scanStep === "done" ? "#E9E6E1" : "#161616",
             transition: "background-color 1.4s cubic-bezier(0.16, 1, 0.3, 1)",
           }}
@@ -4970,8 +4969,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                 <div 
                   className="storage-capture-drawer absolute left-0 right-0 w-full h-[213px] bg-[#E9E6E1] rounded-t-[60px] px-6 flex flex-col items-center justify-center z-30 shadow-[0_-12px_40px_rgba(0,0,0,0.15)] select-none"
                   style={{
-                    height: "213px",
-                    bottom: `-${cameraViewBottomOffset}px`,
+                    height: "var(--capture-drawer-height, 213px)",
+                    bottom: `calc(0px - ${cameraViewBottomOffset})`,
                     paddingBottom: 0,
                     marginBottom: 0,
                     transform: "translateY(0)",
@@ -5188,7 +5187,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
           id="camera-bottom-sheet"
           className="capture-drawer fixed md:absolute bottom-0 left-0 right-0 w-full bg-[#E9E6E1] rounded-t-[60px] px-6 flex flex-col items-center justify-center z-30 transition-all duration-300 shadow-[0_-12px_40px_rgba(0,0,0,0.15)] animate-slide-up select-none touch-none"
           style={{
-            height: "213px",
+            height: "var(--capture-drawer-height, 213px)",
             transform: `translateY(${drawerY}px)`,
             transition: isDraggingDrawer ? 'none' : 'transform 250ms cubic-bezier(0.16, 1, 0.3, 1)',
           }}

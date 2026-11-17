@@ -150,13 +150,6 @@ export function useLayoutGuard(isOpen: boolean) {
     document.addEventListener('focusout', updateCaptureViewport);
     document.addEventListener('touchmove', preventPagePan, { passive: false });
 
-    // Staggered timeouts to maintain hygiene across dynamic UI flows (keyboard dismissal transitions, etc)
-    const timers = [30, 80, 150, 250, 400, 600, 1000].map(delay =>
-      setTimeout(() => {
-        applyScrubbing();
-      }, delay)
-    );
-
     return () => {
       window.removeEventListener('resize', updateAppHeight);
       window.removeEventListener('scroll', resetWindowScroll);
@@ -165,7 +158,6 @@ export function useLayoutGuard(isOpen: boolean) {
       document.removeEventListener('focusin', updateCaptureViewport);
       document.removeEventListener('focusout', updateCaptureViewport);
       document.removeEventListener('touchmove', preventPagePan);
-      timers.forEach(clearTimeout);
 
       // Restore original values on unmount
       document.documentElement.style.overflow = originalHtmlOverflow;
@@ -221,8 +213,9 @@ export function useLayoutGuard(isOpen: boolean) {
         }
       });
 
-      // Retrigger a resize event to snap other layout sections back to standard dimensions cleanly
-      window.dispatchEvent(new Event("resize"));
+      // Restore the viewport once; real browser events handle any remaining
+      // native-keyboard animation without a global synthetic resize cascade.
+      syncAppViewportHeight();
     };
   }, [isOpen]);
 }

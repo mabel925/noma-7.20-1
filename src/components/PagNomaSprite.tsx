@@ -14,6 +14,7 @@ type PagFileHandle = {
 type PagViewHandle = {
   setRepeatCount: (count: number) => void;
   play: () => Promise<void>;
+  pause: () => void;
   stop: () => Promise<void>;
   destroy: () => void;
 };
@@ -47,18 +48,37 @@ interface PagNomaSpriteProps {
   pose?: "reading" | "chatting";
   className?: string;
   onReady?: () => void;
+  active?: boolean;
 }
 
 export const PagNomaSprite: React.FC<PagNomaSpriteProps> = ({
   pose = "reading",
   className = "",
   onReady,
+  active = true,
 }) => {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const pagViewRef = React.useRef<PagViewHandle | null>(null);
   const pagFileRef = React.useRef<PagFileHandle | null>(null);
   const [isReady, setIsReady] = React.useState(false);
   const [hasFallback, setHasFallback] = React.useState(false);
+  const activeRef = React.useRef(active);
+  React.useLayoutEffect(() => { activeRef.current = active; }, [active]);
+
+  React.useEffect(() => {
+    const syncPlayback = () => {
+      const view = pagViewRef.current;
+      if (!view) return;
+      if (activeRef.current && document.visibilityState === "visible") {
+        void view.play().catch((error) => console.error("[PAG] Failed to resume Noma animation:", error));
+      } else {
+        view.pause();
+      }
+    };
+    syncPlayback();
+    document.addEventListener("visibilitychange", syncPlayback);
+    return () => document.removeEventListener("visibilitychange", syncPlayback);
+  }, [active]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -85,9 +105,11 @@ export const PagNomaSprite: React.FC<PagNomaSpriteProps> = ({
 
         pagViewRef.current = pagView;
         pagView.setRepeatCount(0);
-        void pagView.play().catch((error) => {
-          if (!cancelled) console.error("[PAG] Failed to start Noma animation:", error);
-        });
+        if (activeRef.current && document.visibilityState === "visible") {
+          void pagView.play().catch((error) => {
+            if (!cancelled) console.error("[PAG] Failed to start Noma animation:", error);
+          });
+        }
         await new Promise<void>((resolve) => {
           requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
         });
