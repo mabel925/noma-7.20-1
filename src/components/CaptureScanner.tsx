@@ -4422,7 +4422,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
               {storageFlowStep !== "final_result" && !(
                 (storageFlowStep === "sub_capture" || storageFlowStep === "parent_capture") && cameraViewportUnavailable
               ) && (
-                <div className="capture-top-prompt absolute top-[calc(max(56px,env(safe-area-inset-top))+36px)] inset-x-6 z-40 flex flex-col items-center pointer-events-none">
+                <div className="capture-top-prompt absolute inset-x-6 z-40 flex flex-col items-center pointer-events-none">
                   <h3 
                     className="text-[20px] font-sans font-semibold tracking-tight text-center max-w-[300px] leading-snug text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)]"
                   >
@@ -4886,7 +4886,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                     onClick={() => setShowDiscardConfirm(true)}
                     aria-label="Cancel final result"
                     className="absolute right-5 z-[160] pointer-events-auto cursor-pointer text-[16px] font-sans font-medium text-neutral-400 transition-all hover:text-neutral-700 active:scale-95"
-                    style={{ top: "calc(var(--noma-statusbar-height, env(safe-area-inset-top, 0px)) + 4px)" }}
+                    style={{ top: "calc(var(--noma-navigation-top) + 4px)" }}
                   >
                     Cancel
                   </button>

@@ -1,5 +1,13 @@
 # iOS 27 status-bar scroll experiment
 
+## Outcome: withdrawn
+
+The user reported no visible improvement on their iPhone after deployment `3cd4edb`. The experiment has been removed from startup, along with its temporary scrolling styles and tests. The notes below describe the withdrawn experiment, not current application behavior.
+
+Desktop verification confirmed `0,1,0` with scroll locks restored. No device diagnostics were collected, so the report does not establish whether the trial ran on that phone, whether scrolling was effective there, or whether the native blur responded. Do not present this as proof that all scrolling workarounds fail or that the system blur can be removed with page CSS.
+
+## Experiment record
+
 WebKit issue: https://bugs.webkit.org/show_bug.cgi?id=324438
 
 This is an experiment, not a confirmed fix for the system blur. It runs once per document, after `noma-home-ready`, on iOS 27 standalone/fullscreen PWAs in portrait. Ordinary Safari/browser tabs, Android, older iOS versions, and landscape launches do not run it. It does not run again on focus or visibility changes.

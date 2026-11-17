@@ -88,6 +88,8 @@ body.capture-page-open::before {
   --install-motion-easing: cubic-bezier(0.16, 1, 0.3, 1);
   --install-motion-distance: 12px;
   --noma-statusbar-height: env(safe-area-inset-top, 0px);
+  --noma-navigation-offset: 15px;
+  --noma-navigation-top: calc(var(--noma-statusbar-height) + var(--noma-navigation-offset));
   --app-height: 100dvh;
   --capture-viewport-top: 0px;
   --capture-viewport-height: var(--app-height);
@@ -232,10 +234,6 @@ html, body {
   background-color: transparent !important;
 }
 
-/* Hide the temporary scroll range without changing the fixed app canvas. */
-html.ios-statusbar-scroll-trial { scrollbar-width: none !important; }
-html.ios-statusbar-scroll-trial::-webkit-scrollbar { display: none !important; }
-
 #app-container {
   position: fixed !important;
   inset: 0 !important;
@@ -300,15 +298,15 @@ html.ios-statusbar-scroll-trial::-webkit-scrollbar { display: none !important; }
   }
 
   body:not(.pwa-standalone) .capture-top-prompt:not(.capture-item-prompt) {
-    top: 12px !important;
+    top: calc(12px + var(--noma-navigation-offset)) !important;
   }
 
   body:not(.pwa-standalone) .home-header {
-    top: 12px !important;
+    top: calc(12px + var(--noma-navigation-offset)) !important;
   }
 
   body:not(.pwa-standalone) .capture-top-cancel {
-    top: 12px !important;
+    top: calc(12px + var(--noma-navigation-offset)) !important;
   }
 }
 
@@ -678,12 +676,12 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 .noma-page-navigation {
   display: flex;
   width: 100%;
-  height: calc(var(--noma-statusbar-height) + 56px);
-  min-height: calc(var(--noma-statusbar-height) + 56px);
+  height: calc(var(--noma-navigation-top) + 56px);
+  min-height: calc(var(--noma-navigation-top) + 56px);
   flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
-  padding: var(--noma-statusbar-height) 20px 0;
+  padding: var(--noma-navigation-top) 20px 0;
   background: transparent;
   z-index: 50;
   user-select: none;
@@ -693,7 +691,7 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 /* Detached Home Header with perfect adaptive layout alignment */
 .home-header-fixed {
   position: fixed !important;
-  top: var(--noma-statusbar-height) !important;
+  top: var(--noma-navigation-top) !important;
   z-index: 9999 !important;
   left: 20px !important;
   right: 20px !important;
@@ -704,7 +702,7 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
   .home-header-fixed {
     left: calc(50% - 176.5px) !important;
     right: calc(50% - 176.5px) !important;
-    top: calc(50% - 426px + 44px) !important;
+    top: calc(50% - 426px + 44px + var(--noma-navigation-offset)) !important;
   }
 }
 
@@ -808,7 +806,7 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 .camera-page-container,
 .camera-wrapper {
   --capture-drawer-height: 213px;
-  --capture-header-top: calc(max(56px, env(safe-area-inset-top, 0px)) + 36px);
+  --capture-header-top: calc(max(56px, env(safe-area-inset-top, 0px)) + 36px + var(--noma-navigation-offset));
   position: fixed !important;
   top: var(--capture-viewport-top) !important;
   bottom: auto !important;
@@ -831,7 +829,7 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
   background: #161616 !important; /* 确保背景色填补 */
 }
 
-.capture-item-prompt {
+.capture-top-prompt {
   top: var(--capture-header-top);
 }
 
@@ -844,7 +842,7 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 @media (max-width: 767px) {
   body:not(.pwa-standalone) .camera-page-container {
     /* Safari already places the page below its status bar. */
-    --capture-header-top: calc(env(safe-area-inset-top, 0px) + 36px);
+    --capture-header-top: calc(env(safe-area-inset-top, 0px) + 36px + var(--noma-navigation-offset));
     /* Remove the space occupied by visible browser controls, with enough
        room left for the shutter and drag handle. No keyboard measurement. */
     --capture-drawer-height: clamp(132px, calc(213px - (100lvh - 100dvh)), 213px);
@@ -922,7 +920,7 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 .noma-add-modebar {
   position: absolute;
   z-index: 30;
-  top: calc(max(env(safe-area-inset-top, 0px), 19px) + 40px);
+  top: calc(max(env(safe-area-inset-top, 0px), 19px) + 40px + var(--noma-navigation-offset));
   left: 55px;
   display: flex;
   align-items: center;
@@ -935,13 +933,13 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 
 @media (max-width: 767px) {
   .noma-add-modebar {
-    top: max(env(safe-area-inset-top, 0px), 12px);
+    top: calc(max(env(safe-area-inset-top, 0px), 12px) + var(--noma-navigation-offset));
   }
 }
 
 /* In standalone PWA mode content extends under the status bar. */
 .pwa-standalone .noma-add-modebar {
-  top: var(--noma-statusbar-height);
+  top: var(--noma-navigation-top);
 }
 
 .noma-add-modebar.is-keyboard-hidden { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 140ms ease, visibility 0s linear 140ms; }
@@ -1726,7 +1724,7 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 .noma-add-camera-controls.is-space .noma-add-skip:disabled { color: rgba(35, 33, 33, 0.15) !important; opacity: 1; cursor: default; }
 .noma-add-space-camera-action-state .noma-add-round-actions { position: static; gap: 44px; transform: none; }
 
-.noma-add-final-close { position: absolute; z-index: 10; top: calc(max(env(safe-area-inset-top, 0px), 19px) + 40px); right: 15px; }
+.noma-add-final-close { position: absolute; z-index: 10; top: calc(max(env(safe-area-inset-top, 0px), 19px) + 40px + var(--noma-navigation-offset)); right: 15px; }
 .noma-add-final { position: absolute; z-index: 32; inset: 0; }
 .noma-add-final-exit { position: absolute; z-index: 24; inset: 0; overflow: hidden; pointer-events: none; animation: noma-add-final-old-fade 700ms 0ms cubic-bezier(0.33, 1, 0.68, 1) both; }
 .noma-add-final-exit .noma-add-modebar,
@@ -1794,5 +1792,5 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
 }
 
 @media (max-height: 700px) {
-  .noma-add-modebar { top: 18px; }
+  .noma-add-modebar { top: calc(18px + var(--noma-navigation-offset)); }
 }

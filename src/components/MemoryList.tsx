@@ -1144,7 +1144,7 @@ const LocationRetakeCapture: React.FC<{
       exit={{ opacity: 0 }}
       transition={{ duration: 0.18 }}
     >
-      <div className="capture-top-prompt absolute top-[calc(max(56px,env(safe-area-inset-top))+36px)] inset-x-6 z-40 flex flex-col items-center pointer-events-none">
+      <div className="capture-top-prompt absolute inset-x-6 z-40 flex flex-col items-center pointer-events-none">
         <h3 className="max-w-[300px] text-center text-[20px] font-sans font-semibold leading-snug tracking-tight text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)]">
           {phase === "capture" ? titleText : promptText}
         </h3>
@@ -2344,8 +2344,8 @@ const LocationDetailModal: React.FC<{
         <div
           className="flex items-center justify-between px-[5px]"
           style={{
-            height: "calc(var(--noma-statusbar-height) + 56px)",
-            paddingTop: "var(--noma-statusbar-height)",
+            height: "calc(var(--noma-navigation-top) + 56px)",
+            paddingTop: "var(--noma-navigation-top)",
           }}
         >
           {isEditing ? <span className="h-6 w-6" aria-hidden="true" /> : (
@@ -3751,8 +3751,8 @@ export const MemoryList: React.FC<MemoryListProps> = ({
         <div
           className="w-full px-[16px] bg-transparent shrink-0 z-50 select-none"
           style={{
-            height: "calc(var(--noma-statusbar-height) + 89px)",
-            paddingTop: "calc(var(--noma-statusbar-height) + 15px)",
+            height: "calc(var(--noma-navigation-top) + 89px)",
+            paddingTop: "calc(var(--noma-navigation-top) + 15px)",
           }}
         >
           <div className="flex items-center gap-[12px]">
