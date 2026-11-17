@@ -232,6 +232,10 @@ html, body {
   background-color: transparent !important;
 }
 
+/* Hide the temporary scroll range without changing the fixed app canvas. */
+html.ios-statusbar-scroll-trial { scrollbar-width: none !important; }
+html.ios-statusbar-scroll-trial::-webkit-scrollbar { display: none !important; }
+
 #app-container {
   position: fixed !important;
   inset: 0 !important;
