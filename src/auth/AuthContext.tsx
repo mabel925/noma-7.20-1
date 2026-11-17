@@ -3,6 +3,7 @@ import type { User } from "@supabase/supabase-js";
 import { mediaStorage } from "../services/mediaStorage";
 import { readAiAccess, type AiAccessSnapshot } from "../services/aiAuth";
 import { supabase } from "../services/supabaseClient";
+import { clearPendingEmailLogin, readPendingEmailLogin, savePendingEmailLogin, writePendingEmailLogin, type PendingEmailLogin } from "./pendingEmailLogin";
 
 export type AuthUser = {
   id: string;
@@ -45,6 +46,8 @@ type AuthContextValue = {
   aiAccessUnavailable: boolean;
   isLoginOpen: boolean;
   authDialogMode: "login" | "account";
+  pendingEmailLogin: PendingEmailLogin | null;
+  resetEmailLogin: () => void;
   checkAiScanAccess: () => "available" | "quota" | "unavailable";
   requireAuth: (action?: () => void) => boolean;
   openLogin: () => void;
@@ -76,10 +79,18 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
   const [aiAccess, setAiAccess] = React.useState<AiAccessSnapshot | null>(MOCK_AUTH_ENABLED ? MOCK_AI_ACCESS : null);
   const [aiAccessLoading, setAiAccessLoading] = React.useState(false);
   const [aiAccessUnavailable, setAiAccessUnavailable] = React.useState(false);
-  const [isLoginOpen, setIsLoginOpen] = React.useState(false);
+  const [pendingEmailLogin, setPendingEmailLogin] = React.useState(() => MOCK_AUTH_ENABLED ? null : readPendingEmailLogin());
+  const [isLoginOpen, setIsLoginOpen] = React.useState(Boolean(pendingEmailLogin));
   const [authDialogMode, setAuthDialogMode] = React.useState<"login" | "account">("login");
   const pendingActionRef = React.useRef<(() => void) | null>(null);
   const aiAccessRequestRef = React.useRef<Promise<AiAccessSnapshot> | null>(null);
+  const emailRequestVersionRef = React.useRef(0);
+
+  const resetEmailLogin = React.useCallback(() => {
+    emailRequestVersionRef.current += 1;
+    clearPendingEmailLogin();
+    setPendingEmailLogin(null);
+  }, []);
 
   const loadAccountAccess = React.useCallback(() => {
     if (aiAccessRequestRef.current) return aiAccessRequestRef.current;
@@ -101,6 +112,10 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
     supabase.auth.getSession().then(({ data }) => {
       if (!mounted) return;
       setUser(mapUser(data.session?.user || null));
+      if (data.session?.user && pendingEmailLogin) {
+        resetEmailLogin();
+        setIsLoginOpen(false);
+      }
       setAuthLoading(false);
     });
 
@@ -212,8 +227,9 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
   }, [user]);
   const closeLogin = React.useCallback(() => {
     pendingActionRef.current = null;
+    resetEmailLogin();
     setIsLoginOpen(false);
-  }, []);
+  }, [resetEmailLogin]);
 
   const requireAuth = React.useCallback((action?: () => void) => {
     if (user) return true;
@@ -261,15 +277,26 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
 
   const requestOtp = React.useCallback(async (email: string) => {
     const normalizedEmail = email.trim().toLowerCase();
-    if (LOCAL_OTP_BYPASS_ENABLED) return;
-
-    const { error } = await supabase.auth.signInWithOtp({
-      email: normalizedEmail,
-      options: {
-        shouldCreateUser: true,
-      },
-    });
-    if (error) throw error;
+    const version = ++emailRequestVersionRef.current;
+    const previousDraft = readPendingEmailLogin();
+    // Journal before dispatch: iOS can discard the page after the email is
+    // delivered but before this document receives the successful response.
+    const draft = savePendingEmailLogin(normalizedEmail);
+    try {
+      if (!LOCAL_OTP_BYPASS_ENABLED) {
+        const { error } = await supabase.auth.signInWithOtp({
+          email: normalizedEmail,
+          options: { shouldCreateUser: true },
+        });
+        if (error) throw error;
+      }
+    } catch (error) {
+      if (version === emailRequestVersionRef.current) writePendingEmailLogin(previousDraft);
+      throw error;
+    }
+    // Closing the dialog or changing email invalidates an in-flight request.
+    if (version !== emailRequestVersionRef.current) return;
+    setPendingEmailLogin(draft);
   }, []);
 
   const verifyOtp = React.useCallback(async (email: string, token: string) => {
@@ -286,6 +313,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       });
       const pendingAction = pendingActionRef.current;
       pendingActionRef.current = null;
+      resetEmailLogin();
       setIsLoginOpen(false);
       window.setTimeout(() => pendingAction?.(), 0);
       return;
@@ -318,16 +346,18 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
 
     const pendingAction = pendingActionRef.current;
     pendingActionRef.current = null;
+    resetEmailLogin();
     setIsLoginOpen(false);
     window.setTimeout(() => pendingAction?.(), 0);
-  }, [loadAccountAccess]);
+  }, [loadAccountAccess, resetEmailLogin]);
 
   const signOut = React.useCallback(async () => {
     pendingActionRef.current = null;
+    resetEmailLogin();
     await mediaStorage.clearReadSession();
     if (!MOCK_AUTH_ENABLED && !LOCAL_OTP_BYPASS_ENABLED) await supabase.auth.signOut();
     setUser(null);
-  }, []);
+  }, [resetEmailLogin]);
 
   const value = React.useMemo(
     () => ({
@@ -338,6 +368,8 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       aiAccessUnavailable,
       isLoginOpen,
       authDialogMode,
+      pendingEmailLogin,
+      resetEmailLogin,
       checkAiScanAccess,
       requireAuth,
       openLogin,
@@ -355,6 +387,8 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       aiAccessUnavailable,
       isLoginOpen,
       authDialogMode,
+      pendingEmailLogin,
+      resetEmailLogin,
       checkAiScanAccess,
       requireAuth,
       openLogin,

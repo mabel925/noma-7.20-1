@@ -6,6 +6,9 @@ import { generateEmojiOutline, getStickerTitleStyle, isChineseTitle } from "./St
 import { TagSwitchIcon } from "./TagSwitchIcon";
 import { EditPencilIcon } from "./EditPencilIcon";
 import { CloseIcon } from "./CloseIcon";
+import { MemoryBackIcon } from "./MemoryBackIcon";
+import { PageNavigation } from "./PageNavigation";
+import { GradientPillButton } from "./GradientPillButton";
 import { CancelIcon } from "./CancelIcon";
 import { CameraIcon } from "./CameraIcon";
 import { RestartIcon } from "./RestartIcon";
@@ -31,18 +34,6 @@ const truncateLocationTitle = (value: string) => {
     ? `${chars.slice(0, MAX_LOCATION_TITLE_LENGTH).join("")}…`
     : value;
 };
-
-const MemoryBackIcon: React.FC = () => (
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-    <path
-      d="M7.74009 17.5658L1.55258 11.4079L7.74009 5.25M1.55258 11.4079H16.4064C19.9661 11.4079 22.5175 14.8418 21.4901 18.25"
-      stroke="black"
-      strokeWidth="2.14584"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
-);
 
 const ResetEditIcon: React.FC = () => (
   <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -1647,19 +1638,12 @@ const MemoryItemsEditBubble: React.FC<{
         transition={{ type: "spring", stiffness: 300, damping: 26 }}
       >
         <div className="pointer-events-auto inline-flex h-[64px] items-center gap-[10px] rounded-full border border-white/35 bg-[#E9E6E1]/50 px-[18px] shadow-[0_12px_34px_rgba(0,0,0,0.16)] backdrop-blur-xl">
-          <button
-            type="button"
+          <GradientPillButton
             onClick={onSelectAll}
-            className="flex h-[34px] w-auto min-w-0 items-center justify-center rounded-full px-[12px] text-[13px] font-sans font-semibold leading-none active:scale-[0.98]"
-            style={allSelected
-              ? {
-                  background: "linear-gradient(to bottom left, rgb(245, 181, 217) 0%, rgb(255, 199, 166) 66%, rgb(161, 235, 217) 100%)",
-                  color: "#232121",
-                }
-              : { backgroundColor: "#FFFFFF", color: "rgba(35, 33, 33, 0.5)" }}
+            selected={allSelected}
           >
             Select All
-          </button>
+          </GradientPillButton>
           <button
             type="button"
             onClick={onDelete}
@@ -2128,25 +2112,13 @@ const SpaceDetailModal: React.FC<{
             <MatrixDotBackground />
             {isEditingItems && (
               <div className="absolute left-[20px] right-[20px] top-[28px] z-40 flex items-center justify-between">
-                <button
-                  type="button"
+                <GradientPillButton
                   onClick={handleSelectAllSpaceItems}
-                  className="flex h-[26px] items-center justify-center rounded-full px-[12px] text-[13px] font-sans font-semibold leading-none active:scale-[0.98]"
-                  style={
-                    isAllSpaceItemsSelected
-                      ? {
-                          background:
-                            "linear-gradient(to bottom left, rgb(245, 181, 217) 0%, rgb(255, 199, 166) 66%, rgb(161, 235, 217) 100%)",
-                          color: "#232121",
-                        }
-                      : {
-                          backgroundColor: "#FFFFFF",
-                          color: "rgba(35, 33, 33, 0.5)",
-                        }
-                  }
+                  selected={isAllSpaceItemsSelected}
+                  compact
                 >
                   Select All
-                </button>
+                </GradientPillButton>
                 <button
                   type="button"
                   onClick={(event) => {
@@ -3736,27 +3708,13 @@ export const MemoryList: React.FC<MemoryListProps> = ({
       ) : null}
 
       {selectedParentSpace ? (
-        <div
-          className="memory-header-nav w-full pb-0 px-[20px] flex items-center justify-between bg-transparent shrink-0 z-50 select-none"
-          style={{
-            height: "calc(var(--noma-statusbar-height) + 56px)",
-            minHeight: "calc(var(--noma-statusbar-height) + 56px)",
-            paddingTop: "var(--noma-statusbar-height)",
+        <PageNavigation
+          className="memory-header-nav"
+          onBack={() => {
+            cancelParentEdit();
+            setSelectedParentSpace(null);
           }}
-        >
-          <button
-            onClick={() => {
-              cancelParentEdit();
-              setSelectedParentSpace(null);
-            }}
-            className="w-[24px] h-[24px] active:scale-95 flex items-center justify-center transition-all cursor-pointer border-0 outline-none bg-transparent hover:opacity-70"
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M7.74009 17.5658L1.55258 11.4079L7.74009 5.25M1.55258 11.4079H16.4064C19.9661 11.4079 22.5175 14.8418 21.4901 18.25" stroke="black" strokeWidth="2.14584" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </button>
-
-          {isEditingParentName ? (
+          actions={isEditingParentName ? (
             <div className="flex items-center gap-[12px]">
               <MemoryActionButton
                 label="Confirm edits"
@@ -3788,7 +3746,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
               <ParentDetailEditIcon />
             </button>
           )}
-        </div>
+        />
       ) : isSearchOpen ? (
         <div
           className="w-full px-[16px] bg-transparent shrink-0 z-50 select-none"
@@ -3821,28 +3779,15 @@ export const MemoryList: React.FC<MemoryListProps> = ({
           </div>
         </div>
       ) : (
-        <div
-          className="memory-header-nav w-full pb-0 px-[20px] flex items-center justify-between bg-transparent shrink-0 z-50 select-none"
-          style={{
-            height: "calc(var(--noma-statusbar-height) + 56px)",
-            paddingTop: "var(--noma-statusbar-height)",
-          }}
-        >
-          <div className="flex items-center gap-2">
-          <button
-              onClick={onClose}
-              className="w-[24px] h-[24px] active:scale-95 flex items-center justify-center transition-all cursor-pointer border-0 outline-none bg-transparent hover:opacity-70"
-            >
-              <MemoryBackIcon />
-            </button>
-            <span className="text-[24px] text-[#232121] tracking-tight leading-none font-sans font-bold" style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 700 }}>
-              Memory
-            </span>
-          </div>
-
-          <button
+        <PageNavigation
+          className="memory-header-nav"
+          onBack={onClose}
+          backLabel="Back to home"
+          title="Memory"
+          actions={<button
             type="button"
             onClick={openMemorySearch}
+            aria-label="Search memories"
             className="w-[22px] h-[22px] active:scale-95 flex items-center justify-center transition-all cursor-pointer border-0 outline-none bg-transparent hover:opacity-70"
           >
               <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -3856,8 +3801,8 @@ export const MemoryList: React.FC<MemoryListProps> = ({
                   </clipPath>
                 </defs>
               </svg>
-          </button>
-        </div>
+          </button>}
+        />
       )}
 
       {/* Scrollable container inside device bounds (starts under fixed header) */}

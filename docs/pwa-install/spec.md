@@ -4,7 +4,7 @@
 Help mobile browser visitors open noma as a full-screen app. Keep browser use available. This flow adds no authentication, uploads, model requests, or automatic installation.
 
 ## L2 — Structure
-`template: custom`: a compact home banner and an explicitly opened bottom dialog, preserving the existing home canvas. Banner: icon, brief invitation, Add to Home Screen action, dismissal. Dialog: app icon, benefit, three device-specific steps, close, single primary action. An account link provides a permanent way to reopen guidance after dismissal.
+`template: custom`: a compact home banner and an explicitly opened bottom dialog, preserving the existing home canvas. Banner: icon, brief invitation, right-aligned gradient Add action, circular dismissal at the upper-right corner. Dialog: app icon with a 3px white border and 20px corner radius, benefit, three device-specific steps, close, single primary action. An account link provides a permanent way to reopen guidance after dismissal.
 
 ## L3 — Flow
 Once the home scene is ready, mobile browser users see the banner. Opening Chat, Memory, capture, scanning or login hides the banner. Tapping the invitation opens instructions; it never opens automatically. iOS uses manual share-menu instructions. Android uses native installation when beforeinstallprompt is available; otherwise menu instructions. Closing or dismissing snoozes the banner for seven days. Account entry can reopen it immediately.

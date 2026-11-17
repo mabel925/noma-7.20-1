@@ -13,13 +13,14 @@ const LOGIN_STEP_TRANSITION = {
 
 export const AuthDialog: React.FC = () => {
   const { available: canInstall, openGuide } = usePwaInstall();
-  const { user, aiAccess: access, isLoginOpen, authDialogMode, closeLogin, requestOtp, verifyOtp, updateDisplayName, signOut } = useAuth();
-  const [email, setEmail] = React.useState("");
+  const { user, aiAccess: access, isLoginOpen, authDialogMode, pendingEmailLogin, resetEmailLogin, closeLogin, requestOtp, verifyOtp, updateDisplayName, signOut } = useAuth();
+  const [email, setEmail] = React.useState(pendingEmailLogin?.email || "");
   const [token, setToken] = React.useState("");
-  const [step, setStep] = React.useState<"email" | "otp">("email");
+  const step = pendingEmailLogin ? "otp" : "email";
   const [busy, setBusy] = React.useState(false);
   const [resending, setResending] = React.useState(false);
-  const [resendSeconds, setResendSeconds] = React.useState(0);
+  const [now, setNow] = React.useState(Date.now);
+  const resendSeconds = pendingEmailLogin ? Math.max(0, Math.ceil((pendingEmailLogin.resendAvailableAt - now) / 1000)) : 0;
   const [error, setError] = React.useState("");
   const [isEditingName, setIsEditingName] = React.useState(false);
   const [nameDraft, setNameDraft] = React.useState("");
@@ -35,10 +36,8 @@ export const AuthDialog: React.FC = () => {
 
   React.useEffect(() => {
     if (!isLoginOpen) {
-      setStep("email");
       setToken("");
       autoVerifyRef.current = false;
-      setResendSeconds(0);
       setError("");
       setIsEditingName(false);
       setAccountError("");
@@ -46,12 +45,19 @@ export const AuthDialog: React.FC = () => {
   }, [isLoginOpen]);
 
   React.useEffect(() => {
-    if (!isLoginOpen || step !== "otp" || resendSeconds <= 0) return;
-    const timer = window.setInterval(() => {
-      setResendSeconds((current) => Math.max(0, current - 1));
-    }, 1000);
-    return () => window.clearInterval(timer);
-  }, [isLoginOpen, resendSeconds, step]);
+    if (!isLoginOpen || !pendingEmailLogin) return;
+    setEmail(pendingEmailLogin.email);
+    const updateClock = () => setNow(Date.now());
+    updateClock();
+    const timer = window.setInterval(updateClock, 1000);
+    document.addEventListener("visibilitychange", updateClock);
+    window.addEventListener("pageshow", updateClock);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", updateClock);
+      window.removeEventListener("pageshow", updateClock);
+    };
+  }, [isLoginOpen, pendingEmailLogin]);
 
   const submitEmail = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -63,8 +69,6 @@ export const AuthDialog: React.FC = () => {
     setError("");
     try {
       await requestOtp(email);
-      setStep("otp");
-      setResendSeconds(60);
     } catch (nextError) {
       const message = nextError instanceof Error ? nextError.message : "Unable to send the verification code.";
       setError(message);
@@ -78,8 +82,7 @@ export const AuthDialog: React.FC = () => {
     setResending(true);
     setError("");
     try {
-      await requestOtp(email);
-      setResendSeconds(60);
+      await requestOtp(pendingEmailLogin?.email || email);
     } catch (nextError) {
       const message = nextError instanceof Error ? nextError.message : "Unable to resend the verification code.";
       setError(message);
@@ -94,7 +97,7 @@ export const AuthDialog: React.FC = () => {
     setBusy(true);
     setError("");
     try {
-      await verifyOtp(email, code);
+      await verifyOtp(pendingEmailLogin?.email || email, code);
     } catch (nextError) {
       const message = nextError instanceof Error ? nextError.message : "The verification code is invalid.";
       setError(message);
@@ -131,9 +134,9 @@ export const AuthDialog: React.FC = () => {
         <motion.div
           className="fixed inset-0 z-[100000] bg-[#232121]/35 backdrop-blur-sm"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-          onPointerDown={closeLogin}
+          onClick={() => { if (showAccount || step !== "otp") closeLogin(); }}
         />
-        <div className="pointer-events-none fixed inset-0 z-[100001] isolate flex items-center justify-center px-6">
+        <div role="dialog" aria-modal="true" aria-label={showAccount ? "Noma account" : "Login"} className="pointer-events-none fixed inset-0 z-[100001] isolate flex items-center justify-center px-6">
           <motion.div
             initial={{ opacity: 0, y: 18, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 12, scale: 0.97 }}
             transition={{ type: "spring", stiffness: 310, damping: 27 }}
@@ -243,7 +246,7 @@ export const AuthDialog: React.FC = () => {
                     </div>
                     <div className="min-h-5 pt-1.5">{error && <p className="text-[13px] text-red-600">{error}</p>}</div>
                     <button disabled={busy || resending || token.length !== 6} tabIndex={step === "otp" ? 0 : -1} type="submit" className="mt-auto flex h-[50px] w-full shrink-0 items-center justify-center rounded-full bg-[#232121] text-[15px] font-semibold text-white active:scale-[0.98] disabled:opacity-50">{busy ? "Signing in..." : "Continue"}</button>
-                    <button type="button" tabIndex={step === "otp" ? 0 : -1} onClick={() => { setStep("email"); setError(""); }} className="mt-4 w-full text-center text-[13px] text-[#232121]/55">Use a different email</button>
+                    <button type="button" tabIndex={step === "otp" ? 0 : -1} onClick={() => { resetEmailLogin(); setToken(""); autoVerifyRef.current = false; setError(""); }} className="mt-4 w-full text-center text-[13px] text-[#232121]/55">Use a different email</button>
                   </div>
                 </motion.div>
               </div>

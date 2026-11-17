@@ -25,6 +25,8 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   return createPortal(
     <header
+      inert={isChatActive}
+      aria-hidden={isChatActive}
       className={`home-header-fixed flex items-center justify-between pointer-events-none select-none transition-all duration-300 ${
         isChatActive ? "pointer-events-none opacity-0" : "opacity-100"
       }`}

@@ -2,6 +2,7 @@ import React from "react";
 import { createPortal } from "react-dom";
 import { ArrowDownToLine, Ellipsis, Share, SquarePlus } from "lucide-react";
 import { CloseIcon } from "./CloseIcon";
+import { GradientPillButton } from "./GradientPillButton";
 import { isStandalonePwa } from "../utils/appViewport";
 import {
   getInstallPlatform, getInstallSnapshot, INSTALL_NUDGE_KEY, INSTALL_NUDGE_SNOOZE_MS,
@@ -151,8 +152,9 @@ export const PwaInstallNudge: React.FC<{ active: boolean }> = ({ active }) => {
   return createPortal(
     <aside className="noma-install-nudge" aria-label="Add noma to your Home Screen">
       <img src="/icons/noma-app-icon-180.png" alt="" />
-      <div><p>noma, a little closer.</p><button type="button" onClick={openGuide}>Add to Home Screen <span aria-hidden="true">↗</span></button></div>
-      <button className="noma-install-dismiss" type="button" onClick={snooze} aria-label="Dismiss installation reminder"><CloseIcon /></button>
+      <div className="noma-install-nudge-copy"><p>Add to Home Screen</p><p>Organize and find, anywhere.</p></div>
+      <GradientPillButton onClick={openGuide} aria-label="Add noma to Home Screen">Add</GradientPillButton>
+      <button className="noma-install-dismiss" type="button" onClick={snooze} aria-label="Dismiss installation reminder"><span><CloseIcon /></span></button>
     </aside>, document.body,
   );
 };

@@ -17,6 +17,7 @@ import { motion, AnimatePresence, useAnimation } from "motion/react";
 
 import { MemoryList, MemoryItem } from "./components/MemoryList";
 import { CloseIcon } from "./components/CloseIcon";
+import { PageNavigation } from "./components/PageNavigation";
 import { useAuth } from "./auth/AuthContext";
 import { isStandalonePwa, syncDisplayModeClasses } from "./utils/appViewport";
 import { preloadDeferredAssets, preloadStartupAssets, subscribeStartupPreload } from "./services/startupPreload";
@@ -1057,15 +1058,14 @@ export default function App() {
 
 
 
-        {/* Quick Back / Toggle-back Home controller inside Chat view (Small floating pill at top edge) */}
-        {isChatActive && !isMemoryOpen && createPortal(
-          <button
-            onClick={() => setIsChatActive(false)}
-            className="chat-back-button bg-black/40 hover:bg-black/60 text-white/90 text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1 backdrop-blur-md border border-white/10 cursor-pointer"
-          >
-            ← Home
-          </button>,
-          document.body
+        {/* Shared navigation keeps Chat aligned with Memory. */}
+        {isChatActive && !isMemoryOpen && (
+          <PageNavigation
+            onBack={() => setIsChatActive(false)}
+            backLabel="Back to home"
+            iconColor="white"
+            className="chat-navigation"
+          />
         )}
 
         {!isMemoryOpen && createPortal(

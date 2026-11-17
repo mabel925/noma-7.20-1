@@ -1,6 +1,6 @@
 # Installation guide visual and motion specification
 
-Use noma's existing cream surface, dark text, app icon, rounded controls and CloseIcon. Keep all new measurements, colors and timing in `--install-*` CSS tokens; existing literals are consolidated into these feature-scoped tokens rather than introducing a second visual language.
+The home banner uses a black surface at 30% opacity, white copy, a 48px app icon and a content-sized Add button. Add reuses Memory's Select All gradient pill component, with its original gradient, typography and 34px height. The 14px close icon sits in a 20px dark circle overlapping the top-right edge, within a 44px touch target. The guide retains noma's existing cream surface and dark text; its logo has a 3px white border and 20px corner radius. Both surfaces reuse CloseIcon.
 
 The compact banner sits below the home header and above the character. The guide is a single-column bottom dialog with three icon/text rows. Primary action is dark, auxiliary text muted, and instructions remain readable on short screens by scrolling inside the sheet. Controls have at least 44px touch targets. The banner CTA and close targets do not overlap.
 

@@ -56,13 +56,21 @@ body.capture-page-open::before {
   --install-gap: 16px;
   --install-small-gap: 8px;
   --install-nudge-radius: 24px;
+  --install-nudge-surface: rgba(0, 0, 0, 0.3);
+  --install-dismiss-surface: #232121;
+  --install-dismiss-size: 20px;
+  --install-dismiss-icon: 14px;
+  --install-logo-outline: 3px;
+  --install-logo-radius: 20px;
+  --install-nudge-gutter: 15px;
+  --install-nudge-padding: 13px 17px 13px 15px;
   --install-sheet-radius: 36px;
   --install-step-radius: 14px;
   --install-pill-radius: 999px;
   --install-target: 44px;
   --install-icon: 20px;
   --install-app-icon: 64px;
-  --install-nudge-icon: 42px;
+  --install-nudge-icon: 48px;
   --install-small-type: 13px;
   --install-body-type: 14px;
   --install-action-type: 15px;
@@ -71,7 +79,6 @@ body.capture-page-open::before {
   --install-weight: 600;
   --install-nudge-top: 84px;
   --install-nudge-inset: 12px;
-  --install-nudge-right-pad: 52px;
   --install-sheet-width: 420px;
   --install-sheet-padding: 28px;
   --install-sheet-max-height: 90dvh;
@@ -90,33 +97,56 @@ body.capture-page-open::before {
   --chat-composer-height: 54px;
   --chat-content-right: 10px;
   --chat-content-width: 270px;
+  --gradient-pill-fill: linear-gradient(to bottom left, rgb(245, 181, 217) 0%, rgb(255, 199, 166) 66%, rgb(161, 235, 217) 100%);
 }
+
+.noma-gradient-pill {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-width: 0;
+  height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: #fff;
+  color: rgba(35, 33, 33, 0.5);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+.noma-gradient-pill[data-selected="true"] { background: var(--gradient-pill-fill); color: #232121; }
+.noma-gradient-pill[data-compact="true"] { height: 26px; }
+.noma-gradient-pill:active { transform: scale(0.98); }
 
 .noma-install-nudge {
   position: fixed;
   z-index: 10000;
   top: calc(var(--noma-statusbar-height) + var(--install-nudge-top));
-  right: var(--install-gutter);
-  left: var(--install-gutter);
+  right: var(--install-nudge-gutter);
+  left: var(--install-nudge-gutter);
   display: flex;
   align-items: center;
   gap: var(--install-nudge-inset);
-  padding: var(--install-nudge-inset) var(--install-nudge-right-pad) var(--install-nudge-inset) var(--install-nudge-inset);
-  border: var(--install-border-width) solid var(--install-border);
+  padding: var(--install-nudge-padding);
   border-radius: var(--install-nudge-radius);
-  background: var(--install-surface);
-  box-shadow: var(--install-shadow);
-  color: var(--install-ink);
+  background: var(--install-nudge-surface);
+  color: var(--install-white);
   font-family: var(--font-sans);
   animation: noma-install-enter var(--install-motion-duration) var(--install-motion-easing) both;
 }
-.noma-install-nudge > img { width: var(--install-nudge-icon); height: var(--install-nudge-icon); border-radius: var(--install-step-radius); }
-.noma-install-nudge p { margin: 0 0 var(--install-small-gap); font-size: var(--install-body-type); line-height: 1; }
-.noma-install-nudge button { padding: 0; border: 0; background: transparent; color: var(--install-ink); cursor: pointer; font: inherit; font-size: var(--install-small-type); font-weight: var(--install-weight); }
-.noma-install-nudge > div > button { min-height: var(--install-target); margin-block: calc(var(--install-small-gap) * -1); text-align: left; }
-.noma-install-dismiss,
+.noma-install-nudge > img { flex-shrink: 0; width: var(--install-nudge-icon); height: var(--install-nudge-icon); border-radius: var(--install-step-radius); }
+.noma-install-nudge-copy { flex: 1; min-width: 0; }
+.noma-install-nudge p { margin: 0; font-size: var(--install-body-type); line-height: var(--install-line-height); }
+.noma-install-nudge-copy > p:first-child { font-weight: var(--install-weight); }
+.noma-install-dismiss { position: absolute; top: -18px; right: -13px; display: grid; width: var(--install-target); height: var(--install-target); place-items: center; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.noma-install-dismiss > span { display: grid; place-items: center; width: var(--install-dismiss-size); height: var(--install-dismiss-size); border-radius: var(--install-pill-radius); color: var(--install-white); background: var(--install-dismiss-surface); }
+.noma-install-dismiss svg { width: var(--install-dismiss-icon); height: var(--install-dismiss-icon); }
 .noma-install-close { position: absolute; top: var(--install-small-gap); right: var(--install-small-gap); display: grid; width: var(--install-target); height: var(--install-target); place-items: center; padding: 0; border: 0; border-radius: var(--install-pill-radius); color: var(--install-muted); background: transparent; cursor: pointer; }
-.noma-install-dismiss svg,
 .noma-install-close svg { width: var(--install-icon); height: var(--install-icon); }
 .noma-install-overlay {
   position: fixed;
@@ -143,7 +173,7 @@ body.capture-page-open::before {
   box-shadow: var(--install-sheet-shadow);
   animation: noma-install-enter var(--install-motion-duration) var(--install-motion-easing) both;
 }
-.noma-install-app-icon { display: block; width: var(--install-app-icon); height: var(--install-app-icon); margin-bottom: var(--install-gap); border-radius: var(--install-step-radius); }
+.noma-install-app-icon { display: block; width: var(--install-app-icon); height: var(--install-app-icon); margin-bottom: var(--install-gap); border: var(--install-logo-outline) solid var(--install-white); border-radius: var(--install-logo-radius); }
 .noma-install-sheet h2 { margin: 0; padding-right: var(--install-small-gap); font-size: var(--install-title-type); font-weight: var(--install-weight); line-height: 1.2; }
 .noma-install-sheet > p { margin: var(--install-small-gap) 0 0; font-size: var(--install-body-type); line-height: var(--install-line-height); color: var(--install-muted); }
 .noma-install-steps { display: grid; gap: var(--install-gutter); padding: 0; margin: var(--install-sheet-padding) 0; list-style: none; }
@@ -641,20 +671,20 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
   transform: scale(0.96);
 }
 
-/* Fixed and dynamic Chat Back Button */
-.chat-back-button {
-  position: fixed !important;
-  top: var(--noma-statusbar-height) !important;
-  z-index: 9999 !important;
-  left: 20px !important;
+.noma-page-navigation {
+  display: flex;
+  width: 100%;
+  height: calc(var(--noma-statusbar-height) + 56px);
+  min-height: calc(var(--noma-statusbar-height) + 56px);
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--noma-statusbar-height) 20px 0;
+  background: transparent;
+  z-index: 50;
+  user-select: none;
 }
-
-@media (min-width: 768px) {
-  .chat-back-button {
-    left: calc(50% - 176.5px) !important;
-    top: calc(50% - 426px + 44px) !important;
-  }
-}
+.chat-navigation { position: absolute; inset: 0 0 auto; z-index: 9999; }
 
 /* Detached Home Header with perfect adaptive layout alignment */
 .home-header-fixed {
