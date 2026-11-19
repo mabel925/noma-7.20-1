@@ -8,7 +8,7 @@ const source = await readFile(new URL("../src/services/locationSnapshot.ts", imp
 const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } });
 const context = vm.createContext({ exports: {} });
 vm.runInContext(outputText, context);
-const { reconcileLocationSnapshot } = context.exports;
+const { reconcileLocationSnapshot, itemBelongsToLocation, updateLocationItem, updateLocationSnapshot } = context.exports;
 
 const item = (id, sub = "storage spot", parent = "Room") => ({
   id, name: id, parentLocationName: parent, subLocationName: sub, parentLocationImg: "room.webp", subLocationImg: "spot.webp",
@@ -62,4 +62,48 @@ test("adding an item updates an already-open location without duplicating it", (
   const updated = reconcileLocationSnapshot(child, [first, second], [first, second, added]);
   assert.equal(updated.itemCount, 3);
   assert.equal(updated.items.length, 3);
+});
+
+test("parent rename keeps nested cards, images and contents consistent when reconciled", () => {
+  const before = [first, second, direct];
+  const updates = { name: "Bedroom", imgUrl: "bedroom.webp" };
+  const after = before.map((item) => updateLocationItem(item, parent, updates));
+  const renamed = updateLocationSnapshot(parent, parent, updates);
+  const updated = reconcileLocationSnapshot(renamed, before, after);
+  assert.equal(updated.name, "Bedroom");
+  assert.equal(updated.imgUrl, "bedroom.webp");
+  assert.equal(updated.items.length, 3);
+  assert.equal(updated.subLocations[0].parentName, "Bedroom");
+  assert.equal(updated.subLocations[0].parentImgUrl, "bedroom.webp");
+  assert.equal(updated.subLocations[0].items.length, 2);
+  assert.equal(updated.subLocations[0].imgUrl, "spot.webp", "child photo must not be replaced by its parent's");
+  assert.equal(parent.name, "Room", "original snapshots must remain untouched");
+});
+
+test("child rename updates the parent's back stack without renaming another room's same-named child", () => {
+  const other = item("other", "storage spot", "Kitchen");
+  const updates = { name: "Drawer", imgUrl: "drawer.webp" };
+  const after = [first, second, direct, other].map((item) => updateLocationItem(item, child, updates));
+  const updated = reconcileLocationSnapshot(updateLocationSnapshot(parent, child, updates), [first, second, direct, other], after);
+  assert.equal(updated.name, "Room");
+  assert.equal(updated.subLocations[0].name, "Drawer");
+  assert.equal(updated.subLocations[0].imgUrl, "drawer.webp");
+  assert.equal(updated.subLocations[0].items.length, 2);
+  assert.equal(after[2], direct);
+  assert.equal(after[3], other);
+});
+
+test("parent deletion selects direct items and every child but leaves other locations intact", () => {
+  const nested = item("nested", "Another drawer");
+  const unrelated = item("unrelated", "storage spot", "Kitchen");
+  const standalone = item("standalone", "Room", "");
+  const remaining = [first, second, direct, nested, unrelated, standalone].filter((item) => !itemBelongsToLocation(item, parent));
+  assert.deepEqual(remaining, [unrelated, standalone]);
+});
+
+test("child deletion preserves direct parent items, siblings and same-named children in another parent", () => {
+  const sibling = item("sibling", "Another drawer");
+  const unrelated = item("unrelated", "storage spot", "Kitchen");
+  const remaining = [first, second, direct, sibling, unrelated].filter((item) => !itemBelongsToLocation(item, child));
+  assert.deepEqual(remaining, [direct, sibling, unrelated]);
 });

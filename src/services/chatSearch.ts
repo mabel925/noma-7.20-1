@@ -146,12 +146,13 @@ export async function searchChatMemory(options: {
   isMock: boolean;
   query: string;
   loadedItems: MemoryItem[];
+  allItemsLoaded?: boolean;
 }): Promise<ChatSearchResult> {
-  const { ownerId, isMock, query, loadedItems } = options;
+  const { ownerId, isMock, query, loadedItems, allItemsLoaded = false } = options;
   if (unsupportedPatterns.some((pattern) => pattern.test(query))) return { kind: "unsupported" };
 
   const term = searchTermFromChatQuery(query);
-  const candidates = isMock
+  const candidates = isMock || allItemsLoaded
     ? loadedItems.filter((item) =>
         itemMatchesTerm(item, term)
         || includesTerm(item.parentLocationName, term)

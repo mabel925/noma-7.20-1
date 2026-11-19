@@ -1,6 +1,7 @@
 import React from "react";
 import { Plus } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { PersistentImage } from "./PersistentImage";
 import { ItemStickerVisual } from "./ItemStickerVisual";
 import { MemoryCoreButton } from "./MemoryCoreButton";
 import { CloseIcon } from "./CloseIcon";
@@ -22,21 +23,21 @@ interface ChatFlowProps {
   onSpaceResultClick: (space: ChatSpaceResult) => void;
 }
 
-const ChatItemSticker: React.FC<{ item: MemoryItem; onClick?: () => void; compact?: boolean }> = ({
-  item, onClick, compact = false,
+const ChatItemSticker: React.FC<{ item: MemoryItem; onClick?: () => void; compact?: boolean; multiple?: boolean }> = ({
+  item, onClick, compact = false, multiple = false,
 }) => {
   const emojiKey = item.emoji && /^[a-z0-9-]+$/i.test(item.emoji) ? item.emoji : "";
   const emojiUrl = emojiKey ? emojiAsset(emojiKey) : "";
   const content = <ItemStickerVisual
     name={item.name}
     imageUrl={item.stickerUrl || emojiUrl}
-    size={compact ? 50 : 78}
+    size={compact ? 50 : multiple ? 60 : 78}
     showEmojiOutline={Boolean(emojiUrl && (!item.stickerUrl || item.stickerUrl === emojiUrl))}
     fallbackEmoji={emojiKey ? "📦" : item.emoji || "📦"}
   />;
-  const className = `relative shrink-0 overflow-visible ${compact ? "h-[52px] w-[54px]" : "h-[88px] w-[78px]"}`;
+  const className = `relative shrink-0 overflow-visible ${compact ? "h-[52px] w-[54px]" : multiple ? "h-[68px] w-[62px]" : "h-[88px] w-[78px]"}`;
   return onClick ? (
-    <button type="button" onClick={onClick} className={`${className} active:scale-95 transition-transform`} aria-label={`Open ${item.name}`}>
+    <button type="button" onClick={(event) => { event.stopPropagation(); onClick(); }} className={`${className} active:scale-95 transition-transform`} aria-label={`Open ${item.name}`}>
       {content}
     </button>
   ) : <div className={className} aria-label={item.name}>{content}</div>;
@@ -46,9 +47,9 @@ const ChatItemResults: React.FC<{
   items: MemoryItem[];
   onItemClick: (item: MemoryItem) => void;
 }> = ({ items, onItemClick }) => (
-  <div className="chat-content-column mt-[27px] flex flex-wrap gap-x-[4px] gap-y-[2px] pr-1" aria-label={`${items.length} matching items`}>
+  <div className="chat-content-column mt-[27px] flex flex-wrap gap-x-[4px] gap-y-[6px] pr-1" aria-label={`${items.length} matching items`}>
     {items.map((item) => (
-      <ChatItemSticker key={item.id} item={item} onClick={() => onItemClick(item)} />
+      <ChatItemSticker key={item.id} item={item} multiple={items.length > 1} onClick={() => onItemClick(item)} />
     ))}
   </div>
 );
@@ -60,19 +61,19 @@ const spaceImage = (space: ChatSpaceResult) => space.imageUrl || emojiAsset(
 const ChatSpaceCard: React.FC<{
   space: ChatSpaceResult;
   onClick: () => void;
-}> = ({ space, onClick }) => {
+  onItemClick: (item: MemoryItem) => void;
+}> = ({ space, onClick, onItemClick }) => {
   const previewItems = space.items.slice(0, 3);
   const remaining = Math.max(0, space.itemCount - previewItems.length);
 
   return (
-    <button
-      type="button"
+    <div
       onClick={onClick}
-      className="h-[154px] w-[260px] shrink-0 overflow-hidden rounded-[24px] bg-white px-[14px] py-[16px] text-left shadow-[0_8px_24px_rgba(35,33,33,0.08)] active:scale-[0.98] transition-transform"
-      aria-label={`Open ${space.name}`}
+      className="relative h-[154px] w-[260px] shrink-0 overflow-hidden rounded-[24px] bg-white px-[14px] py-[16px] text-left shadow-[0_8px_24px_rgba(35,33,33,0.08)] active:scale-[0.98] transition-transform"
     >
-      <div className="flex items-center gap-[12px]">
-        <img
+      <button type="button" aria-label={`Open ${space.name}`} className="absolute inset-0 h-full w-full rounded-[24px] border-0 bg-transparent" />
+      <div className="pointer-events-none relative flex items-center gap-[12px]">
+        <PersistentImage
           src={spaceImage(space)}
           alt=""
           className="h-[56px] w-[56px] shrink-0 rounded-[9px] bg-[#E9E6E1] object-cover"
@@ -91,7 +92,7 @@ const ChatSpaceCard: React.FC<{
       </div>
 
       {space.kind === "parent" ? (
-        <div className="mt-[20px] -mr-[14px] flex gap-[9px] overflow-x-auto no-scrollbar touch-pan-x">
+        <div className="relative mt-[20px] -mr-[14px] flex gap-[9px] overflow-x-auto no-scrollbar touch-pan-x">
           {space.subSpaces.length > 0 ? space.subSpaces.map((child) => (
             <span key={`${space.id}-${child.name}`} className="h-[38px] shrink-0 rounded-full bg-[#232121]/5 px-[20px] flex items-center text-[13px] font-medium text-neutral-500 whitespace-nowrap">
               {child.name} ({child.itemCount} items)
@@ -101,23 +102,24 @@ const ChatSpaceCard: React.FC<{
           )}
         </div>
       ) : (
-        <div className="mt-[13px] flex h-[52px] items-center gap-[9px] overflow-hidden">
+        <div className="relative mt-[13px] flex h-[52px] items-center gap-[9px] overflow-hidden">
           {previewItems.map((item) => (
-            <ChatItemSticker key={item.id} item={item} compact />
+            <ChatItemSticker key={item.id} item={item} compact onClick={() => onItemClick(item)} />
           ))}
           {remaining > 0 && (
             <span className="ml-auto flex h-[50px] w-[50px] shrink-0 items-center justify-center rounded-[17px] bg-[#F3F1EC] text-[18px] font-bold text-[#232121]">+{remaining}</span>
           )}
         </div>
       )}
-    </button>
+    </div>
   );
 };
 
 const ChatSpaceResults: React.FC<{
   spaces: ChatSpaceResult[];
   onSpaceClick: (space: ChatSpaceResult) => void;
-}> = ({ spaces, onSpaceClick }) => (
+  onItemClick: (item: MemoryItem) => void;
+}> = ({ spaces, onSpaceClick, onItemClick }) => (
   <div
     className="chat-space-results mt-[27px] w-full overflow-x-auto no-scrollbar pb-1 touch-pan-x"
     style={{
@@ -128,7 +130,7 @@ const ChatSpaceResults: React.FC<{
   >
     <div className="flex w-max gap-[10px] pr-[var(--chat-content-right)]">
       {spaces.map((space) => (
-        <ChatSpaceCard key={space.id} space={space} onClick={() => onSpaceClick(space)} />
+        <ChatSpaceCard key={space.id} space={space} onClick={() => onSpaceClick(space)} onItemClick={onItemClick} />
       ))}
     </div>
   </div>
@@ -241,7 +243,7 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                               </div>
                             </div>
                             {isNoma && msg.items?.length ? <ChatItemResults items={msg.items} onItemClick={onItemResultClick} /> : null}
-                            {isNoma && msg.spaces?.length ? <ChatSpaceResults spaces={msg.spaces} onSpaceClick={onSpaceResultClick} /> : null}
+                            {isNoma && msg.spaces?.length ? <ChatSpaceResults spaces={msg.spaces} onSpaceClick={onSpaceResultClick} onItemClick={onItemResultClick} /> : null}
                           </div>
                         </motion.div>
                       );

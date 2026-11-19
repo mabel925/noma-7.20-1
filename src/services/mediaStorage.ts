@@ -159,8 +159,8 @@ export const mediaStorage = {
     return request;
   },
 
-  async readImage(url: string): Promise<Blob> {
-    let result = await fetchMedia(url, { credentials: "same-origin", cache: "default" });
+  async readImage(url: string, options: { priority?: "auto" | "low" } = {}): Promise<Blob> {
+    let result = await fetchMedia(url, { credentials: "same-origin", cache: "default", priority: options.priority });
     if (result.response.status === 401 || result.response.status === 403) {
       // The 30-minute image cookie can expire while the Supabase login is
       // still valid. Use the current login for this image and renew the cookie.
@@ -168,6 +168,7 @@ export const mediaStorage = {
       result = await fetchMedia(url, {
         credentials: "same-origin",
         cache: "no-store",
+        priority: options.priority,
         headers: authHeaders(token),
       });
       if (result.response.ok) void this.ensureReadSession().catch(() => undefined);

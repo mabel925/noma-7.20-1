@@ -1,3 +1,4 @@
+import { PersistentImage } from "./PersistentImage";
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, LoaderCircle } from "lucide-react";
@@ -249,7 +250,7 @@ const InactiveSubSpaceCard = ({
       onClick={onClick}
     >
       <div className={`noma-add-shared-sub-card-content${isEmpty ? " is-empty" : ""}${isPhoto ? " is-photo" : " is-emoji"}`}>
-        {showImage && <img src={image} alt="" />}
+        {showImage && <PersistentImage src={image} alt="" />}
         <strong className="noma-add-space-title-hotspot" onPointerDown={onTitlePointerDown}>
           {title || <>New Sub-Space<br />eg. Nightstand</>}
         </strong>
@@ -1168,7 +1169,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
         }}
         onClick={(event) => event.stopPropagation()}
       >
-        <img src={recent.imageUrl || emojiAsset(field === "parent" ? "home" : "box")} alt="" />
+        <PersistentImage src={recent.imageUrl || emojiAsset(field === "parent" ? "home" : "box")} alt="" />
         <span>{recent.name}</span>
         <button
           type="button"
@@ -1209,7 +1210,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
       )}
       <main className={`noma-add-item-result${isItemReveal ? " is-revealing" : ""}${isEditingItemTitle ? " is-editing-title" : ""}`}>
         {isItemReveal && <span className="noma-add-result-underline" aria-hidden="true" />}
-        <img className={`noma-add-glow${isColorBlurReady ? " is-ready" : ""}`} src={COLOR_BLUR_IMAGE_URL} alt="" aria-hidden="true" referrerPolicy="no-referrer" onLoad={() => setIsColorBlurReady(true)} />
+        <PersistentImage className={`noma-add-glow${isColorBlurReady ? " is-ready" : ""}`} src={COLOR_BLUR_IMAGE_URL} alt="" aria-hidden="true" referrerPolicy="no-referrer" onLoad={() => setIsColorBlurReady(true)} />
         <ItemSticker
           item={item}
           reveal={isItemReveal}
@@ -1243,7 +1244,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
         <div className="noma-add-emoji-picker" aria-label="Choose emoji" onClick={(event) => event.stopPropagation()}>
           {EMOJI_CATALOG.filter((entry) => entry.kind === "item").map((entry) => (
             <button key={entry.key} type="button" onClick={() => { setItem((current) => ({ ...current, iconKey: entry.key, category: entry.category, imageUrl: undefined })); setStage("识别emoji"); }} aria-label={entry.key}>
-              <img src={emojiAsset(entry.key)} alt="" />
+              <PersistentImage src={emojiAsset(entry.key)} alt="" />
             </button>
           ))}
         </div>
@@ -1292,7 +1293,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
                   return (
                 <div className={`noma-add-space-value${imageUrlIsPhoto(displayedParentSkin) ? " is-photo" : ""}${!displayedParentSkin ? " is-empty" : ""}${parentTitleIsPending ? " is-pending-title" : ""}${editingSpace === "parent" ? " is-editing" : ""}`} style={{ "--noma-parent-title-width": `${parentTitleWidth}px` } as React.CSSProperties}>
                   <div className="noma-add-parent-visual">
-                    <img src={parentImage} alt="" className={imageUrlIsPhoto(displayedParentSkin) ? "is-photo" : undefined} />
+                    <PersistentImage src={parentImage} alt="" className={imageUrlIsPhoto(displayedParentSkin) ? "is-photo" : undefined} />
                     <strong ref={parentSpaceTitleRef} className="noma-add-space-title-hotspot" onPointerDown={(event) => beginSpaceTitleEdit(event, "parent")}>{parentSpace.name}</strong>
                   </div>
                   {editingSpace === "parent" && (
@@ -1305,12 +1306,12 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
                 })()
               ) : editingSpace === "parent" ? (
                 <form onSubmit={submitSpaceTitle} className="noma-add-space-input-wrap">
-                  <img src={spaceSkinUrl(parentSpace, "emoji") || emojiAsset("home")} alt="" className="noma-add-space-placeholder-icon" />
+                  <PersistentImage src={spaceSkinUrl(parentSpace, "emoji") || emojiAsset("home")} alt="" className="noma-add-space-placeholder-icon" />
                   <input autoFocus value={spaceInput} onFocus={handleSpaceInputFocus} onBlur={handleSpaceInputBlur} onChange={(event) => setSpaceInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="New Space" aria-label="New parent space" enterKeyHint="send" />
                 </form>
               ) : activeSpace === "parent" ? (
                 <div className="noma-add-space-input-wrap is-preview">
-                  {!shouldShowRecentSpace("emoji", parentSpace, "parent") && <img src={emojiAsset("home")} alt="" className="noma-add-space-placeholder-icon" />}
+                  {!shouldShowRecentSpace("emoji", parentSpace, "parent") && <PersistentImage src={emojiAsset("home")} alt="" className="noma-add-space-placeholder-icon" />}
                   <span className="noma-add-parent-input-preview noma-add-space-title-hotspot" onPointerDown={(event) => beginSpaceTitleEdit(event, "parent")}>New Space</span>
                   {renderRecentSpace("emoji", parentSpace, "parent")}
                 </div>
@@ -1324,7 +1325,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
             {editingSpace === "sub" ? (
               <div className={`noma-add-sub-card ${activeSpace === "sub" ? "is-active" : ""}${pressedSpace === "sub" ? " is-pressed" : ""}${spacePressSuppression === "sub" ? " is-press-suppressed" : ""}`} onPointerDown={(event) => handleSpaceCardPointerDown(event, "sub")} onPointerUp={() => releaseSpacePress("sub")} onPointerCancel={() => releaseSpacePress("sub")} onPointerLeave={() => releaseSpacePress("sub")}>
                 <form onSubmit={submitSpaceTitle} className="noma-add-space-input-wrap">
-                  <img src={spaceSkinUrl(subSpace, "emoji") || emojiAsset(subSpace.emojiIconKey || subSpace.iconKey)} alt="" className={`noma-add-space-placeholder-icon${spaceHasSkin(subSpace, "emoji") ? " is-filled" : ""}`} />
+                  <PersistentImage src={spaceSkinUrl(subSpace, "emoji") || emojiAsset(subSpace.emojiIconKey || subSpace.iconKey)} alt="" className={`noma-add-space-placeholder-icon${spaceHasSkin(subSpace, "emoji") ? " is-filled" : ""}`} />
                   <input autoFocus value={spaceInput} onFocus={handleSpaceInputFocus} onBlur={handleSpaceInputBlur} onChange={(event) => setSpaceInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="" aria-label="New sub-space" enterKeyHint="send" />
                   {!spaceInput && <span className="noma-add-sub-placeholder is-input-placeholder">New Sub-Space<br />eg. Nightstand</span>}
                 </form>
@@ -1397,7 +1398,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
           className={`noma-add-space-camera-placeholder is-${field}${isEmpty ? " is-empty" : " is-filled"}${isPhoto ? " is-photo" : " is-emoji"}`}
           onClick={(event) => { event.stopPropagation(); switchSpaceCameraTarget(field); }}
         >
-          {(!isEmpty || !isParent) && <img src={image} alt="" />}
+          {(!isEmpty || !isParent) && <PersistentImage src={image} alt="" />}
           {isEmpty && field === "sub" ? <strong><span>New Sub-Space<br />eg. Nightstand</span></strong> : renderCameraTitle(entity, field, false)}
         </div>
       );
@@ -1428,7 +1429,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
               renderInactiveLocation(parentSpace, "parent")
             ) : (
               <>
-                {spaceHasSkin(parentSpace, "camera") ? <img src={spaceSkinUrl(parentSpace, "camera")} alt="" /> : <video ref={videoRef} className="noma-add-live-video" autoPlay playsInline muted />}
+                {spaceHasSkin(parentSpace, "camera") ? <PersistentImage src={spaceSkinUrl(parentSpace, "camera")} alt="" /> : <video ref={videoRef} className="noma-add-live-video" autoPlay playsInline muted />}
                 {renderCameraTitle(parentSpace, "parent")}
               </>
             )}
@@ -1437,7 +1438,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
               <div className={`noma-add-space-camera-sub-frame${pressedSpace === "sub" ? " is-pressed" : ""}${spacePressSuppression === "sub" ? " is-press-suppressed" : ""}`} onPointerDown={(event) => handleCameraSpacePointerDown(event, "sub")} onPointerUp={() => releaseSpacePress("sub")} onPointerCancel={() => releaseSpacePress("sub")} onPointerLeave={() => releaseSpacePress("sub")} onClick={(event) => handleCameraSpaceClick(event, "sub")}>
                 {spaceHasSkin(subSpace, "camera") ? (
                   <>
-                    <img src={spaceSkinUrl(subSpace, "camera")} alt="" />
+                    <PersistentImage src={spaceSkinUrl(subSpace, "camera")} alt="" />
                     {renderCameraTitle(subSpace, "sub")}
                   </>
                 ) : <><video ref={videoRef} className="noma-add-live-video" autoPlay playsInline muted />{renderCameraTitle(subSpace, "sub")}</>}
@@ -1576,7 +1577,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
             )}
             <main className={`noma-add-final${isFinalReveal ? " is-revealing" : ""}`}>
               <div className="noma-add-final-hero">
-                <img className={`noma-add-glow${isColorBlurReady ? " is-ready" : ""}`} src={COLOR_BLUR_IMAGE_URL} alt="" aria-hidden="true" referrerPolicy="no-referrer" onLoad={() => setIsColorBlurReady(true)} />
+                <PersistentImage className={`noma-add-glow${isColorBlurReady ? " is-ready" : ""}`} src={COLOR_BLUR_IMAGE_URL} alt="" aria-hidden="true" referrerPolicy="no-referrer" onLoad={() => setIsColorBlurReady(true)} />
                 {isEditingPrice ? (
                   <div className="noma-add-final-price noma-add-final-price-editing">
                     <PriceTag price={price || "0.00"} />
@@ -1609,8 +1610,8 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
               <span className="noma-add-built">Build 3 days ago</span>
               {hasSpace && <section className="noma-add-final-location">
                 <div className="noma-add-location-images">
-                  {parentSpace.name && (() => { const image = resolveSpaceSkin(parentSpace, finalTransitionSource || spaceMode) || emojiAsset(parentSpace.emojiIconKey || parentSpace.iconKey); return <img className={!imageUrlIsPhoto(image) ? "is-emoji" : undefined} src={image} alt="" />; })()}
-                  {subSpace.name && (() => { const image = resolveSpaceSkin(subSpace, finalTransitionSource || spaceMode) || emojiAsset(subSpace.emojiIconKey || subSpace.iconKey); return <img className={!imageUrlIsPhoto(image) ? "is-emoji" : undefined} src={image} alt="" />; })()}
+                  {parentSpace.name && (() => { const image = resolveSpaceSkin(parentSpace, finalTransitionSource || spaceMode) || emojiAsset(parentSpace.emojiIconKey || parentSpace.iconKey); return <PersistentImage className={!imageUrlIsPhoto(image) ? "is-emoji" : undefined} src={image} alt="" />; })()}
+                  {subSpace.name && (() => { const image = resolveSpaceSkin(subSpace, finalTransitionSource || spaceMode) || emojiAsset(subSpace.emojiIconKey || subSpace.iconKey); return <PersistentImage className={!imageUrlIsPhoto(image) ? "is-emoji" : undefined} src={image} alt="" />; })()}
                 </div>
                 <div className="noma-add-location-copy">
                   {parentSpace.name && <div className="noma-add-location-row is-parent">

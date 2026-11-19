@@ -1,4 +1,5 @@
 import React from "react";
+import { PersistentImage } from "./PersistentImage";
 import { generateEmojiOutline, getStickerTitleStyle, isChineseTitle } from "./StickerTitle";
 
 /** One composition for the item result and its smaller Chat previews. */
@@ -31,7 +32,7 @@ export const ItemStickerVisual = ({
   const image = <>
     {emojiOutline && <img className="noma-add-emoji-outline" src={emojiOutline} alt="" aria-hidden="true" />}
     {imageUrl && failedImage !== imageUrl
-      ? <img className="noma-add-emoji-image" src={imageUrl} alt="" draggable={false} referrerPolicy="no-referrer" onError={() => setFailedImage(imageUrl)} />
+      ? <PersistentImage className="noma-add-emoji-image" src={imageUrl} alt="" draggable={false} referrerPolicy="no-referrer" onError={() => setFailedImage(imageUrl)} />
       : <span className="absolute inset-0 flex items-center justify-center text-[130px] leading-none" aria-hidden="true">{fallbackEmoji}</span>}
   </>;
   const titleStyle = { ...getStickerTitleStyle(250), zIndex: 3 };

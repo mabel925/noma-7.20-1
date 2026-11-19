@@ -10,12 +10,15 @@ import { AddItemFlowV13 } from "./components/AddItemFlowV13";
 import { useKeyboardReset } from "./hooks/useKeyboardReset";
 import { memoryStorage, type MemoryPageCursor } from "./services/memoryStorage";
 import { searchChatMemory } from "./services/chatSearch";
+import { setImageResourceOwner } from "./services/imageResources";
+import { createMemoryImageWarmup, memoryImageSources } from "./services/memoryWarmup";
+import { applyMemoryChanges, memoryChanges, reconcileSavedMemories } from "./services/memorySnapshots";
 import type { ChatMessage, ChatSpaceResult, MemoryOpenTarget } from "./types/chat";
 
 import { Wifi, Battery, Signal, RefreshCw, Sparkles, Target, Info } from "lucide-react";
 import { motion, AnimatePresence, useAnimation } from "motion/react";
 
-import { MemoryList, MemoryItem } from "./components/MemoryList";
+import { MemoryList, MemoryItem, MemoryItemDetailOverlay } from "./components/MemoryList";
 import { CloseIcon } from "./components/CloseIcon";
 import { PageNavigation } from "./components/PageNavigation";
 import { useAuth } from "./auth/AuthContext";
@@ -193,6 +196,8 @@ export default function App() {
   const [isMemoryOpen, setIsMemoryOpen] = useState<boolean>(false);
   const [hasOpenedMemory, setHasOpenedMemory] = useState<boolean>(false);
   const [memoryOpenTarget, setMemoryOpenTarget] = useState<MemoryOpenTarget | null>(null);
+  const [chatDetailItem, setChatDetailItem] = useState<MemoryItem | null>(null);
+  useEffect(() => { setChatDetailItem(null); }, [user?.id]);
   const [isStandaloneMode, setIsStandaloneMode] = useState<boolean>(false);
   const launchStartedAtRef = React.useRef(Number(document.documentElement.dataset.nomaLaunchStartedAt) || Date.now());
   const displayedStartupProgressRef = React.useRef(Number(document.querySelector('#startup-splash [role="progressbar"]')?.getAttribute("aria-valuenow")) || 4);
@@ -358,19 +363,39 @@ export default function App() {
   const memorySnapshotRef = React.useRef<MemoryItem[]>([]);
   const persistedMemorySnapshotsRef = React.useRef(new Map<string, MemoryItem[]>());
   const memorySyncQueueRef = React.useRef<Promise<void>>(Promise.resolve());
+  const memoryReadSessionRef = React.useRef<{
+    ownerId: string;
+    cursor: MemoryPageCursor | null;
+    seen: Set<string>;
+    active: boolean;
+    pending: Promise<void> | null;
+  } | null>(null);
+  const imageWarmupRef = React.useRef<ReturnType<typeof createMemoryImageWarmup> | null>(null);
+  const canWarmImagesRef = React.useRef(true);
+  canWarmImagesRef.current = !isCaptureOpen && !isScanning;
   customMemoriesRef.current = customMemories;
 
   const enqueueMemorySync = React.useCallback((
     ownerId: string,
+    previousItems: MemoryItem[],
     nextItems: MemoryItem[],
   ) => {
+    const changes = memoryChanges(previousItems, nextItems);
+    const session = memoryReadSessionRef.current;
     const operation = memorySyncQueueRef.current.then(async () => {
-      const previousItems = persistedMemorySnapshotsRef.current.get(ownerId) || [];
-      const persistedItems = await memoryStorage.syncItems(ownerId, previousItems, nextItems);
+      if (!session?.active || memoryReadSessionRef.current !== session) return [];
+      const baseline = persistedMemorySnapshotsRef.current.get(ownerId) || [];
+      const persistedItems = await memoryStorage.syncItems(ownerId, baseline, applyMemoryChanges(baseline, changes));
+      if (!session.active || memoryReadSessionRef.current !== session) return [];
       // The server response contains authoritative versions and permanent R2
       // references. It becomes the next explicit-CRUD comparison baseline.
-      persistedMemorySnapshotsRef.current.set(ownerId, persistedItems);
-      return persistedItems;
+      const savedById = new Map(persistedItems.map((item) => [item.id, item]));
+      const latest = applyMemoryChanges(persistedMemorySnapshotsRef.current.get(ownerId) || [], {
+        removed: changes.removed,
+        changed: changes.changed.map((item) => savedById.get(item.id) || item),
+      });
+      persistedMemorySnapshotsRef.current.set(ownerId, latest);
+      return latest;
     });
     memorySyncQueueRef.current = operation.then(() => undefined, () => undefined);
     return operation;
@@ -378,6 +403,33 @@ export default function App() {
 
   // Only hydrate data after a user exists. Signed-out sessions intentionally
   // never read the old test database or any account-scoped data.
+  useEffect(() => { setImageResourceOwner(user?.id || null); }, [user?.id]);
+
+  useEffect(() => {
+    if (!user) return;
+    const warmup = createMemoryImageWarmup(() => canWarmImagesRef.current && document.visibilityState !== "hidden");
+    imageWarmupRef.current = warmup;
+    const resume = () => {
+      if (userRef.current?.id !== user.id) return;
+      warmup.add(memoryImageSources(customMemoriesRef.current));
+      warmup.resume();
+    };
+    window.addEventListener("online", resume);
+    document.addEventListener("visibilitychange", resume);
+    return () => {
+      warmup.stop();
+      if (imageWarmupRef.current === warmup) imageWarmupRef.current = null;
+      window.removeEventListener("online", resume);
+      document.removeEventListener("visibilitychange", resume);
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (hydratedUserId !== user?.id) return;
+    imageWarmupRef.current?.add(memoryImageSources(customMemories));
+    imageWarmupRef.current?.resume();
+  }, [customMemories, hydratedUserId, user?.id, isCaptureOpen, isScanning]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -389,7 +441,11 @@ export default function App() {
     setMemoryLoadError(null);
     setMemoryNextCursor(null);
     setHasMoreMemories(false);
-    if (!user || !isHomeReady) return () => { cancelled = true; };
+    setIsLoadingMoreMemories(false);
+    if (!user) return () => { cancelled = true; };
+    const readSession = { ownerId: user.id, cursor: null as MemoryPageCursor | null, seen: new Set<string>(), active: true, pending: null as Promise<void> | null };
+    memoryReadSessionRef.current = readSession;
+    const cancel = () => { cancelled = true; readSession.active = false; };
     persistedMemorySnapshotsRef.current.delete(user.id);
     if (user.isMock) {
       customMemoriesRef.current = DEFAULT_MEMORIES;
@@ -397,7 +453,7 @@ export default function App() {
       setCustomMemories(DEFAULT_MEMORIES);
       setIsMemoryHydrated(true);
       setHydratedUserId(user.id);
-      return () => { cancelled = true; };
+      return cancel;
     }
 
     memoryStorage
@@ -405,6 +461,8 @@ export default function App() {
       .then((page) => {
         if (cancelled) return;
         const items = page.items;
+        readSession.cursor = page.nextCursor;
+        items.forEach((item) => readSession.seen.add(item.id));
         setCustomMemories((currentItems) => {
           const currentIds = new Set(currentItems.map((item) => item.id));
           const mergedItems = currentItems.length === 0
@@ -427,10 +485,8 @@ export default function App() {
         }
       });
 
-    return () => {
-      cancelled = true;
-    };
-  }, [isHomeReady, user?.id, user?.isMock, memoryLoadAttempt]);
+    return cancel;
+  }, [user?.id, user?.isMock, memoryLoadAttempt]);
 
   // Persist only the delta between local snapshots. Writes are serialized so
   // a slower, older request cannot finish after and overwrite a newer edit.
@@ -441,15 +497,22 @@ export default function App() {
     const nextItems = customMemories;
     memorySnapshotRef.current = nextItems;
     if (previousItems === nextItems) return;
-    enqueueMemorySync(user.id, nextItems)
+    const changes = memoryChanges(previousItems, nextItems);
+    if (!changes.changed.length && !changes.removed.size) return;
+    const session = memoryReadSessionRef.current;
+    enqueueMemorySync(user.id, previousItems, nextItems)
       .then((persistedItems) => {
-        if (customMemoriesRef.current !== nextItems) return;
-        memorySnapshotRef.current = persistedItems;
-        customMemoriesRef.current = persistedItems;
-        setCustomMemories(persistedItems);
+        if (!session?.active || memoryReadSessionRef.current !== session || userRef.current?.id !== user.id) return;
+        const current = customMemoriesRef.current;
+        const reconciled = reconcileSavedMemories(current, nextItems, persistedItems);
+        memorySnapshotRef.current = memorySnapshotRef.current === current
+          ? reconciled : reconcileSavedMemories(memorySnapshotRef.current, nextItems, persistedItems);
+        customMemoriesRef.current = reconciled;
+        setCustomMemories(reconciled);
       })
       .catch((error) => {
         console.error("[App] Failed to persist cloud memories:", error);
+        if (!session?.active || memoryReadSessionRef.current !== session || userRef.current?.id !== user.id) return;
         const rollbackItems = persistedMemorySnapshotsRef.current.get(user.id) || [];
         memorySnapshotRef.current = rollbackItems;
         customMemoriesRef.current = rollbackItems;
@@ -458,28 +521,58 @@ export default function App() {
       });
   }, [customMemories, enqueueMemorySync, isMemoryHydrated, hydratedUserId, user?.id, user?.isMock]);
 
-  const loadMoreMemories = React.useCallback(async () => {
+  const loadMoreMemories = React.useCallback((): Promise<void> => {
     const currentUser = userRef.current;
-    if (!currentUser || currentUser.isMock || !memoryNextCursor || isLoadingMoreMemories) return;
+    const session = memoryReadSessionRef.current;
+    if (!currentUser || currentUser.isMock || !session?.active || session.ownerId !== currentUser.id || !session.cursor) return Promise.resolve();
+    if (session.pending) return session.pending;
     setIsLoadingMoreMemories(true);
-    try {
+    const request = (async () => { try {
       await memorySyncQueueRef.current;
-      const page = await memoryStorage.listItemsPage(currentUser.id, memoryNextCursor);
+      if (!session.active) return;
+      const page = await memoryStorage.listItemsPage(currentUser.id, session.cursor);
+      await memorySyncQueueRef.current;
+      if (!session.active || userRef.current?.id !== currentUser.id) return;
       const currentItems = customMemoriesRef.current;
       const currentIds = new Set(currentItems.map((item) => item.id));
-      const mergedItems = [...currentItems, ...page.items.filter((item) => !currentIds.has(item.id))];
-      memorySnapshotRef.current = mergedItems;
-      persistedMemorySnapshotsRef.current.set(currentUser.id, mergedItems);
+      const additions = page.items.filter((item) => !currentIds.has(item.id) && !session.seen.has(item.id));
+      page.items.forEach((item) => session.seen.add(item.id));
+      const mergedItems = [...currentItems, ...additions];
+      const snapshotIds = new Set(memorySnapshotRef.current.map((item) => item.id));
+      memorySnapshotRef.current = [...memorySnapshotRef.current, ...additions.filter((item) => !snapshotIds.has(item.id))];
+      const baseline = persistedMemorySnapshotsRef.current.get(currentUser.id) || [];
+      const savedIds = new Set(baseline.map((item) => item.id));
+      persistedMemorySnapshotsRef.current.set(currentUser.id, [...baseline, ...additions.filter((item) => !savedIds.has(item.id))]);
       customMemoriesRef.current = mergedItems;
       setCustomMemories(mergedItems);
+      session.cursor = page.nextCursor;
       setMemoryNextCursor(page.nextCursor);
       setHasMoreMemories(page.hasMore);
     } catch (error) {
       console.error("[App] Failed to load the next memory page:", error);
     } finally {
-      setIsLoadingMoreMemories(false);
-    }
-  }, [isLoadingMoreMemories, memoryNextCursor]);
+      session.pending = null;
+      if (session.active) setIsLoadingMoreMemories(false);
+    } })();
+    session.pending = request;
+    return request;
+  }, []);
+
+  useEffect(() => {
+    if (!isMemoryHydrated || hydratedUserId !== user?.id || !hasMoreMemories) return;
+    const resume = () => {
+      if (isCaptureOpen || isScanning || document.visibilityState === "hidden") return;
+      void loadMoreMemories();
+    };
+    const timer = window.setTimeout(resume, 150);
+    window.addEventListener("online", resume);
+    document.addEventListener("visibilitychange", resume);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("online", resume);
+      document.removeEventListener("visibilitychange", resume);
+    };
+  }, [isMemoryHydrated, hydratedUserId, user?.id, hasMoreMemories, memoryNextCursor, isHomeReady, isCaptureOpen, isScanning, loadMoreMemories]);
   const [toast, setToast] = useState<string | null>(null);
   const [currentInfoObj, setCurrentInfoObj] = useState<string | null>(null);
 
@@ -622,6 +715,7 @@ export default function App() {
             isMock: Boolean(currentUser.isMock),
             query,
             loadedItems: customMemoriesRef.current,
+            allItemsLoaded: isMemoryHydrated && hydratedUserId === currentUser.id && !hasMoreMemories,
           }));
         } catch (error) {
           source = "local";
@@ -711,6 +805,66 @@ export default function App() {
     setInputValue((prev) => prev + " ");
   };
 
+  const openChatItemDetail = (item: MemoryItem) => {
+    const currentUser = userRef.current;
+    if (!currentUser) { requireAuth(); return; }
+    const ownerId = (item as MemoryItem & { ownerId?: string }).ownerId;
+    if (ownerId && ownerId !== currentUser.id) return;
+    const latest = customMemoriesRef.current.find((memory) => memory.id === item.id);
+    if (!latest) {
+      // A search can find a saved item before its background page arrives.
+      // Adopt it as an existing record, so editing/deleting uses its version.
+      const next = [...customMemoriesRef.current, item];
+      memorySnapshotRef.current = [...memorySnapshotRef.current, item];
+      const baseline = persistedMemorySnapshotsRef.current.get(currentUser.id) || [];
+      if (!baseline.some((memory) => memory.id === item.id)) {
+        persistedMemorySnapshotsRef.current.set(currentUser.id, [...baseline, item]);
+      }
+      memoryReadSessionRef.current?.seen.add(item.id);
+      customMemoriesRef.current = next;
+      setCustomMemories(next);
+    }
+    setChatDetailItem(latest || item);
+  };
+
+  const updateChatDetailItem = (updates: Partial<MemoryItem> | null) => {
+    if (!chatDetailItem) return;
+    const itemId = chatDetailItem.id;
+    const updateItems = (items: MemoryItem[]) => updates
+      ? items.map((item) => item.id === itemId ? { ...item, ...updates } : item)
+      : items.filter((item) => item.id !== itemId);
+    const updateSpaces = (spaces: ChatSpaceResult[]) => spaces.map((space) => {
+      const previous = space.items.find((item) => item.id === itemId);
+      if (!previous) return space;
+      const belongs = (item: MemoryItem) => space.kind === "parent"
+        ? item.parentLocationName?.trim() === space.name
+        : item.parentLocationName?.trim() === space.parentName && item.subLocationName?.trim() === space.name;
+      const next = updates ? { ...previous, ...updates } : null;
+      const kept = Boolean(next && belongs(next));
+      return {
+        ...space,
+        items: updateItems(space.items).filter((item) => item.id !== itemId || kept),
+        itemCount: Math.max(0, space.itemCount - (kept ? 0 : 1)),
+        subSpaces: space.subSpaces.map((sub) => ({ ...sub, itemCount: Math.max(0, sub.itemCount
+          - (previous.subLocationName?.trim() === sub.name ? 1 : 0)
+          + (kept && next?.subLocationName?.trim() === sub.name ? 1 : 0)) })),
+      };
+    });
+    setCustomMemories(updateItems);
+    setMessages((previous) => previous.map((message) => ({
+      ...message,
+      ...(message.items ? { items: updateItems(message.items) } : {}),
+      ...(message.spaces ? { spaces: updateSpaces(message.spaces) } : {}),
+    })));
+    if (chatResultContextRef.current.items) {
+      chatResultContextRef.current.items = updateItems(chatResultContextRef.current.items);
+    }
+    if (chatResultContextRef.current.spaces) {
+      chatResultContextRef.current.spaces = updateSpaces(chatResultContextRef.current.spaces);
+    }
+    setChatDetailItem(updates ? { ...chatDetailItem, ...updates } : null);
+  };
+
   // Quick preset keyword taps
   // Add item save to Noma's searchable memory bank
   const handleItemAdded = async (
@@ -767,7 +921,7 @@ export default function App() {
 
     const persistedItems = currentUser.isMock
       ? nextItems
-      : await enqueueMemorySync(currentUser.id, nextItems);
+      : await enqueueMemorySync(currentUser.id, previousItems, nextItems);
     newItem = persistedItems.find((item) => item.id === newItem.id) || newItem;
     memorySnapshotRef.current = persistedItems;
     persistedMemorySnapshotsRef.current.set(currentUser.id, persistedItems);
@@ -1033,10 +1187,7 @@ export default function App() {
             isChatActive={isChatActive}
             isCaptureOpen={isCaptureOpen}
             isSearching={isChatSearching}
-            onItemResultClick={(item) => {
-              setMemoryOpenTarget({ requestId: Date.now(), kind: "item", item });
-              openMemory();
-            }}
+            onItemResultClick={openChatItemDetail}
             onSpaceResultClick={(space: ChatSpaceResult) => {
               setMemoryOpenTarget({ requestId: Date.now(), kind: "space", space });
               openMemory();
@@ -1045,6 +1196,19 @@ export default function App() {
         )}
 
 
+
+        <>
+          {chatDetailItem && !isMemoryOpen && (
+            <MemoryItemDetailOverlay
+              key={chatDetailItem.id}
+              item={customMemories.find((item) => item.id === chatDetailItem.id) || chatDetailItem}
+              memories={customMemories}
+              onClose={() => setChatDetailItem(null)}
+              onSave={(updates) => updateChatDetailItem(updates)}
+              onDelete={() => updateChatDetailItem(null)}
+            />
+          )}
+        </>
 
         {/* 7. HIGH-FIDELITY ADD ITEM CAPTURE VIEW & STICKER PIXELATE SCANNER */}
         {!isMemoryOpen && (

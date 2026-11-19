@@ -1,3 +1,4 @@
+import { PersistentImage } from "./PersistentImage";
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Camera, Check, Image as ImageIcon, RotateCcw } from "lucide-react";
@@ -2991,7 +2992,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                       vectorEffect="non-scaling-stroke"
                     />
                   </svg>
-                  <img
+                  <PersistentImage
                     src={newDraft.imgUrl}
                     alt={newDraft.name || newSpaceTitle}
                     className="h-[60px] w-[60px] shrink-0 rounded-[12px] border-[3px] border-white object-cover"
@@ -3034,7 +3035,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                             isSelected ? "bg-white" : "bg-white/50"
                           }`}
                         >
-                          <img
+                          <PersistentImage
                             src={option.imgUrl}
                             alt={option.name}
                             className="h-[60px] w-[60px] shrink-0 rounded-[12px] border-[3px] border-white object-cover"
@@ -3677,7 +3678,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                   willChange: "transform, opacity, backdrop-filter",
                 }}
               >
-                <img
+                <PersistentImage
                   src={option.imgUrl}
                   alt={option.name}
                   className="h-[43px] w-[43px] shrink-0 rounded-[8px] border-[2.5px] border-white object-cover"
@@ -4488,7 +4489,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                       setSubLocationHighlight({ x, y });
                     }}
                   >
-                    <img 
+                    <PersistentImage
                       src={subLocationImg} 
                       alt="Sub-location captured preview" 
                       className="w-full h-full object-cover"
@@ -4553,7 +4554,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                 {/* 4. Parent Location Confirm (Equivalent to uploaded image fully stretched viewport) */}
                 {storageFlowStep === "parent_confirm" && parentLocationImg && (
                   <div className="relative w-full h-full overflow-hidden flex items-center justify-center">
-                    <img 
+                    <PersistentImage
                       src={parentLocationImg} 
                       alt="Parent-location captured preview" 
                       className="w-full h-full object-cover"
@@ -4816,7 +4817,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                         {/* Parent Location Image (Base) */}
                         <div className="w-[96px] h-[96px] rounded-[12px] overflow-hidden shadow-inner bg-neutral-100 border border-neutral-100 flex items-center justify-center">
                           {parentLocationImg ? (
-                            <img src={parentLocationImg} alt="Space" className="w-full h-full object-cover" />
+                            <PersistentImage src={parentLocationImg} alt="Space" className="w-full h-full object-cover" />
                           ) : (
                             <span className="text-3xl">🏠</span>
                           )}
@@ -4825,7 +4826,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                         {/* Sub Location Image (Overlapping at bottom-right corner) */}
                         <div className="absolute bottom-[-4px] right-[4px] w-[58px] h-[58px] rounded-[12px] overflow-hidden border-[4px] border-white shadow-none bg-neutral-100 flex items-center justify-center z-10">
                           {subLocationImg ? (
-                            <img src={subLocationImg} alt="Sub-Space" className="w-full h-full object-cover" />
+                            <PersistentImage src={subLocationImg} alt="Sub-Space" className="w-full h-full object-cover" />
                           ) : (
                             <span className="text-[18px]">📦</span>
                           )}
@@ -5106,7 +5107,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                               }}
                               title="View/Edit Sub-location"
                             >
-                              <img
+                              <PersistentImage
                                 src={subLocationImg}
                                 alt="Sub location thumbnail"
                                 className="w-full h-full object-cover rounded-sm"
