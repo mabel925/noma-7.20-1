@@ -121,8 +121,8 @@ const commitSpaceSkin = (entity: DraftEntity, mode: Mode): DraftEntity => {
   return spaceHasSkin(entity, fallbackMode) ? { ...entity, lastSkinMode: fallbackMode } : entity;
 };
 
-const ModeSwitch = ({ mode, onChange, onClose, hidden = false }: { mode: Mode; onChange: (mode: Mode) => void; onClose: () => void; hidden?: boolean }) => (
-  <div className={`noma-add-modebar${hidden ? " is-keyboard-hidden" : ""}`}>
+const ModeSwitch = ({ mode, onChange, onClose, hidden = false, fadeIn = false }: { mode: Mode; onChange: (mode: Mode) => void; onClose: () => void; hidden?: boolean; fadeIn?: boolean }) => (
+  <div className={`noma-add-modebar${hidden ? " is-keyboard-hidden" : ""}${fadeIn ? " noma-add-result-fade-in" : ""}`}>
     <div className="noma-add-segmented" role="tablist" aria-label="Capture mode">
       <button type="button" role="tab" aria-selected={mode === "emoji"} className={mode === "emoji" ? "is-active" : ""} onClick={() => onChange("emoji")}>
         <span aria-hidden="true">🦄</span><span>Emoji Mode</span>
@@ -1199,7 +1199,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
 
   const renderItemResult = () => (
     <>
-      <ModeSwitch mode={itemMode} onChange={changeItemMode} onClose={onClose} />
+      <ModeSwitch mode={itemMode} onChange={changeItemMode} onClose={onClose} fadeIn={itemMode === "camera"} />
       {(stage === "切换emoji" || isCategorySelectorOpen) && (
         <button
           type="button"
@@ -1236,7 +1236,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
         )}
 
         <CategoryFan open={isCategorySelectorOpen} current={item.category} onSelect={(category) => { setItem((current) => ({ ...current, category })); setIsCategorySelectorOpen(false); }} />
-        <button type="button" className="noma-add-category" onClick={() => { setStage("识别emoji"); setIsCategorySelectorOpen((open) => !open); }}>
+        <button type="button" className={`noma-add-category${itemMode === "camera" ? " noma-add-result-fade-in" : ""}`} onClick={() => { setStage("识别emoji"); setIsCategorySelectorOpen((open) => !open); }}>
           {item.category}<TagSwitchIcon />
         </button>
       </main>

@@ -1308,6 +1308,11 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
   animation: noma-add-fade-in 200ms 480ms ease-out both;
 }
 
+.noma-add-modebar.noma-add-result-fade-in,
+.noma-add-item-result .noma-add-category.noma-add-result-fade-in {
+  animation: noma-add-fade-in 360ms ease-out both;
+}
+
 .noma-add-round-actions.is-revealing .noma-add-round-button {
   transform-origin: center;
   animation: noma-add-button-pop 420ms 720ms both;
@@ -1336,6 +1341,8 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
   .noma-add-item-result.is-revealing .noma-add-emoji-media,
   .noma-add-emoji-media.is-revealing .noma-add-emoji-outline,
   .noma-add-item-result.is-revealing .noma-add-category,
+  .noma-add-modebar.noma-add-result-fade-in,
+  .noma-add-item-result .noma-add-category.noma-add-result-fade-in,
   .noma-add-round-actions.is-revealing .noma-add-round-button {
     animation-duration: 1ms;
     animation-delay: 0ms;

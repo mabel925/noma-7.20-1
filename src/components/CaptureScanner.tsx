@@ -318,17 +318,14 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const RESULT_INPUT_BOTTOM_GAP = 130;
   const RESULT_BUTTON_INPUT_GAP = 26;
   const DISINTEGRATE_DURATION = 1850;
-  const CUTOUT_FLIGHT_DELAY = DISINTEGRATE_DURATION * 0.35;
+  const CUTOUT_FLIGHT_DELAY = 0;
   const CUTOUT_FLIGHT_DURATION = DISINTEGRATE_DURATION * 0.52;
-  const RESULT_TITLE_REVEAL_DELAY = CUTOUT_FLIGHT_DELAY + 220;
+  // Keep the existing title timing independent of the earlier cutout start.
+  const RESULT_TITLE_REVEAL_DELAY = DISINTEGRATE_DURATION * 0.35 + 220;
   const OUTLINE_TRACE_DURATION = 300;
   const OUTLINE_TRACE_COMMIT_LEAD = 1000 / 60;
   const OUTLINE_TRACE_MANUAL_LEAD = 60;
   const DIRECT_THUMBNAIL_FLIGHT_DURATION = 680;
-  const OUTLINE_TRACE_START_OFFSET = Math.max(
-    0,
-    CUTOUT_FLIGHT_DURATION - OUTLINE_TRACE_DURATION - OUTLINE_TRACE_COMMIT_LEAD - OUTLINE_TRACE_MANUAL_LEAD
-  );
   const [browserChromeInset, setBrowserChromeInset] = useState<number>(0);
   const [isStandaloneDisplay, setIsStandaloneDisplay] = useState<boolean>(() =>
     typeof window !== "undefined" && (
@@ -2028,7 +2025,6 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
 
     let firstFrame = 0;
     let secondFrame = 0;
-    let outlineTraceTimer: number | undefined;
     const flightDelay = skipScanEffects ? 0 : CUTOUT_FLIGHT_DELAY;
     const flightDuration = skipScanEffects ? DIRECT_THUMBNAIL_FLIGHT_DURATION : CUTOUT_FLIGHT_DURATION;
     const titleRevealDelay = skipScanEffects ? 120 : RESULT_TITLE_REVEAL_DELAY;
@@ -2043,9 +2039,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
           if (!skipScanEffects) {
             outlineTraceDeadlineRef.current =
               performance.now() + flightDuration - OUTLINE_TRACE_COMMIT_LEAD - OUTLINE_TRACE_MANUAL_LEAD;
-            outlineTraceTimer = window.setTimeout(() => {
-              setIsOutlineTraceReady(true);
-            }, OUTLINE_TRACE_START_OFFSET);
+            // Begin tracing alongside the flight, without a separate delay.
+            setIsOutlineTraceReady(true);
           }
           if (flightEl?.animate) {
             cutoutFlightAnimationRef.current?.cancel();
@@ -2074,7 +2069,6 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     return () => {
       clearTimeout(flightDelayTimer);
       clearTimeout(titleRevealTimer);
-      if (outlineTraceTimer !== undefined) clearTimeout(outlineTraceTimer);
       if (firstFrame) cancelAnimationFrame(firstFrame);
       if (secondFrame) cancelAnimationFrame(secondFrame);
       cutoutFlightAnimationRef.current?.cancel();
@@ -2091,7 +2085,6 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     CUTOUT_FLIGHT_DURATION,
     DIRECT_THUMBNAIL_FLIGHT_DURATION,
     RESULT_TITLE_REVEAL_DELAY,
-    OUTLINE_TRACE_START_OFFSET,
     OUTLINE_TRACE_COMMIT_LEAD,
     OUTLINE_TRACE_MANUAL_LEAD,
   ]);
@@ -2293,7 +2286,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         if (progress < 1.0) {
           frameId = requestAnimationFrame(animateTrace);
         } else {
-          // The completed outline and the returning subject land on the same keyframe.
+          // Keep the completed outline visible for the rest of the flight.
           setIsTracingContour(false);
           setTraceCompleted(true);
         }
