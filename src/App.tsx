@@ -576,16 +576,6 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [currentInfoObj, setCurrentInfoObj] = useState<string | null>(null);
 
-  // Remote AI is enabled by default in production. The hidden diagnostic
-  // toggle remains available for temporarily switching to local fallbacks.
-  useEffect(() => {
-    const API_TOGGLE_VERSION = "remote-default-on-v1";
-    if (localStorage.getItem("IS_API_TOGGLE_VERSION") !== API_TOGGLE_VERSION) {
-      localStorage.setItem("IS_API_ENABLED", "true");
-      localStorage.setItem("IS_API_TOGGLE_VERSION", API_TOGGLE_VERSION);
-    }
-  }, []);
-
   // Dynamic status bar clock (real-time high fidelity)
   const [currentTime, setCurrentTime] = useState<string>("09:41");
 
@@ -634,49 +624,6 @@ export default function App() {
       document.body.classList.remove("pwa-preview");
     };
   }, []);
-
-  // API Switch config easter egg (5 fast clicks anywhere on home screen layout to toggle IS_API_ENABLED)
-  const [clickCount, setClickCount] = useState<number>(0);
-  const [lastClickTime, setLastClickTime] = useState<number>(0);
-
-  const handleEasterEggClick = (e: React.MouseEvent) => {
-    // Check if user is clicking on active inputs, buttons or selects to avoid hijacking interactive elements
-    const target = e.target as HTMLElement;
-    if (
-      target.tagName === "BUTTON" || 
-      target.tagName === "INPUT" || 
-      target.tagName === "SELECT" ||
-      target.tagName === "TEXTAREA" || 
-      target.closest("button") || 
-      target.closest("a") ||
-      target.closest("input") ||
-      target.closest("select") ||
-      target.closest("textarea")
-    ) {
-      return;
-    }
-    
-    const now = Date.now();
-    // Fast consecutive clicks within 700ms
-    if (now - lastClickTime < 700) {
-      const nextCount = clickCount + 1;
-      if (nextCount >= 5) {
-        // Toggle IS_API_ENABLED
-        const currentEnabled = localStorage.getItem("IS_API_ENABLED") === "true";
-        const nextEnabled = !currentEnabled;
-        localStorage.setItem("IS_API_ENABLED", String(nextEnabled));
-        setClickCount(0);
-        
-        // Dynamic feedback toast
-        setToast(nextEnabled ? "🔌 API 已开启 (将正常调用真实线上接口)" : "📴 API 已关闭 (已切换至 Mock 本地离线模拟)");
-      } else {
-        setClickCount(nextCount);
-      }
-    } else {
-      setClickCount(1);
-    }
-    setLastClickTime(now);
-  };
 
   // Auto-clear toast notification
   useEffect(() => {
@@ -1000,7 +947,6 @@ export default function App() {
       {/* 1. CONTAINER PANEL (Full-screen adaptively on mobile using fixed inset-0, clean card mockup on desktop) */}
       <div
         id="noma-iphone-frame"
-        onClick={handleEasterEggClick}
         className="fixed inset-0 md:relative md:inset-auto w-full max-w-none md:max-w-[393px] h-[100vh] md:h-[852px] rounded-none md:rounded-[36px] bg-transparent border-none md:border md:border-white/10 shadow-none md:shadow-[0_24px_64px_rgba(0,0,0,0.85)] flex flex-col overflow-hidden will-change-transform z-10"
       >
 

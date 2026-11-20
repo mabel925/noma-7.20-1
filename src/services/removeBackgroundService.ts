@@ -5,7 +5,7 @@
 
 import { NOMA_AI_URL } from "./backendUrls";
 import { AiAccessError, getAiAuthHeaders } from "./aiAuth";
-import { isApiEnabled, prepareImage } from "./aiService";
+import { prepareImage } from "./aiService";
 
 export type CutoutMode = "api" | "local";
 
@@ -155,11 +155,6 @@ export async function remove_background(
       throw new Error("Local background removal is no longer supported");
     }
 
-    // 统一 API 拦截
-    if (!isApiEnabled()) {
-      throw new Error("Cloud background removal is disabled");
-    }
-
     const totalStartedAt = performance.now();
     if (onProgress) onProgress("Optimizing image upload...");
     const preparationStartedAt = performance.now();
@@ -176,7 +171,7 @@ export async function remove_background(
 
     if (onProgress) onProgress("Uploading and extracting subject...");
     const workerUrl = NOMA_AI_URL;
-    console.log(`[RemoveBgService] Fetching from proxy ${workerUrl} with type: 'matting'. origin=${window.location.origin} apiEnabled=${isApiEnabled()}`);
+    console.log(`[RemoveBgService] Fetching from proxy ${workerUrl} with type: 'matting'. origin=${window.location.origin}`);
 
     const requestBody = JSON.stringify({
       type: "matting",

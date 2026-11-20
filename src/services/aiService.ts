@@ -213,18 +213,6 @@ export function prepareImage(imageInput: File | Blob | string, maxWidth = 800): 
   return promise;
 }
 
-/**
- * Check if remote API is enabled.
- */
-export function isApiEnabled(): boolean {
-  try {
-    const saved = localStorage.getItem("IS_API_ENABLED");
-    return saved !== "false";
-  } catch (e) {
-    return true;
-  }
-}
-
 const NOMA_BACKEND_URL = NOMA_AI_URL;
 const AI_REQUEST_TIMEOUT_MS = 18_000;
 
@@ -260,53 +248,7 @@ function getClientBuildId(): string {
  * Unified request sender function to Noma Cloudflare Workers Backend
  */
 export async function callNomaBackend(type: "process-image" | "matting" | "vision" | "title" | "emoji-classify", payload: any, scanId?: string): Promise<any> {
-  if (!isApiEnabled()) {
-    console.log(`[API Intercept] IS_API_ENABLED is false. Returning high-fidelity mock data for type "${type}". origin=${getRequestOrigin()}`);
-    // Add artificial delay for realistic simulation
-    await new Promise((resolve) => setTimeout(resolve, 800));
-
-    if (type === "process-image") {
-      return {
-        vision: { ok: true, data: { choices: [{ message: { content: JSON.stringify({ title: "Aesthetic Mug", category: "家居日用", labels: ["mug"] }) } }] } },
-        matting: { ok: true, data: { result_base64: payload.image_base64 || "" } },
-      };
-    } else if (type === "vision") {
-      // 识物或空间分类的高拟真 Mock，保持结构完美匹配真实 Cloudflare Worker
-      return {
-        choices: [
-          {
-            message: {
-              content: JSON.stringify({
-                title: "Aesthetic Mug",
-                category: "家居日用",
-                labels: ["mug", "cup", "ceramic"]
-              })
-            }
-          }
-        ]
-      };
-    } else if (type === "emoji-classify") {
-      return classifyEmojiLocally(String(payload.title || ""), payload.kind || "item");
-    } else if (type === "title") {
-      // 标题美化 Mock 数据
-      return {
-        choices: [
-          {
-            message: {
-              content: "Aesthetic Mug"
-            }
-          }
-        ]
-      };
-    } else if (type === "matting") {
-      // 抠图接口 Mock，直接将原始 Base64 作为结果返回
-      return {
-        result_base64: payload.image_base64 || ""
-      };
-    }
-  }
-
-  console.log(`[Noma Backend] Sending request of type "${type}" to ${NOMA_BACKEND_URL}. origin=${getRequestOrigin()} apiEnabled=${isApiEnabled()}`);
+  console.log(`[Noma Backend] Sending request of type "${type}" to ${NOMA_BACKEND_URL}. origin=${getRequestOrigin()}`);
 
   let response: Response;
   let requestUserId: string;

@@ -2,7 +2,7 @@ import { PersistentImage } from "./PersistentImage";
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Camera, Check, Image as ImageIcon, RotateCcw } from "lucide-react";
-import { isApiEnabled, processCapturedImage, recognizeImage, type RecognitionResult } from "../services/aiService";
+import { processCapturedImage, recognizeImage, type RecognitionResult } from "../services/aiService";
 import { remove_background } from "../services/removeBackgroundService";
 import { AiAccessError, createAiScanId } from "../services/aiAuth";
 import { createCaptureResult } from "../services/captureResult.js";
@@ -450,7 +450,6 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   }, [aiAccessNotice]);
 
   const checkAiCaptureAccess = (): "available" | "quota" | "unavailable" => {
-    if (!isApiEnabled()) return "unavailable";
     return checkAiScanAccess();
   };
 
