@@ -135,15 +135,16 @@ const ModeSwitch = ({ mode, onChange, onClose, hidden = false, fadeIn = false }:
   </div>
 );
 
-const RoundActions = ({ onRestart, onConfirm, onCancel, disabled = false, loading = false, reveal = false }: {
+const RoundActions = ({ onRestart, onConfirm, onCancel, disabled = false, loading = false, reveal = false, captureReveal = false }: {
   onRestart: () => void;
   onConfirm: () => void;
   onCancel?: () => void;
   disabled?: boolean;
   loading?: boolean;
   reveal?: boolean;
+  captureReveal?: boolean;
 }) => (
-  <div className={`noma-add-round-actions${reveal ? " is-revealing" : ""}${onCancel ? " is-three" : ""}`}>
+  <div className={`noma-add-round-actions${reveal ? " is-revealing" : ""}${captureReveal ? " is-capture-reveal" : ""}${onCancel ? " is-three" : ""}`}>
     <button type="button" className="noma-add-round-button is-restart" onClick={onRestart} aria-label="Restart"><RestartIcon className="h-7 w-7" /></button>
     <button type="button" className="noma-add-round-button is-confirm" onClick={onConfirm} disabled={disabled} aria-label="Confirm">
       {loading ? <LoaderCircle className="h-6 w-6 animate-spin" /> : <Check className="h-7 w-7" strokeWidth={2.2} />}
@@ -1252,6 +1253,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
         <div className="noma-add-item-actions">
           <RoundActions
             reveal={isItemReveal || isActionReveal}
+            captureReveal={itemMode === "camera"}
             onRestart={() => { setIsItemReveal(false); setIsActionReveal(false); setItem((current) => ({ ...EMPTY_ITEM, name: current.name })); setStage(itemMode === "camera" ? "新增物品-拍摄模式" : "新增物品-默认"); if (itemMode === "emoji") window.setTimeout(() => itemInputRef.current?.focus(), 50); }}
             onConfirm={() => { setStage("新增spaces"); setSpaceMode("emoji"); setActiveSpace("sub"); setSpaceCameraTarget("sub"); updateEditingSpace(null); setSpaceInput(""); (document.activeElement as HTMLElement | null)?.blur?.(); }}
           />

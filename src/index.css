@@ -1322,6 +1322,14 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
   animation-delay: 850ms;
 }
 
+.noma-add-round-actions.is-revealing.is-capture-reveal .noma-add-round-button {
+  animation-delay: 0ms;
+}
+
+.noma-add-round-actions.is-revealing.is-capture-reveal .noma-add-round-button:nth-child(2) {
+  animation-delay: 130ms;
+}
+
 /* Location capture has the confirm action in the visual center. Reveal it
    first, then the reset and close actions in the same entrance sequence. */
 .noma-add-round-actions.is-revealing.is-three .noma-add-round-button:nth-child(2) {
@@ -1343,6 +1351,8 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
   .noma-add-item-result.is-revealing .noma-add-category,
   .noma-add-modebar.noma-add-result-fade-in,
   .noma-add-item-result .noma-add-category.noma-add-result-fade-in,
+  .noma-add-round-actions.is-revealing.is-capture-reveal .noma-add-round-button,
+  .noma-add-round-actions.is-revealing.is-capture-reveal .noma-add-round-button:nth-child(2),
   .noma-add-round-actions.is-revealing .noma-add-round-button {
     animation-duration: 1ms;
     animation-delay: 0ms;

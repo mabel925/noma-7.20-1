@@ -247,15 +247,20 @@ function getClientBuildId(): string {
 /**
  * Unified request sender function to Noma Cloudflare Workers Backend
  */
-export async function callNomaBackend(type: "process-image" | "matting" | "vision" | "title" | "emoji-classify", payload: any, scanId?: string): Promise<any> {
+export async function callNomaBackend(type: "process-image" | "matting" | "vision" | "title" | "emoji-classify", payload: any, scanId?: string, signal?: AbortSignal): Promise<any> {
+  signal?.throwIfAborted();
   console.log(`[Noma Backend] Sending request of type "${type}" to ${NOMA_BACKEND_URL}. origin=${getRequestOrigin()}`);
 
   let response: Response;
   let requestUserId: string;
+  let responseText: string;
   const controller = new AbortController();
+  const abortRequest = () => controller.abort(signal?.reason);
+  signal?.addEventListener("abort", abortRequest, { once: true });
   const timeout = window.setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
   try {
     const auth = await getAiRequestAuth(scanId);
+    signal?.throwIfAborted();
     requestUserId = auth.userId;
     response = await fetch(NOMA_BACKEND_URL, {
       method: "POST",
@@ -271,7 +276,10 @@ export async function callNomaBackend(type: "process-image" | "matting" | "visio
       }),
       signal: controller.signal,
     });
+    responseText = await response.text();
+    signal?.throwIfAborted();
   } catch (error: any) {
+    if (signal?.aborted) throw signal.reason;
     if (error instanceof AiAccessError) throw error;
     if (controller.signal.aborted) {
       throw new Error(`Worker request timed out after ${AI_REQUEST_TIMEOUT_MS / 1000}s`);
@@ -279,10 +287,10 @@ export async function callNomaBackend(type: "process-image" | "matting" | "visio
     throw new Error(`Worker request could not be sent from ${getRequestOrigin()}: ${error?.message || "network/CORS failure"}`);
   } finally {
     window.clearTimeout(timeout);
+    signal?.removeEventListener("abort", abortRequest);
   }
 
   publishAiAccess(response, requestUserId);
-  const responseText = await response.text();
   if (!response.ok) {
     let detail = responseText.replace(/\s+/g, " ").trim().slice(0, 500);
     try {
@@ -475,14 +483,17 @@ export interface CapturedImageProcessingResult {
 export async function processCapturedImage(
   imageInput: File | Blob | string,
   scanId: string,
+  signal?: AbortSignal,
 ): Promise<CapturedImageProcessingResult> {
+  signal?.throwIfAborted();
   const sharedBase64 = stripBase64Prefix(await prepareImage(imageInput, 512));
+  signal?.throwIfAborted();
   if (!sharedBase64) throw new Error("Image preparation returned no data");
 
   const result = await callNomaBackend("process-image", {
     image_base64: sharedBase64,
     mime_type: "image/jpeg",
-  }, scanId);
+  }, scanId, signal);
 
   const directRecognition = result?.recognition;
   const visionData = result?.vision?.data;
