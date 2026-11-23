@@ -6,12 +6,13 @@ const encoder = new TextEncoder();
 const frame = (content) => `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`;
 const result = { title: "Coffee Mug", category: "食品厨房", labels: ["cup"] };
 
-async function capture(makeResponse, envOverrides = {}) {
+async function capture(makeResponse, envOverrides = {}, bodyOverrides = {}) {
   const originalFetch = globalThis.fetch;
   const originalLog = console.log;
   const logs = [];
   let providerCalls = 0;
   const providerEndpoints = [];
+  const providerPayloads = [];
   console.log = (...args) => logs.push(args.join(" "));
   globalThis.fetch = async (input, init = {}) => {
     const url = String(input);
@@ -22,6 +23,7 @@ async function capture(makeResponse, envOverrides = {}) {
       url === "https://maas.qianwenaiapi.com/compatible-mode/v1/chat/completions") {
       providerCalls += 1;
       providerEndpoints.push(url);
+      providerPayloads.push(JSON.parse(init.body));
       return makeResponse(init.signal);
     }
     throw new Error(`Unexpected provider request: ${url}`);
@@ -30,7 +32,7 @@ async function capture(makeResponse, envOverrides = {}) {
     const response = await worker.fetch(new Request("https://noma.test/", {
       method: "POST",
       headers: { Authorization: "Bearer test-user-token", "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "process-image", scan_id: "scan-stream-test", image_base64: "dGVzdA==" }),
+      body: JSON.stringify({ type: "process-image", scan_id: "scan-stream-test", image_base64: "dGVzdA==", ...bodyOverrides }),
     }), {
       SUPABASE_URL: "https://example.supabase.co",
       SUPABASE_PUBLISHABLE_KEY: "test-supabase-key",
@@ -39,7 +41,7 @@ async function capture(makeResponse, envOverrides = {}) {
       CAPTURE_VISION_TIMEOUT_MS: "50",
       ...envOverrides,
     });
-    return { data: await response.json(), logs, providerCalls, providerEndpoints };
+    return { data: await response.json(), logs, providerCalls, providerEndpoints, providerPayloads };
   } finally {
     globalThis.fetch = originalFetch;
     console.log = originalLog;
@@ -72,6 +74,44 @@ test("a complete valid recognition succeeds even when Qwen never closes its stre
   assert.equal(providerCalls, 1);
   assert.equal(cancelled, true);
   assert(logs.some((line) => line.includes("completion=valid_json")));
+});
+
+for (const type of ["process-image", "vision"]) {
+  test(`${type} asks for a Chinese title in the same recognition request`, async () => {
+    const expected = { title: "保温杯", category: "食品厨房", labels: ["杯子", "mug"] };
+    const bytes = encoder.encode(frame(JSON.stringify(expected)) + "data: [DONE]\n\n");
+    const { data, providerCalls, providerPayloads } = await capture(() => new Response(new ReadableStream({
+      start(controller) {
+        for (let i = 0; i < bytes.length; i += 7) controller.enqueue(bytes.slice(i, i + 7));
+        controller.close();
+      },
+    }), { headers: { "Content-Type": "text/event-stream" } }), {}, { type, language: "zh" });
+    const recognized = type === "vision" ? JSON.parse(data.choices[0].message.content) : data.recognition;
+    assert.deepEqual(recognized, expected);
+    assert.equal(providerCalls, 1, "no extra translation request");
+    const prompt = providerPayloads[0].messages[0].content[1].text;
+    assert.match(prompt, /Simplified Chinese/);
+    assert.doesNotMatch(prompt, /common English name/);
+  });
+}
+
+for (const language of [undefined, "en", "untrusted language instructions"]) {
+  test(`English is preserved for language=${language}`, async () => {
+    const { providerPayloads, data } = await capture(signal => openStream(signal, frame(JSON.stringify(result))), {}, { language });
+    assert.equal(data.recognition.title, result.title);
+    assert.match(providerPayloads[0].messages[0].content[1].text, /common English name/);
+    assert.doesNotMatch(providerPayloads[0].messages[0].content[1].text, /untrusted language instructions/);
+  });
+}
+
+test("a Chinese placeholder is still a recognition failure", async () => {
+  const placeholder = { ...result, title: "未知物品" };
+  const { data, providerCalls } = await capture(() => new Response(frame(JSON.stringify(placeholder)) + "data: [DONE]\n\n", {
+    headers: { "Content-Type": "text/event-stream" },
+  }), {}, { language: "zh" });
+  assert.equal(data.recognition, undefined);
+  assert.equal(data.vision.ok, false);
+  assert.equal(providerCalls, 1);
 });
 
 test("recognition joins SSE frames split through UTF-8 characters without accepting an earlier partial title", async () => {

@@ -99,7 +99,70 @@ body.capture-page-open::before {
   --chat-composer-height: 54px;
   --chat-content-right: 10px;
   --chat-content-width: 270px;
+  --memory-tab-gap: 58px;
   --gradient-pill-fill: linear-gradient(to bottom left, rgb(245, 181, 217) 0%, rgb(255, 199, 166) 66%, rgb(161, 235, 217) 100%);
+}
+
+:root {
+  --profile-surface: var(--install-surface);
+  --profile-ink: var(--install-ink);
+  --profile-muted: rgba(35, 33, 33, 0.48);
+  --profile-card: var(--install-white);
+  --profile-border: rgba(35, 33, 33, 0.2);
+  --profile-error: #b83232;
+  --profile-width: 393px;
+  --profile-height: 852px;
+  --profile-gutter: 15px;
+  --profile-gap: 13px;
+  --profile-card-radius: 24px;
+  --profile-avatar: 80px;
+  --profile-avatar-border: 3px;
+  --profile-title: 20px;
+  --profile-body: 16px;
+  --profile-caption: 12px;
+  --profile-target: 44px;
+  --profile-icon: 18px;
+  --profile-safe-icon: 16px;
+  --profile-space: 20px;
+  --profile-small: 8px;
+  --profile-hairline: 1px;
+}
+.noma-profile-overlay { position: fixed; inset: 0; z-index: 100001; display: grid; place-items: center; background: var(--profile-surface); font-family: var(--font-sans); color: var(--profile-ink); }
+.noma-profile-page { display: flex; flex-direction: column; width: 100%; height: var(--app-height, 100dvh); background: var(--profile-surface); overflow: hidden; }
+.noma-profile-navigation { outline: none; flex-shrink: 0; }
+.noma-profile-scroll { display: flex; flex: 1; min-height: 0; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; padding: var(--profile-space) var(--profile-gutter) max(var(--profile-space), env(safe-area-inset-bottom)); }
+.noma-profile-identity { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
+.noma-profile-avatar { width: var(--profile-avatar); height: var(--profile-avatar); border: var(--profile-avatar-border) solid var(--profile-card); border-radius: 50%; object-fit: cover; }
+.noma-profile-name { display: flex; max-width: 100%; align-items: center; justify-content: center; gap: var(--profile-small); margin-top: calc(var(--profile-space) - var(--profile-hairline)); padding-left: calc(var(--profile-icon) + var(--profile-small)); }
+.noma-profile-name h2 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--profile-title); font-weight: 700; line-height: 1.2; }
+.noma-profile-name > button { display: grid; flex-shrink: 0; place-items: center; width: var(--profile-icon); height: var(--profile-target); margin-block: calc((var(--profile-icon) - var(--profile-target)) / 2); position: relative; }
+.noma-profile-name > button::before { content: ""; position: absolute; inset: calc((var(--profile-icon) - var(--profile-target)) / 2); }
+.noma-profile-email { color: var(--profile-muted); font-size: var(--profile-caption); margin-top: var(--profile-small); max-width: 100%; overflow-wrap: anywhere; text-align: center; }
+.noma-profile-plan { display: grid; gap: var(--profile-small); margin-top: calc(var(--profile-space) + var(--profile-gap)); padding: var(--profile-space) calc(var(--profile-space) + var(--profile-hairline)); background: var(--profile-card); border-radius: var(--profile-card-radius); font-size: var(--profile-body); }
+.noma-profile-plan > div { display: flex; align-items: baseline; justify-content: space-between; gap: var(--profile-small); }
+.noma-profile-plan dt { color: var(--profile-muted); }
+.noma-profile-plan dd { margin: 0; text-align: right; }
+.noma-profile-language { display: flex; width: 100%; justify-content: space-between; align-items: center; margin-top: var(--profile-gap); padding: calc(var(--profile-space) + var(--profile-small)) calc(var(--profile-space) + var(--profile-hairline)); background: var(--profile-card); border-radius: calc(var(--profile-card-radius) - var(--profile-small)); font-size: var(--profile-body); }
+.noma-profile-language > span:first-child { color: var(--profile-muted); }
+.noma-profile-language > span:last-child { display: flex; align-items: center; gap: var(--profile-small); }
+.noma-profile-language svg { width: var(--profile-safe-icon); height: var(--profile-safe-icon); color: var(--profile-border); }
+.noma-profile-bottom { display: flex; flex: 1; min-height: calc(var(--profile-target) * 4); flex-direction: column; align-items: center; justify-content: flex-end; padding-top: calc(var(--profile-space) * 2); }
+.noma-profile-signout { min-height: calc(var(--profile-target) + var(--profile-small)); min-width: calc(var(--profile-avatar) * 2); border: var(--profile-hairline) solid var(--profile-border); border-radius: var(--install-pill-radius); padding: var(--profile-small) var(--profile-space); font-size: var(--profile-body); }
+.noma-profile-privacy { width: 100%; max-width: calc(var(--profile-width) - var(--profile-space) * 4); margin: calc(var(--profile-space) * 3.5) auto calc(var(--profile-space) * 1.2); color: var(--profile-muted); text-align: center; font-size: var(--profile-caption); line-height: 1.35; }
+.noma-profile-privacy svg { display: inline-block; vertical-align: text-bottom; width: var(--profile-safe-icon); height: var(--profile-safe-icon); }
+.noma-profile-name-form { display: inline-grid; grid-template-columns: minmax(0, 1fr); max-width: 100%; margin-top: calc(var(--profile-space) - var(--profile-hairline)); font-size: var(--profile-title); font-weight: 700; line-height: 1.2; }
+.noma-profile-name-measure { grid-area: 1 / 1; visibility: hidden; white-space: pre; overflow: hidden; }
+.noma-profile-name-form input { grid-area: 1 / 1; width: 100%; min-width: 0; height: 100%; margin: 0; padding: 0; background: transparent; color: inherit; border: 0; border-bottom: var(--profile-hairline) solid var(--profile-border); border-radius: 0; outline: none; box-shadow: none; appearance: none; text-align: center; font: inherit; line-height: inherit; }
+.noma-profile-error { text-align: center; margin-top: var(--profile-gap); color: var(--profile-error); font-size: var(--profile-caption); }
+.noma-profile-language-options { background: var(--profile-card); border-radius: var(--profile-card-radius); overflow: hidden; }
+.noma-profile-language-options button { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: calc(var(--profile-target) * 1.5); padding: var(--profile-space); font-size: var(--profile-body); }
+.noma-profile-language-options button + button { border-top: var(--profile-hairline) solid var(--profile-surface); }
+.noma-profile-language-options svg { width: var(--profile-icon); height: var(--profile-icon); }
+.noma-profile-page button { cursor: pointer; }
+.noma-profile-page button:disabled { cursor: default; opacity: 0.5; }
+@media (min-width: 768px) {
+  .noma-profile-overlay { background: transparent; }
+  .noma-profile-page { max-width: var(--profile-width); height: min(var(--app-height, 100dvh), var(--profile-height)); border-radius: calc(var(--profile-space) * 2); }
 }
 
 .noma-gradient-pill {

@@ -2,9 +2,9 @@ import React from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { CloseIcon } from "./CloseIcon";
-import { EditPencilIcon } from "./EditPencilIcon";
+import { ProfilePage } from "./ProfilePage";
+import { useLanguage } from "../i18n/language";
 import { useAuth } from "../auth/AuthContext";
-import { usePwaInstall } from "./PwaInstallGuide";
 
 const LOGIN_STEP_TRANSITION = {
   duration: 0.3,
@@ -12,8 +12,8 @@ const LOGIN_STEP_TRANSITION = {
 };
 
 export const AuthDialog: React.FC = () => {
-  const { available: canInstall, openGuide } = usePwaInstall();
-  const { user, aiAccess: access, isLoginOpen, authDialogMode, pendingEmailLogin, resetEmailLogin, closeLogin, requestOtp, verifyOtp, updateDisplayName, signOut } = useAuth();
+  const { t } = useLanguage();
+  const { user, isLoginOpen, authDialogMode, pendingEmailLogin, resetEmailLogin, closeLogin, requestOtp, verifyOtp } = useAuth();
   const [email, setEmail] = React.useState(pendingEmailLogin?.email || "");
   const [token, setToken] = React.useState("");
   const step = pendingEmailLogin ? "otp" : "email";
@@ -22,25 +22,15 @@ export const AuthDialog: React.FC = () => {
   const [now, setNow] = React.useState(Date.now);
   const resendSeconds = pendingEmailLogin ? Math.max(0, Math.ceil((pendingEmailLogin.resendAvailableAt - now) / 1000)) : 0;
   const [error, setError] = React.useState("");
-  const [isEditingName, setIsEditingName] = React.useState(false);
-  const [nameDraft, setNameDraft] = React.useState("");
-  const [savingName, setSavingName] = React.useState(false);
-  const [accountError, setAccountError] = React.useState("");
   const autoVerifyRef = React.useRef(false);
   const otpInputRef = React.useRef<HTMLInputElement>(null);
   const showAccount = authDialogMode === "account" && Boolean(user);
-
-  React.useEffect(() => {
-    if (!isEditingName && user) setNameDraft(user.displayName);
-  }, [isEditingName, user?.displayName]);
 
   React.useEffect(() => {
     if (!isLoginOpen) {
       setToken("");
       autoVerifyRef.current = false;
       setError("");
-      setIsEditingName(false);
-      setAccountError("");
     }
   }, [isLoginOpen]);
 
@@ -112,89 +102,26 @@ export const AuthDialog: React.FC = () => {
     await verifyCode(token);
   };
 
-  const saveDisplayName = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (savingName) return;
-    setSavingName(true);
-    setAccountError("");
-    try {
-      await updateDisplayName(nameDraft);
-      setIsEditingName(false);
-    } catch (nextError) {
-      setAccountError(nextError instanceof Error ? nextError.message : "Unable to update your name.");
-    } finally {
-      setSavingName(false);
-    }
-  };
-
   return createPortal(
     <AnimatePresence>
-      {isLoginOpen && (
+      {isLoginOpen && showAccount && <ProfilePage key="profile" onClose={closeLogin} />}
+      {isLoginOpen && !showAccount && (
         <>
         <motion.div
           className="fixed inset-0 z-[100000] bg-[#232121]/35 backdrop-blur-sm"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-          onClick={() => { if (showAccount || step !== "otp") closeLogin(); }}
+          onClick={() => { if (step !== "otp") closeLogin(); }}
         />
-        <div role="dialog" aria-modal="true" aria-label={showAccount ? "Noma account" : "Login"} className="pointer-events-none fixed inset-0 z-[100001] isolate flex items-center justify-center px-6">
+        <div role="dialog" aria-modal="true" aria-label={t("Login")} className="pointer-events-none fixed inset-0 z-[100001] isolate flex items-center justify-center px-6">
           <motion.div
             initial={{ opacity: 0, y: 18, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 12, scale: 0.97 }}
             transition={{ type: "spring", stiffness: 310, damping: 27 }}
             className="pointer-events-auto relative w-full max-w-[360px]"
           >
             <form
-              onSubmit={showAccount ? (isEditingName ? saveDisplayName : (event) => { event.preventDefault(); }) : step === "email" ? submitEmail : submitOtp}
-              className={`relative w-full rounded-[36px] bg-[#E9E6E1] px-6 pb-7 pt-8 text-[#232121] shadow-[0_24px_80px_rgba(0,0,0,0.28)] ${showAccount ? "" : "h-[380px] overflow-hidden"}`}
+              onSubmit={step === "email" ? submitEmail : submitOtp}
+              className={`relative w-full rounded-[36px] bg-[#E9E6E1] px-6 pb-7 pt-8 text-[#232121] shadow-[0_24px_80px_rgba(0,0,0,0.28)] h-[380px] overflow-hidden`}
             >
-            {showAccount && user ? (
-              <>
-                <p className="text-[13px] font-semibold text-[#232121]/50">Noma account</p>
-                {isEditingName ? (
-                  <>
-                    <input
-                      value={nameDraft}
-                      onChange={(event) => setNameDraft(event.target.value)}
-                      autoFocus
-                      maxLength={80}
-                      aria-label="Username"
-                      className="mt-2 h-10 w-full border-b border-[#CCC4BE] bg-transparent text-[22px] font-bold outline-none"
-                    />
-                    {accountError && <p className="mt-2 text-[13px] text-red-600">{accountError}</p>}
-                    <div className="mt-4 flex justify-end gap-4 text-[13px] font-semibold">
-                      <button type="button" disabled={savingName} onClick={() => { setNameDraft(user.displayName); setAccountError(""); setIsEditingName(false); }} className="text-[#232121]/55 disabled:opacity-50">Cancel</button>
-                      <button type="submit" disabled={savingName || !nameDraft.trim()} className="text-[#232121] disabled:opacity-50">{savingName ? "Saving..." : "Save"}</button>
-                    </div>
-                  </>
-                ) : (
-                  <div className="mt-2 flex min-w-0 items-center gap-2 pr-12">
-                    <h2 className="min-w-0 truncate text-[28px] font-bold leading-tight" title={user.displayName}>{user.displayName}</h2>
-                    <button type="button" onClick={() => { setNameDraft(user.displayName); setAccountError(""); setIsEditingName(true); }} aria-label="Edit username" title="Edit username" className="flex h-8 w-8 shrink-0 items-center justify-center">
-                      <EditPencilIcon />
-                    </button>
-                  </div>
-                )}
-                <p className="mt-3 text-[14px] leading-5 text-[#232121]/60">{user.email}</p>
-                {access && (
-                  <div className="mt-5 rounded-[16px] bg-white/60 px-4 py-3 text-[13px] leading-5 text-[#232121]/65">
-                    <div className="flex items-center justify-between">
-                      <span>Plan</span>
-                      <strong className="text-[#232121]">{access.planName || access.planCode}</strong>
-                    </div>
-                    <div className="mt-1 flex items-center justify-between">
-                      <span>AI scans remaining</span>
-                      <strong className="text-[#232121]">{access.aiScansRemaining === null ? "Unlimited" : access.aiScansRemaining}</strong>
-                    </div>
-                    <div className="mt-1 flex items-center justify-between">
-                      <span>Items</span>
-                      <strong className="text-[#232121]">{access.itemCount}{access.itemLimit === null ? "" : " / " + access.itemLimit}</strong>
-                    </div>
-                  </div>
-                )}
-                <p className="mt-7 rounded-[16px] bg-white/60 px-4 py-3 text-[13px] leading-5 text-[#232121]/60">Your Memory data is stored in your private cloud account.</p>
-                {canInstall && <button type="button" className="noma-install-account-link" onClick={() => { closeLogin(); openGuide(); }}>Add to Home Screen <span aria-hidden="true">↗</span></button>}
-                <button type="button" onClick={() => { void signOut(); closeLogin(); }} className="mt-7 flex h-[50px] w-full items-center justify-center rounded-full border border-[#232121]/20 text-[15px] font-semibold text-[#232121] active:scale-[0.98]">Sign out</button>
-              </>
-            ) : (
               <div className="relative -mx-6 h-full w-[calc(100%+48px)] overflow-hidden">
                 <motion.div
                   initial={false}
@@ -206,17 +133,17 @@ export const AuthDialog: React.FC = () => {
                   className="absolute inset-y-0 left-0 flex h-full w-[200%] transform-gpu [backface-visibility:hidden] [will-change:transform]"
                 >
                   <div aria-hidden={step !== "email"} className={`flex h-full w-1/2 shrink-0 flex-col px-6 ${step !== "email" ? "pointer-events-none" : ""}`}>
-                    <h2 className="mt-2 text-[28px] font-bold leading-tight">Login</h2>
-                    <p className="mt-3 h-10 max-w-[280px] text-[14px] leading-5 text-[#232121]/60">Enter your email and we will send a secure verification code.</p>
-                    <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" autoComplete="email" autoCapitalize="none" autoCorrect="off" required aria-label="Email" placeholder="enter your email" tabIndex={step === "email" ? 0 : -1} className="mt-7 h-14 w-full border-b border-[#AAA29C] bg-transparent text-[16px] outline-none placeholder:text-[#232121]/35" />
-                    <div className="min-h-5 pt-1.5">{error && <p className="text-[13px] text-red-600">{error}</p>}</div>
-                    <button disabled={busy} tabIndex={step === "email" ? 0 : -1} type="submit" className="mt-auto flex h-[50px] w-full shrink-0 items-center justify-center rounded-full bg-[#232121] text-[15px] font-semibold text-white active:scale-[0.98] disabled:opacity-50">{busy ? "Sending..." : "Send code"}</button>
+                    <h2 className="mt-2 text-[28px] font-bold leading-tight">{t("Login")}</h2>
+                    <p className="mt-3 h-10 max-w-[280px] text-[14px] leading-5 text-[#232121]/60">{t("Enter your email and we will send a secure verification code.")}</p>
+                    <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" autoComplete="email" autoCapitalize="none" autoCorrect="off" required aria-label="Email" placeholder={t("enter your email")} tabIndex={step === "email" ? 0 : -1} className="mt-7 h-14 w-full border-b border-[#AAA29C] bg-transparent text-[16px] outline-none placeholder:text-[#232121]/35" />
+                    <div className="min-h-5 pt-1.5">{error && <p className="text-[13px] text-red-600">{t(error)}</p>}</div>
+                    <button disabled={busy} tabIndex={step === "email" ? 0 : -1} type="submit" className="mt-auto flex h-[50px] w-full shrink-0 items-center justify-center rounded-full bg-[#232121] text-[15px] font-semibold text-white active:scale-[0.98] disabled:opacity-50">{busy ? t("Sending...") : t("Send code")}</button>
                     <div aria-hidden="true" className="mt-4 h-5 w-full shrink-0" />
                   </div>
 
                   <div aria-hidden={step !== "otp"} className={`flex h-full w-1/2 shrink-0 flex-col px-6 ${step !== "otp" ? "pointer-events-none" : ""}`}>
-                    <h2 className="mt-2 text-[28px] font-bold leading-tight">Verify email</h2>
-                    <p className="mt-3 h-10 text-[14px] leading-5 text-[#232121]/60">please enter email verification code</p>
+                    <h2 className="mt-2 text-[28px] font-bold leading-tight">{t("Verify email")}</h2>
+                    <p className="mt-3 h-10 text-[14px] leading-5 text-[#232121]/60">{t("please enter email verification code")}</p>
                     <label className="relative mt-7 block h-14 w-full cursor-text" aria-label="6-digit verification code">
                       <input ref={otpInputRef} value={token} onChange={(event) => {
                         const nextToken = event.target.value.replace(/\D/g, "").slice(0, 6);
@@ -241,16 +168,15 @@ export const AuthDialog: React.FC = () => {
                         onClick={() => { void resendOtp(); }}
                         className="text-[13px] font-semibold text-[#232121]/60 disabled:cursor-default disabled:text-[#232121]/35"
                       >
-                        {resending ? "Sending..." : resendSeconds > 0 ? `Resend in ${resendSeconds}s` : "Resend code"}
+                        {resending ? t("Sending...") : resendSeconds > 0 ? t("Resend in {count}s", { count: resendSeconds }) : t("Resend code")}
                       </button>
                     </div>
-                    <div className="min-h-5 pt-1.5">{error && <p className="text-[13px] text-red-600">{error}</p>}</div>
-                    <button disabled={busy || resending || token.length !== 6} tabIndex={step === "otp" ? 0 : -1} type="submit" className="mt-auto flex h-[50px] w-full shrink-0 items-center justify-center rounded-full bg-[#232121] text-[15px] font-semibold text-white active:scale-[0.98] disabled:opacity-50">{busy ? "Signing in..." : "Continue"}</button>
-                    <button type="button" tabIndex={step === "otp" ? 0 : -1} onClick={() => { resetEmailLogin(); setToken(""); autoVerifyRef.current = false; setError(""); }} className="mt-4 w-full text-center text-[13px] text-[#232121]/55">Use a different email</button>
+                    <div className="min-h-5 pt-1.5">{error && <p className="text-[13px] text-red-600">{t(error)}</p>}</div>
+                    <button disabled={busy || resending || token.length !== 6} tabIndex={step === "otp" ? 0 : -1} type="submit" className="mt-auto flex h-[50px] w-full shrink-0 items-center justify-center rounded-full bg-[#232121] text-[15px] font-semibold text-white active:scale-[0.98] disabled:opacity-50">{busy ? t("Signing in...") : t("Continue")}</button>
+                    <button type="button" tabIndex={step === "otp" ? 0 : -1} onClick={() => { resetEmailLogin(); setToken(""); autoVerifyRef.current = false; setError(""); }} className="mt-4 w-full text-center text-[13px] text-[#232121]/55">{t("Use a different email")}</button>
                   </div>
                 </motion.div>
               </div>
-            )}
             </form>
             <button type="button" aria-label="Close login" onClick={closeLogin} className="absolute right-5 top-5 z-30 flex h-8 w-8 transform-gpu items-center justify-center rounded-full bg-white [backface-visibility:hidden]">
               <CloseIcon className="h-4 w-4 text-[#232121]" />

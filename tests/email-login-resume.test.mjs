@@ -32,6 +32,7 @@ async function authHarness({ storage = storageHarness(), session = null, dev = f
   let authEvent;
   let sendResult = () => Promise.resolve({ error: null });
   let verifyResult = () => Promise.resolve({ error: null });
+  let signOutResult = () => Promise.resolve({ error: null });
   const memo = (factory, deps) => {
     const i = index++;
     if (!slots[i] || deps.some((value, j) => !Object.is(value, slots[i].deps[j]))) slots[i] = { deps, value: factory() };
@@ -64,7 +65,7 @@ async function authHarness({ storage = storageHarness(), session = null, dev = f
       onAuthStateChange: (fn) => { authEvent = fn; return { data: { subscription: { unsubscribe() {} } } }; },
       signInWithOtp: async () => { calls.send++; return sendResult(); },
       verifyOtp: async () => { calls.verify++; return verifyResult(); },
-      signOut: async (options) => { calls.signOut.push(options); return { error: null }; },
+      signOut: async (options) => { calls.signOut.push(options); return signOutResult(); },
     },
     rpc: async () => { calls.bootstrap++; return { error: null }; },
   };
@@ -92,6 +93,7 @@ async function authHarness({ storage = storageHarness(), session = null, dev = f
   return { storage, draft, calls, render, settle, get value() { return currentValue; },
     event(name, eventSession) { authEvent(name, eventSession); render(); },
     sendWith(fn) { sendResult = fn; }, verifyWith(fn) { verifyResult = fn; },
+    signOutWith(fn) { signOutResult = fn; },
   };
 }
 
@@ -107,6 +109,17 @@ test("a successful send survives a fresh document without sending another email"
     assert.equal(restored.calls.send, 0, "restoring never requests another code");
     assert.equal(restored.value.user, null, "a saved email does not authenticate the user");
     assert.equal(Object.keys(JSON.parse([...h.storage.values.values()][0])).sort().join(","), "email,expiresAt,resendAvailableAt", "no verification code or credential is saved");
+});
+
+test("failed sign-out preserves the authenticated profile and allows a retry", async () => {
+  const h = await authHarness({ session: { user: { id: "real-user", email: "test@example.com" } } });
+  h.signOutWith(async () => ({ error: new Error("Sign-out unavailable") }));
+  await assert.rejects(h.value.signOut(), /Sign-out unavailable/);
+  h.render();
+  assert.equal(h.value.user.id, "real-user");
+  h.signOutWith(async () => ({ error: null }));
+  await h.value.signOut(); h.render();
+  assert.equal(h.value.user, null);
 });
 
 test("discard during the send request can resume; rejected sends restore the previous draft", async () => {

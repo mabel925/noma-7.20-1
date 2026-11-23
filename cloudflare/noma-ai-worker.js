@@ -476,6 +476,7 @@ function extractText(data) {
 }
 
 function isGenericVisionTitle(value) {
+  if (/^(?:扫描|识别|检测|未知|未识别|不明)?的?(?:物品|物体|东西)$/.test(String(value || "").trim())) return true;
   const normalized = String(value || "")
     .toLowerCase()
     .replace(/[^a-z\s]/g, " ")
@@ -569,7 +570,12 @@ function isUpstreamTimeout(error) {
 async function vision(env, body, qwenRoute, timeoutMs = DEFAULT_VISION_TIMEOUT_MS) {
   if (!body.image_base64) return json({ error: "image_base64 is required" }, 400);
   const mimeType = body.mime_type || "image/jpeg";
-  const prompt = `Identify the main physical object. The title must be a specific common English name for the visible object. Never use generic placeholders such as item, object, scanned item, scanned items, unknown item, or unidentified object. Choose exactly one category from this whitelist: ${ITEM_CATEGORIES.join(", ")}. Return only JSON: {"title":"specific short English object name","category":"one whitelisted category","labels":["synonym or semantic tag"]}.`;
+  const language = body.language === "zh" ? "zh" : "en";
+  const titleInstruction = language === "zh"
+    ? "The title must be a specific, concise common name in Simplified Chinese (简体中文) for the visible object, usually 2–8 Chinese characters. Use Chinese object names even when a brand or model is written in English."
+    : "The title must be a specific common English name for the visible object.";
+  const titleExample = language === "zh" ? "简短具体的中文物品名称" : "specific short English object name";
+  const prompt = `Identify the main physical object. ${titleInstruction} Never use generic placeholders such as item, object, scanned item, scanned items, unknown item, unidentified object, 物品, 物体, or 未知物品. Choose exactly one category from this whitelist: ${ITEM_CATEGORIES.join(", ")}. Return only JSON: {"title":"${titleExample}","category":"one whitelisted category","labels":["synonym or semantic tag"]}.`;
   const visionStartedAt = Date.now();
   const dataUrl = `data:${mimeType};base64,${body.image_base64}`;
   const model = env.QWEN_MODEL || DEFAULT_QWEN_MODEL;
@@ -619,7 +625,10 @@ async function vision(env, body, qwenRoute, timeoutMs = DEFAULT_VISION_TIMEOUT_M
 async function title(env, body, qwenRoute) {
   const sourceTitle = String(body.title || "").trim();
   if (!sourceTitle) return json({ error: "title is required" }, 400);
-  const prompt = `Create one concise English storage label, maximum 4 words. Return only the label. Item: ${sourceTitle}; category: ${body.category || ""}; tags: ${(body.labels || []).join(", ")}.`;
+  const labelInstruction = body.language === "zh"
+    ? "Create one concise storage label in Simplified Chinese (简体中文), usually 2–8 Chinese characters."
+    : "Create one concise English storage label, maximum 4 words.";
+  const prompt = `${labelInstruction} Return only the label. Item: ${sourceTitle}; category: ${body.category || ""}; tags: ${(body.labels || []).join(", ")}.`;
   try {
     const data = await callQwen(env, prompt, false, 12000, "", qwenRoute.endpoint);
     return json({ choices: [{ message: { content: extractText(data) || sourceTitle } }] });

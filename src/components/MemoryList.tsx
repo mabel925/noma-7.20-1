@@ -1,3 +1,4 @@
+import { t } from "../i18n/language";
 import React, { useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, Image as ImageIcon, RotateCcw, Search } from "lucide-react";
@@ -361,7 +362,7 @@ export const PriceTag: React.FC<{ price: string; className?: string }> = ({ pric
       </defs>
     </svg>
     <span className="h-[30px] max-w-[122px] rounded-r-[6px] rounded-l-none bg-[#232121] -ml-px pl-0 pr-3 flex items-center justify-center font-alkatra text-[15px] leading-none whitespace-nowrap overflow-hidden">
-      {price || "+ Value"}
+      {price || t("+ Value")}
     </span>
   </div>
 );
@@ -489,8 +490,7 @@ const ParentSpaceResultCard: React.FC<{ space: SpaceSummary; onClick?: () => voi
           <span className="block truncate">{space.name}</span>
         </div>
         <div className="mt-[8px] text-[#232121]/50 text-[14px] leading-none font-sans font-medium">
-          {space.itemCount} items inside
-        </div>
+          {space.itemCount}{" "}{t("items inside")}{" "}</div>
       </div>
     </div>
 
@@ -501,8 +501,7 @@ const ParentSpaceResultCard: React.FC<{ space: SpaceSummary; onClick?: () => voi
             key={`${space.name}-${sub.name}`}
             className="h-[38px] px-[25px] rounded-full bg-[#232121]/5 flex items-center justify-center text-[14px] font-sans font-medium text-neutral-500 whitespace-nowrap shrink-0"
           >
-            {sub.name} ({sub.itemCount} items)
-          </div>
+            {sub.name} ({sub.itemCount}{" "}{t("items)")}{" "}</div>
         ))}
       </div>
     )}
@@ -533,8 +532,7 @@ const ChildSpaceResultCard: React.FC<{ space: SubLocationSummary; onClick?: () =
         </div>
         <div className="min-w-0 pt-[8px]">
           <div className="text-[#232121] text-[18px] leading-none font-sans font-semibold tracking-tight truncate">
-            {space.name} ({space.itemCount} items)
-          </div>
+            {space.name} ({space.itemCount}{" "}{t("items)")}{" "}</div>
           <div className="mt-[13px] text-[#232121]/50 text-[14px] leading-none font-sans font-medium truncate">
             <span className="text-[14px] mr-[3px] align-[1px]">📍</span>
             {space.parentName}
@@ -631,8 +629,8 @@ const ModalLocationTextGroup: React.FC<{
               event.stopPropagation();
               parentSwitchAction();
             }}
-            aria-label="Switch parent location"
-            title="Switch parent location"
+            aria-label={t("Switch parent location")}
+            title={t("Switch parent location")}
           >
             <TagSwitchIcon className="translate-y-[2px]" />
           </button>
@@ -675,8 +673,8 @@ const ModalLocationTextGroup: React.FC<{
               event.stopPropagation();
               subSwitchAction();
             }}
-            aria-label="Switch sub-location"
-            title="Switch sub-location"
+            aria-label={t("Switch sub-location")}
+            title={t("Switch sub-location")}
           >
             <TagSwitchIcon className="translate-y-[2px]" />
           </button>
@@ -982,8 +980,8 @@ const LocationRetakeCapture: React.FC<{
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 className="flex h-12 w-12 items-center justify-center rounded-full text-[#3A3938] active:scale-95"
-                aria-label="Upload photo instead"
-                title="Upload photo instead"
+                aria-label={t("Upload photo instead")}
+                title={t("Upload photo instead")}
               >
                 <ImageIcon className="h-6 w-6 text-[#3A3938]" />
               </button>
@@ -1005,9 +1003,7 @@ const LocationRetakeCapture: React.FC<{
                 type="button"
                 onClick={handleCancel}
                 className="flex h-12 w-12 items-center justify-center text-[13px] font-sans font-normal text-neutral-500 active:scale-95"
-              >
-                Cancel
-              </button>
+              >{" "}{t("Cancel")}{" "}</button>
             </>
           ) : (
             <>
@@ -1033,9 +1029,7 @@ const LocationRetakeCapture: React.FC<{
                 type="button"
                 onClick={handleCancel}
                 className="flex h-12 w-12 items-center justify-center text-[13px] font-sans font-normal text-neutral-500 active:scale-95"
-              >
-                Cancel
-              </button>
+              >{" "}{t("Cancel")}{" "}</button>
             </>
           )}
         </div>
@@ -1181,10 +1175,10 @@ const LocationImageEditFlow: React.FC<{
       <div className="noma-add-modebar">
         <div className="noma-add-segmented" role="tablist" aria-label="Location image mode">
           <button type="button" role="tab" aria-selected={mode === "emoji"} className={mode === "emoji" ? "is-active" : ""} onClick={() => changeMode("emoji")}>
-            <span aria-hidden="true">🦄</span><span>Emoji Mode</span>
+            <span aria-hidden="true">🦄</span><span>{t("Emoji Mode")}</span>
           </button>
           <button type="button" role="tab" aria-selected={mode === "camera"} className={mode === "camera" ? "is-active" : ""} onClick={() => changeMode("camera")}>
-            <CameraIcon className="h-7 w-7" /><span>Camera</span>
+            <CameraIcon className="h-7 w-7" /><span>{t("Camera")}</span>
           </button>
         </div>
       </div>
@@ -1230,13 +1224,13 @@ const LocationImageEditFlow: React.FC<{
           <div className="noma-add-camera-controls is-space">
             <button type="button" onClick={() => fileInputRef.current?.click()} aria-label="Choose from photos"><PhotoUploadIcon /></button>
             <CaptureShutterButton onClick={captureFrame} label="Take photo" />
-            <button type="button" className="noma-add-skip" onClick={onCancel}>Cancel</button>
+            <button type="button" className="noma-add-skip" onClick={onCancel}>{t("Cancel")}</button>
           </div>
         ) : (
           <div className="noma-add-round-actions is-three">
             <button type="button" className="noma-add-round-button is-restart" onClick={resetImage} aria-label="Reset image"><RestartIcon className="h-7 w-7" /></button>
             <button type="button" className="noma-add-round-button is-confirm" onClick={confirmImage} disabled={!workingImage} aria-label="Confirm image"><Check className="h-7 w-7" strokeWidth={2.5} /></button>
-            <button type="button" className="noma-add-round-button" onClick={onCancel} aria-label="Cancel"><CloseIcon className="h-5 w-5 text-[#232121]/50" /></button>
+            <button type="button" className="noma-add-round-button" onClick={onCancel} aria-label={t("Cancel")}><CloseIcon className="h-5 w-5 text-[#232121]/50" /></button>
           </div>
         )}
         </div>
@@ -1300,9 +1294,7 @@ export const MemoryLocationPicker: React.FC<{
           </div>
 
           <div className="max-h-[calc(78vh-115px)] space-y-2 overflow-y-auto no-scrollbar">
-            <div className="mb-2 px-1 text-[14px] font-sans font-normal tracking-tight text-[#232121]/50">
-              Existing Space
-            </div>
+            <div className="mb-2 px-1 text-[14px] font-sans font-normal tracking-tight text-[#232121]/50">{" "}{t("Existing Space")}{" "}</div>
             {options.length > 0 ? (
               <div className="space-y-2">
                 {options.map((option) => {
@@ -1336,7 +1328,7 @@ export const MemoryLocationPicker: React.FC<{
                           {option.name}
                         </span>
                         <span className="mt-1 block text-[14px] font-sans text-[#232121]/40">
-                          {itemCount} {itemCount === 1 ? "item" : "items"}
+                          {itemCount} {itemCount === 1 ? t("item") : t("items")}
                         </span>
                       </span>
                       <MemorySelectorIcon selected={isSelected} />
@@ -1345,9 +1337,7 @@ export const MemoryLocationPicker: React.FC<{
                 })}
               </div>
             ) : (
-              <div className="py-8 text-center text-[13px] font-sans text-[#232121]/45">
-                No saved spaces yet
-              </div>
+              <div className="py-8 text-center text-[13px] font-sans text-[#232121]/45">{" "}{t("No saved spaces yet")}{" "}</div>
             )}
           </div>
         </motion.div>
@@ -1381,22 +1371,18 @@ const MemoryConfirmModal: React.FC<{
           onClick={(event) => event.stopPropagation()}
         >
           <h3 className="text-[20px] font-sans font-bold text-[#232121] tracking-tight">{title}</h3>
-          <p className="mt-3 text-[13px] font-sans leading-relaxed text-[#232121]/55">{message}</p>
+          <p className="mt-3 text-[13px] font-sans leading-relaxed text-[#232121]/55">{t(message)}</p>
           <div className="mt-6 flex gap-3">
             <button
               type="button"
               onClick={onCancel}
               className="h-12 flex-1 rounded-full bg-white text-[#232121]/70 text-[14px] font-sans font-semibold active:scale-95 transition-transform"
-            >
-              Cancel
-            </button>
+            >{" "}{t("Cancel")}{" "}</button>
             <button
               type="button"
               onClick={onConfirm}
               className="h-12 flex-1 rounded-full bg-[#232121] text-white text-[14px] font-sans font-semibold active:scale-95 transition-transform"
-            >
-              Delete
-            </button>
+            >{" "}{t("Delete")}{" "}</button>
           </div>
         </motion.div>
       </motion.div>
@@ -1426,17 +1412,15 @@ const MemoryItemsEditBubble: React.FC<{
           <GradientPillButton
             onClick={onSelectAll}
             selected={allSelected}
-          >
-            Select All
-          </GradientPillButton>
+          >{" "}{t("Select All")}{" "}</GradientPillButton>
           <button
             type="button"
             onClick={onDelete}
             disabled={!hasSelected}
             className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full active:scale-[0.98] disabled:cursor-default"
             style={{ backgroundColor: hasSelected ? "#ED435F" : "#FFFFFF" }}
-            aria-label="Delete selected items"
-            title="Delete selected items"
+            aria-label={t("Delete selected items")}
+            title={t("Delete selected items")}
           >
             <DeleteActionIcon color={hasSelected ? "#FFFFFF" : "#232121"} opacity={hasSelected ? 1 : 0.5} />
           </button>
@@ -1444,8 +1428,8 @@ const MemoryItemsEditBubble: React.FC<{
             type="button"
             onClick={onCancel}
             className="flex h-[34px] w-[16px] shrink-0 items-center justify-center rounded-full active:scale-[0.98]"
-            aria-label="Cancel editing"
-            title="Cancel editing"
+            aria-label={t("Cancel editing")}
+            title={t("Cancel editing")}
           >
             <CloseIcon className="h-4 w-4 text-[#232121]/50" />
           </button>
@@ -1533,8 +1517,7 @@ const SubLocationListCard: React.FC<{
               {truncateLocationTitle(space.name)}
             </div>
             <div className="mt-[8px] text-[13px] font-sans font-normal text-[#232121]/50 leading-none">
-              {space.itemCount} items
-            </div>
+              {space.itemCount}{" "}{t("items")}{" "}</div>
           </div>
         </div>
 
@@ -1877,7 +1860,7 @@ const SpaceDetailModal: React.FC<{
             {!isEditingItems && (
               <div className="absolute right-[28px] bottom-[30px] h-[64px] w-[64px] rounded-[16px] bg-[#DDDAD5] flex flex-col items-center justify-center text-[#232121] font-sans font-semibold tracking-tight leading-none">
                 <span className="text-[20px]">{space.itemCount}</span>
-                <span className="mt-[6px] text-[14px]">items</span>
+                <span className="mt-[6px] text-[14px]">{t("items")}</span>
               </div>
             )}
           </div>
@@ -1901,9 +1884,7 @@ const SpaceDetailModal: React.FC<{
                   onClick={handleSelectAllSpaceItems}
                   selected={isAllSpaceItemsSelected}
                   compact
-                >
-                  Select All
-                </GradientPillButton>
+                >{" "}{t("Select All")}{" "}</GradientPillButton>
                 <button
                   type="button"
                   onClick={(event) => {
@@ -1914,8 +1895,8 @@ const SpaceDetailModal: React.FC<{
                   style={{
                     backgroundColor: selectedItemIds.length > 0 ? "#ED435F" : "#FFFFFF",
                   }}
-                  aria-label="Delete selected items"
-                  title="Delete selected items"
+                  aria-label={t("Delete selected items")}
+                  title={t("Delete selected items")}
                 >
                   <DeleteActionIcon
                     color={selectedItemIds.length > 0 ? "#FFFFFF" : "#232121"}
@@ -1980,7 +1961,7 @@ const SpaceDetailModal: React.FC<{
 
           <div className="absolute left-0 top-[614px] z-10 h-[56px] w-[307px] flex items-center justify-center">
             <div className="text-center text-white text-[18px] leading-[1.25] font-sans font-bold tracking-tight max-w-[250px]">
-              {helperText}
+              {t(helperText)}
             </div>
             <button
               type="button"
@@ -1988,8 +1969,8 @@ const SpaceDetailModal: React.FC<{
                 event.stopPropagation();
                 setDeleteRequest("space");
               }}
-              aria-label="Delete sub-location"
-              title="Delete sub-location"
+              aria-label={t("Delete sub-location")}
+              title={t("Delete sub-location")}
               className="absolute right-0 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center text-white active:scale-95 transition-transform"
             >
               <DeleteActionIcon color="#FFFFFF" opacity={1} size={20} />
@@ -2052,7 +2033,7 @@ const SpaceDetailModal: React.FC<{
 
       <MemoryConfirmModal
         open={deleteRequest !== null}
-        title={deleteRequest === "items" ? "Delete selected items?" : `Delete ${space.name}?`}
+        title={deleteRequest === "items" ? t("Delete selected items?") : t("Delete {name}?", { name: space.name })}
         message={deleteRequest === "items"
           ? "This will permanently remove the selected items from this sub-location."
           : "This will delete the sub-location and all items inside it."}
@@ -2161,7 +2142,7 @@ const LocationDetailModal: React.FC<{
             paddingTop: "var(--noma-navigation-top)",
           }}
         >
-            <button type="button" onClick={isEditing ? cancelEditing : onClose} className="flex h-6 w-6 items-center justify-center active:scale-95" aria-label={isEditing ? "Cancel location edits" : "Back"}>
+            <button type="button" onClick={isEditing ? cancelEditing : onClose} className="flex h-6 w-6 items-center justify-center active:scale-95" aria-label={isEditing ? "Cancel location edits" : t("Back")}>
               <MemoryBackIcon />
             </button>
           {isEditing ? (
@@ -2211,7 +2192,7 @@ const LocationDetailModal: React.FC<{
                 isEditingName ? (
                   <input
                     autoFocus
-                    aria-label="Location name"
+                    aria-label={t("Location name")}
                     value={draftName}
                     onChange={(event) => { setDraftName(event.target.value); setNameError(""); }}
                     onBlur={() => setIsEditingName(false)}
@@ -2225,7 +2206,7 @@ const LocationDetailModal: React.FC<{
                   />
                 ) : (
                   <button type="button" onClick={() => setIsEditingName(true)} aria-label="Edit location name" className="max-w-[270px] truncate border-b border-[#CCC4BE] pb-[3px] text-inherit">
-                    {draftName || "Location name"}
+                    {draftName || t("Location name")}
                   </button>
                 )
               ) : <span className="max-w-[270px] truncate">{truncateLocationTitle(location.name)}</span>}
@@ -2233,7 +2214,7 @@ const LocationDetailModal: React.FC<{
             </div>
             {isEditing && nameError && <p role="alert" className="mt-2 max-w-[280px] text-[13px] text-red-700">{nameError}</p>}
             {location.parentName && location.sourceField === "sub" && (
-              <div className="mt-[6px] text-[14px] font-sans text-[#232121]/50">in {location.parentName}</div>
+              <div className="mt-[6px] text-[14px] font-sans text-[#232121]/50">{t("in")}{" "}{location.parentName}</div>
             )}
           </motion.div>
           {isEditing && (
@@ -2245,10 +2226,10 @@ const LocationDetailModal: React.FC<{
                 aria-label="Delete location"
                 className="mt-[108px] flex h-[34px] items-center justify-center gap-[8px] rounded-full bg-white px-[12px] text-[14px] font-sans leading-none text-[#232121]/50 active:scale-95 disabled:opacity-40"
               >
-                <span>Delete</span>
+                <span>{t("Delete")}</span>
                 <DeleteActionIcon color="#232121" opacity={0.5} size={16} />
               </button>
-              {!canEditLocation && <p role="status" className="mt-3 max-w-[270px] text-[13px] text-[#232121]/50">Finish syncing Memory before saving or deleting this location.</p>}
+              {!canEditLocation && <p role="status" className="mt-3 max-w-[270px] text-[13px] text-[#232121]/50">{t("Finish syncing Memory before saving or deleting this location.")}</p>}
             </>
           )}
         </div>
@@ -2318,7 +2299,7 @@ const LocationDetailModal: React.FC<{
 
       <MemoryConfirmModal
         open={isLocationDeleteConfirmOpen}
-        title={`Delete ${location.name}?`}
+        title={t("Delete {name}?", { name: location.name })}
         message={location.sourceField === "parent"
           ? "This will delete this location, all sub-locations, and every item inside it."
           : "This will delete this location and all items inside it."}
@@ -2332,7 +2313,7 @@ const LocationDetailModal: React.FC<{
 
       <MemoryConfirmModal
         open={isDeleteConfirmOpen}
-        title="Delete selected items?"
+        title={t("Delete selected items?")}
         message="This will permanently remove the selected items from this location."
         onCancel={() => setIsDeleteConfirmOpen(false)}
         onConfirm={confirmDeleteItems}
@@ -2340,7 +2321,7 @@ const LocationDetailModal: React.FC<{
 
       <MemoryConfirmModal
         open={pendingDeleteSubLocation !== null}
-        title={`Delete ${pendingDeleteSubLocation?.name || "sub-location"}?`}
+        title={t("Delete {name}?", { name: pendingDeleteSubLocation?.name || "sub-location" })}
         message="This will delete the sub-location and all items inside it."
         onCancel={() => setPendingDeleteSubLocation(null)}
         onConfirm={() => {
@@ -2755,8 +2736,8 @@ const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({ item, parentOptio
                       type="button"
                       onClick={handleEditStart("title")}
                       className="flex h-full w-full items-center justify-center active:scale-95"
-                      aria-label="Edit item title"
-                      title="Edit item title"
+                      aria-label={t("Edit item title")}
+                      title={t("Edit item title")}
                     >
                       <EditPencilIcon />
                     </button>
@@ -2768,8 +2749,8 @@ const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({ item, parentOptio
                     onClick={openItemImageEditor}
                     className="absolute left-1/2 top-[36px] z-30 flex h-[44px] w-[44px] items-center justify-center rounded-full bg-black/60 text-white active:scale-95"
                     style={{ transform: "translateX(calc(-50% - 25px))" }}
-                    aria-label="Reset item image"
-                    title="Reset item image"
+                    aria-label={t("Reset item image")}
+                    title={t("Reset item image")}
                   >
                     <RestartIcon className="h-[22px] w-[22px]" color="#FFFFFF" />
                   </button>
@@ -2797,7 +2778,7 @@ const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({ item, parentOptio
                         }}
                       >
                         <div className="-translate-x-1/2 -translate-y-1/2 h-[30px] px-4 rounded-full bg-white flex items-center justify-center text-[14px] font-sans font-normal text-black/60 whitespace-nowrap">
-                          {category}
+                          {t(category)}
                         </div>
                       </motion.div>
                     );
@@ -2816,12 +2797,11 @@ const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({ item, parentOptio
                 }}
               >
                 <span className="text-[14px] font-sans font-normal text-black/45 tracking-tight leading-none">
-                  {selectedCategory || "Other"}
+                  {selectedCategory || t("Other")}
                 </span>
                 {isCardEditing && <TagSwitchIcon />}
               </button>
-              <div className="text-[14px] font-sans font-normal text-[#8B8780] tracking-tight">
-                Built {item.date || "Today"}
+              <div className="text-[14px] font-sans font-normal text-[#8B8780] tracking-tight">{" "}{t("Built")}{" "}{item.date || t("Today")}
               </div>
             </div>
 
@@ -2922,7 +2902,7 @@ const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({ item, parentOptio
             transition={{ duration: reduceMotion ? 0 : 0.3, ease: "easeOut" }}
           >
             <div className="flex h-[56px] w-full items-center justify-center text-center text-white text-[18px] leading-[1.25] font-sans font-bold tracking-tight max-w-[250px]">
-              {helperText}
+              {t(helperText)}
             </div>
             <button
               type="button"
@@ -2930,8 +2910,8 @@ const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({ item, parentOptio
                 event.stopPropagation();
                 setIsDeleteConfirmOpen(true);
               }}
-              aria-label="Delete item"
-              title="Delete item"
+              aria-label={t("Delete item")}
+              title={t("Delete item")}
               className="mt-[20px] flex h-8 w-8 shrink-0 items-center justify-center text-white active:scale-95 transition-transform"
             >
               <DeleteActionIcon color="#FFFFFF" opacity={1} size={20} />
@@ -3001,7 +2981,7 @@ const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({ item, parentOptio
 
       <MemoryConfirmModal
         open={isDeleteConfirmOpen}
-        title={`Delete ${itemTitle || item.name}?`}
+        title={t("Delete {name}?", { name: itemTitle || item.name })}
         message="This will permanently remove this item from memory."
         onCancel={() => setIsDeleteConfirmOpen(false)}
         onConfirm={() => {
@@ -3649,8 +3629,8 @@ export const MemoryList: React.FC<MemoryListProps> = ({
             <button
               onClick={startParentEdit}
               className="w-[24px] h-[24px] active:scale-95 flex items-center justify-center transition-all cursor-pointer border-0 outline-none bg-transparent hover:opacity-70"
-              aria-label="Edit parent location"
-              title="Edit parent location"
+              aria-label={t("Edit parent location")}
+              title={t("Edit parent location")}
             >
               <ParentDetailEditIcon />
             </button>
@@ -3682,9 +3662,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
             <button
               onClick={handleCancelSearch}
               className="h-[50px] px-[1px] flex items-center justify-center text-[#232121] text-[16px] font-sans font-semibold tracking-tight active:scale-95 transition-transform cursor-pointer"
-            >
-              Cancel
-            </button>
+            >{" "}{t("Cancel")}{" "}</button>
           </div>
         </div>
       ) : (
@@ -3692,11 +3670,11 @@ export const MemoryList: React.FC<MemoryListProps> = ({
           className="memory-header-nav"
           onBack={onClose}
           backLabel="Back to home"
-          title="Memory"
+          title={t("Memory")}
           actions={<button
             type="button"
             onClick={openMemorySearch}
-            aria-label="Search memories"
+            aria-label={t("Search memories")}
             className="w-[22px] h-[22px] active:scale-95 flex items-center justify-center transition-all cursor-pointer border-0 outline-none bg-transparent hover:opacity-70"
           >
               <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -3727,8 +3705,8 @@ export const MemoryList: React.FC<MemoryListProps> = ({
       >
         {isAuthenticated && (isLoading || loadError) ? (
           <div className="flex h-full flex-col items-center justify-center px-8 pb-20 text-center text-[#232121]" role="status">
-            <p className="text-[14px] leading-5">{isLoading ? "Loading your memories…" : loadError}</p>
-            {!isLoading && <button type="button" onClick={onRetryLoad} className="mt-5 rounded-full bg-[#232121] px-6 py-3 text-[14px] font-semibold text-white active:scale-95">Try again</button>}
+            <p className="text-[14px] leading-5">{isLoading ? t("Loading your memories…") : loadError}</p>
+            {!isLoading && <button type="button" onClick={onRetryLoad} className="mt-5 rounded-full bg-[#232121] px-6 py-3 text-[14px] font-semibold text-white active:scale-95">{t("Try again")}</button>}
           </div>
         ) : !memories.length ? (
           <div className="flex h-full flex-col items-center justify-center px-8 pb-20 text-center text-[#232121]">
@@ -3840,7 +3818,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ type: "tween", duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
                 >
-                  <span>Delete</span>
+                  <span>{t("Delete")}</span>
                   <DeleteActionIcon color="#232121" opacity={0.5} size={16} />
                 </motion.button>
               )}
@@ -3862,9 +3840,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
                   />
                 ))
               ) : (
-                <div className="py-20 text-center text-[14px] font-sans font-medium text-[#232121]/35">
-                  No sub-locations yet
-                </div>
+                <div className="py-20 text-center text-[14px] font-sans font-medium text-[#232121]/35">{" "}{t("No sub-locations yet")}{" "}</div>
               )}
             </motion.div>
           </motion.div>
@@ -3873,7 +3849,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
             <div className="flex flex-col gap-[20px]">
               {itemSearchResults.length > 0 && (
                 <section className="pb-[20px]">
-                  <h2 className="text-[18px] font-sans font-semibold leading-none text-[#232121]">Items</h2>
+                  <h2 className="text-[18px] font-sans font-semibold leading-none text-[#232121]">{t("Items")}</h2>
                   <div className="mx-auto mt-[20px] grid w-full max-w-[352px] grid-cols-[repeat(3,100px)] justify-center gap-[26px] overflow-visible">
                     {itemSearchResults.map((item) => (
                       <MemorySearchItem key={item.id} item={item} size={100} onClick={() => openDetail(item)} />
@@ -3884,7 +3860,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
 
               {childSpaceSearchResults.length > 0 && (
                 <section>
-                  <h2 className="text-[18px] font-sans font-semibold leading-none text-[#232121]">Sub-Spaces</h2>
+                  <h2 className="text-[18px] font-sans font-semibold leading-none text-[#232121]">{t("Sub-Spaces")}</h2>
                   <div className="mt-[20px] flex flex-col gap-[8px]">
                     {childSpaceSearchResults.map((space) => (
                       <SubLocationListCard
@@ -3899,7 +3875,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
 
               {parentSpaceSearchResults.length > 0 && (
                 <section>
-                  <h2 className="text-[18px] font-sans font-semibold leading-none text-[#232121]">Space</h2>
+                  <h2 className="text-[18px] font-sans font-semibold leading-none text-[#232121]">{t("Space")}</h2>
                   <div className="mt-[20px] flex flex-col gap-[8px]">
                     {parentSpaceSearchResults.map((space) => (
                       <ParentSpaceResultCard
@@ -3917,7 +3893,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
         <>
         
         {/* Spaces vs Items Primary Toggle Tab Panel */}
-        <div className="sticky top-0 z-40 -mx-[20px] mb-5 flex h-[32px] gap-8 items-center px-[21px] py-0 select-none">
+        <div className="sticky top-0 z-40 -mx-[20px] mb-5 flex h-[32px] gap-[var(--memory-tab-gap)] items-center px-[21px] py-0 select-none">
           {/* Spaces Tab */}
           <div
             className="relative cursor-pointer"
@@ -3931,9 +3907,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
               className={`relative z-10 text-[18px] font-sans font-bold transition-all ${
                 activeTab === "spaces" ? "text-neutral-900" : "text-neutral-400"
               }`}
-            >
-              Spaces
-            </span>
+            >{" "}{t("Spaces")}{" "}</span>
             <MemorySelectedTabLine isSelected={activeTab === "spaces"} />
           </div>
 
@@ -3953,9 +3927,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
               className={`relative z-10 text-[18px] font-sans font-bold transition-all ${
                 activeTab === "items" ? "text-neutral-900" : "text-neutral-400"
               }`}
-            >
-              Items
-            </span>
+            >{" "}{t("Items")}{" "}</span>
             <MemorySelectedTabLine isSelected={activeTab === "items"} />
           </div>
         </div>
@@ -3991,8 +3963,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
                           {space.name}
                         </span>
                         <span className="text-[11px] font-sans font-semibold text-neutral-400/80 mt-0.5 tracking-tight">
-                          {space.itemCount} items
-                        </span>
+                          {space.itemCount}{" "}{t("items")}{" "}</span>
                       </div>
                     </div>
 
@@ -4046,8 +4017,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
                           {space.name}
                         </span>
                         <span className="text-[11px] font-sans font-semibold text-neutral-400/80 mt-0.5 tracking-tight">
-                          {space.itemCount} items
-                        </span>
+                          {space.itemCount}{" "}{t("items")}{" "}</span>
                       </div>
                     </div>
 
@@ -4092,7 +4062,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
                         : "bg-white/40 text-neutral-500"
                     }`}
                   >
-                    {cat}
+                    {t(cat)}
                   </button>
                 );
               })}
@@ -4100,9 +4070,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
 
             {/* 2x2 Grid of Items */}
             {filteredItems.length === 0 ? (
-              <div className="text-center py-16 text-neutral-400 font-sans font-medium text-xs">
-                No items found in this category.
-              </div>
+              <div className="text-center py-16 text-neutral-400 font-sans font-medium text-xs">{" "}{t("No items found in this category.")}{" "}</div>
             ) : (
               <div className="mx-auto mt-[44px] grid w-[310px] max-w-full grid-cols-[120px_120px] gap-x-[70px] gap-y-[32px] select-none">
                 {filteredItems.map((item) => (
@@ -4163,7 +4131,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
               disabled={isLoadingMore}
               className="rounded-full bg-white px-5 py-2 text-[13px] font-sans font-semibold text-[#232121] shadow-sm disabled:cursor-wait disabled:opacity-55"
             >
-              {isLoadingMore ? "Loading…" : "Load more memories"}
+              {isLoadingMore ? t("Loading…") : t("Load more memories")}
             </button>
           </div>
         )}
@@ -4233,7 +4201,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
 
       <MemoryConfirmModal
         open={pendingDeleteParentName !== null}
-        title={`Delete ${pendingDeleteParentName || "parent location"}?`}
+        title={t("Delete {name}?", { name: pendingDeleteParentName || "parent location" })}
         message="This will delete the parent location, all sub-locations, and every item inside it."
         onCancel={() => setPendingDeleteParentName(null)}
         onConfirm={confirmDeleteParentSpace}
@@ -4241,7 +4209,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
 
       <MemoryConfirmModal
         open={pendingDeleteItemIds !== null}
-        title="Delete selected items?"
+        title={t("Delete selected items?")}
         message="This will permanently remove the selected items from Memory."
         onCancel={() => setPendingDeleteItemIds(null)}
         onConfirm={confirmDeleteSelectedItems}

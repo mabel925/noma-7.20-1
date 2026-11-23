@@ -1,3 +1,4 @@
+import { useLanguage } from "./i18n/language";
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { VirtualStage } from "./components/VirtualStage";
@@ -184,6 +185,7 @@ const DEFAULT_MEMORIES: MemoryItem[] = [
 ];
 
 export default function App() {
+  useLanguage();
   const { user, authLoading, requireAuth, openLogin, isLoginOpen } = useAuth();
   const userRef = React.useRef(user);
   React.useEffect(() => {

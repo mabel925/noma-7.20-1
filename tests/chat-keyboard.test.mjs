@@ -19,6 +19,7 @@ function keyboardHarness() {
     exports: {}, window: {},
     require: (name) => {
       if (name === "react") return React;
+      if (name.endsWith("i18n/language")) return { useLanguage: () => ({ language: "en", t: (text) => text }) };
       if (name === "react-simple-keyboard") return (props) => { callbacks = props; return null; };
       if (name.endsWith(".css")) return {};
       if (name.startsWith("simple-keyboard-layouts/")) return layout;

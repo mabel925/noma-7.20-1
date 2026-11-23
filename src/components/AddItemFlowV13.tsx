@@ -1,3 +1,4 @@
+import { t } from "../i18n/language";
 import { PersistentImage } from "./PersistentImage";
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -125,10 +126,10 @@ const ModeSwitch = ({ mode, onChange, onClose, hidden = false, fadeIn = false }:
   <div className={`noma-add-modebar${hidden ? " is-keyboard-hidden" : ""}${fadeIn ? " noma-add-result-fade-in" : ""}`}>
     <div className="noma-add-segmented" role="tablist" aria-label="Capture mode">
       <button type="button" role="tab" aria-selected={mode === "emoji"} className={mode === "emoji" ? "is-active" : ""} onClick={() => onChange("emoji")}>
-        <span aria-hidden="true">🦄</span><span>Emoji Mode</span>
+        <span aria-hidden="true">🦄</span><span>{t("Emoji Mode")}</span>
       </button>
       <button type="button" role="tab" aria-selected={mode === "camera"} className={mode === "camera" ? "is-active" : ""} onClick={() => onChange("camera")}>
-        <CameraIcon className="h-7 w-7" /><span>Camera</span>
+        <CameraIcon className="h-7 w-7" /><span>{t("Camera")}</span>
       </button>
     </div>
     <button type="button" className="noma-add-top-close" onClick={onClose} aria-label="Close"><CloseIcon className="h-4 w-4" /></button>
@@ -149,7 +150,7 @@ const RoundActions = ({ onRestart, onConfirm, onCancel, disabled = false, loadin
     <button type="button" className="noma-add-round-button is-confirm" onClick={onConfirm} disabled={disabled} aria-label="Confirm">
       {loading ? <LoaderCircle className="h-6 w-6 animate-spin" /> : <Check className="h-7 w-7" strokeWidth={2.2} />}
     </button>
-    {onCancel && <button type="button" className="noma-add-round-button" onClick={onCancel} aria-label="Cancel"><CloseIcon className="h-6 w-6" /></button>}
+    {onCancel && <button type="button" className="noma-add-round-button" onClick={onCancel} aria-label={t("Cancel")}><CloseIcon className="h-6 w-6" /></button>}
   </div>
 );
 
@@ -168,7 +169,7 @@ const CategoryFan = ({ open, current, onSelect }: { open: boolean; current: stri
           transition={{ type: "spring", stiffness: 280, damping: 22, delay: index * 0.03 }}
           onClick={() => onSelect(category)}
         >
-          <span>{category}</span>
+          <span>{t(category)}</span>
         </motion.button>
       );
     })}
@@ -253,7 +254,7 @@ const InactiveSubSpaceCard = ({
       <div className={`noma-add-shared-sub-card-content${isEmpty ? " is-empty" : ""}${isPhoto ? " is-photo" : " is-emoji"}`}>
         {showImage && <PersistentImage src={image} alt="" />}
         <strong className="noma-add-space-title-hotspot" onPointerDown={onTitlePointerDown}>
-          {title || <>New Sub-Space<br />eg. Nightstand</>}
+          {title || <>{t("New Sub-Space")}<br />{t("eg. Nightstand")}</>}
         </strong>
       </div>
       {recent}
@@ -1238,7 +1239,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
 
         <CategoryFan open={isCategorySelectorOpen} current={item.category} onSelect={(category) => { setItem((current) => ({ ...current, category })); setIsCategorySelectorOpen(false); }} />
         <button type="button" className={`noma-add-category${itemMode === "camera" ? " noma-add-result-fade-in" : ""}`} onClick={() => { setStage("识别emoji"); setIsCategorySelectorOpen((open) => !open); }}>
-          {item.category}<TagSwitchIcon />
+          {t(item.category)}<TagSwitchIcon />
         </button>
       </main>
       {stage === "切换emoji" ? (
@@ -1300,7 +1301,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
                   </div>
                   {editingSpace === "parent" && (
                     <form onSubmit={submitSpaceTitle} className="noma-add-space-input-wrap">
-                      <input autoFocus value={spaceInput} onFocus={handleSpaceInputFocus} onBlur={handleSpaceInputBlur} onChange={(event) => setSpaceInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="New Space" aria-label="New parent space" enterKeyHint="send" />
+                      <input autoFocus value={spaceInput} onFocus={handleSpaceInputFocus} onBlur={handleSpaceInputBlur} onChange={(event) => setSpaceInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder={t("New Space")} aria-label="New parent space" enterKeyHint="send" />
                     </form>
                   )}
                 </div>
@@ -1309,17 +1310,17 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
               ) : editingSpace === "parent" ? (
                 <form onSubmit={submitSpaceTitle} className="noma-add-space-input-wrap">
                   <PersistentImage src={spaceSkinUrl(parentSpace, "emoji") || emojiAsset("home")} alt="" className="noma-add-space-placeholder-icon" />
-                  <input autoFocus value={spaceInput} onFocus={handleSpaceInputFocus} onBlur={handleSpaceInputBlur} onChange={(event) => setSpaceInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="New Space" aria-label="New parent space" enterKeyHint="send" />
+                  <input autoFocus value={spaceInput} onFocus={handleSpaceInputFocus} onBlur={handleSpaceInputBlur} onChange={(event) => setSpaceInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder={t("New Space")} aria-label="New parent space" enterKeyHint="send" />
                 </form>
               ) : activeSpace === "parent" ? (
                 <div className="noma-add-space-input-wrap is-preview">
                   {!shouldShowRecentSpace("emoji", parentSpace, "parent") && <PersistentImage src={emojiAsset("home")} alt="" className="noma-add-space-placeholder-icon" />}
-                  <span className="noma-add-parent-input-preview noma-add-space-title-hotspot" onPointerDown={(event) => beginSpaceTitleEdit(event, "parent")}>New Space</span>
+                  <span className="noma-add-parent-input-preview noma-add-space-title-hotspot" onPointerDown={(event) => beginSpaceTitleEdit(event, "parent")}>{t("New Space")}</span>
                   {renderRecentSpace("emoji", parentSpace, "parent")}
                 </div>
               ) : (
                 <div className="noma-add-space-input-wrap is-preview">
-                  <span className="noma-add-space-placeholder noma-add-space-title-hotspot" onPointerDown={(event) => beginSpaceTitleEdit(event, "parent")}>New Space</span>
+                  <span className="noma-add-space-placeholder noma-add-space-title-hotspot" onPointerDown={(event) => beginSpaceTitleEdit(event, "parent")}>{t("New Space")}</span>
                 </div>
               )}
             </div>
@@ -1329,7 +1330,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
                 <form onSubmit={submitSpaceTitle} className="noma-add-space-input-wrap">
                   <PersistentImage src={spaceSkinUrl(subSpace, "emoji") || emojiAsset(subSpace.emojiIconKey || subSpace.iconKey)} alt="" className={`noma-add-space-placeholder-icon${spaceHasSkin(subSpace, "emoji") ? " is-filled" : ""}`} />
                   <input autoFocus value={spaceInput} onFocus={handleSpaceInputFocus} onBlur={handleSpaceInputBlur} onChange={(event) => setSpaceInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="" aria-label="New sub-space" enterKeyHint="send" />
-                  {!spaceInput && <span className="noma-add-sub-placeholder is-input-placeholder">New Sub-Space<br />eg. Nightstand</span>}
+                  {!spaceInput && <span className="noma-add-sub-placeholder is-input-placeholder">{t("New Sub-Space")}<br />{t("eg. Nightstand")}</span>}
                 </form>
               </div>
             ) : (
@@ -1354,7 +1355,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
       </div>
       {hasSpace ? (
         editingSpace === null && renderSpaceReviewActions(resetSpace)
-      ) : <button type="button" className="noma-add-cancel-text" onClick={returnToItemResult}>Cancel</button>}
+      ) : <button type="button" className="noma-add-cancel-text" onClick={returnToItemResult}>{t("Cancel")}</button>}
     </>
   );
 
@@ -1401,7 +1402,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
           onClick={(event) => { event.stopPropagation(); switchSpaceCameraTarget(field); }}
         >
           {(!isEmpty || !isParent) && <PersistentImage src={image} alt="" />}
-          {isEmpty && field === "sub" ? <strong><span>New Sub-Space<br />eg. Nightstand</span></strong> : renderCameraTitle(entity, field, false)}
+          {isEmpty && field === "sub" ? <strong><span>{t("New Sub-Space")}<br />{t("eg. Nightstand")}</span></strong> : renderCameraTitle(entity, field, false)}
         </div>
       );
     };
@@ -1468,7 +1469,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
         {spaceCameraError && (
           <div className="noma-add-space-camera-error" role="status">
             <p>{spaceCameraError}</p>
-            <button type="button" onClick={() => setSpaceCameraRetry((current) => current + 1)}>Retry camera</button>
+            <button type="button" onClick={() => setSpaceCameraRetry((current) => current + 1)}>{t("Retry camera")}</button>
           </div>
         )}
         <div className="noma-add-space-camera-actions-layer">
@@ -1478,7 +1479,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
               <div className="noma-add-camera-controls is-space">
                 <button type="button" onClick={() => spaceCameraInputRef.current?.click()} aria-label="Choose from photos"><PhotoUploadIcon /></button>
                 <CaptureShutterButton onClick={() => void captureCameraFrame(spaceCameraTarget)} disabled={isRecognizing} loading={isRecognizing} />
-                <button type="button" className="noma-add-skip" onClick={skipToAvailableCameraSpace} disabled={!canSkip}>Skip</button>
+                <button type="button" className="noma-add-skip" onClick={skipToAvailableCameraSpace} disabled={!canSkip}>{t("Skip")}</button>
               </div>
               </motion.div>
             )}
@@ -1502,7 +1503,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
   };
 
   return createPortal(
-    <div className="noma-add-overlay" style={stageStyle} role="dialog" aria-modal="true" aria-label="Add item">
+    <div className="noma-add-overlay" style={stageStyle} role="dialog" aria-modal="true" aria-label={t("Add item")}>
       <div className="noma-add-screen" data-board={stage} onPointerDownCapture={dismissVisibleRecentSpaces}>
         <MatrixDotBackground />
         {stage === "新增物品-默认" && (
@@ -1516,7 +1517,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
                 value={item.name}
                 onChange={(event) => setItem((current) => ({ ...current, name: event.target.value }))}
                 onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }}
-                placeholder="New Item"
+                placeholder={t("New Item")}
                 aria-label="New item title"
                 enterKeyHint="send"
                 autoComplete="off"
@@ -1608,8 +1609,8 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
                 <ItemSticker item={item} />
               </div>
               <CategoryFan open={isCategorySelectorOpen} current={item.category} onSelect={(category) => { setItem((current) => ({ ...current, category })); setIsCategorySelectorOpen(false); }} />
-              <button type="button" className="noma-add-category" onClick={() => { setLocationPickerField(null); setEditingFinalSpace(null); setIsCategorySelectorOpen((open) => !open); }}>{item.category}<TagSwitchIcon /></button>
-              <span className="noma-add-built">Build 3 days ago</span>
+              <button type="button" className="noma-add-category" onClick={() => { setLocationPickerField(null); setEditingFinalSpace(null); setIsCategorySelectorOpen((open) => !open); }}>{t(item.category)}<TagSwitchIcon /></button>
+              <span className="noma-add-built">{t("Build 3 days ago")}</span>
               {hasSpace && <section className="noma-add-final-location">
                 <div className="noma-add-location-images">
                   {parentSpace.name && (() => { const image = resolveSpaceSkin(parentSpace, finalTransitionSource || spaceMode) || emojiAsset(parentSpace.emojiIconKey || parentSpace.iconKey); return <PersistentImage className={!imageUrlIsPhoto(image) ? "is-emoji" : undefined} src={image} alt="" />; })()}
@@ -1629,7 +1630,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
                         enterKeyHint="done"
                       />
                     ) : <button type="button" className="noma-add-location-title" onClick={() => beginFinalSpaceEdit("parent")}>{parentSpace.name}</button>}
-                    {hasOtherParentLocations && <button type="button" className="noma-add-location-switch" onClick={() => openFinalLocationPicker("parent")} aria-label="Switch parent location"><TagSwitchIcon /></button>}
+                    {hasOtherParentLocations && <button type="button" className="noma-add-location-switch" onClick={() => openFinalLocationPicker("parent")} aria-label={t("Switch parent location")}><TagSwitchIcon /></button>}
                   </div>}
                   {subSpace.name && <div className="noma-add-location-row is-sub">
                     {editingFinalSpace === "sub" ? (
@@ -1643,7 +1644,7 @@ export const AddItemFlowV13: React.FC<AddItemFlowV13Props> = ({ isOpen, onClose,
                         enterKeyHint="done"
                       />
                     ) : <button type="button" className="noma-add-location-title" onClick={() => beginFinalSpaceEdit("sub")}>{subSpace.name}</button>}
-                    {hasOtherSubLocations && <button type="button" className="noma-add-location-switch" onClick={() => openFinalLocationPicker("sub")} aria-label="Switch sub-location"><TagSwitchIcon /></button>}
+                    {hasOtherSubLocations && <button type="button" className="noma-add-location-switch" onClick={() => openFinalLocationPicker("sub")} aria-label={t("Switch sub-location")}><TagSwitchIcon /></button>}
                   </div>}
                 </div>
               </section>}

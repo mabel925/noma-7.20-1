@@ -1,3 +1,4 @@
+import { t } from "../i18n/language";
 import React from "react";
 import { createPortal } from "react-dom";
 import type { AuthUser } from "../auth/AuthContext";
@@ -42,8 +43,8 @@ export const Header: React.FC<HeaderProps> = ({
 
       <button
         type="button"
-        aria-label={user ? "Open account" : "Log in"}
-        title={user ? "Open account" : "Log in"}
+        aria-label={user ? t("Open account") : t("Log in")}
+        title={user ? t("Open account") : t("Log in")}
         onClick={onUserClick}
         className={`pointer-events-auto relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border-0 shadow-none transition-transform active:scale-95 ${
           user ? "bg-white p-[2px]" : "bg-black/[0.12]"

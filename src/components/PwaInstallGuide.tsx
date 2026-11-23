@@ -1,3 +1,4 @@
+import { t, useLanguage } from "../i18n/language";
 import React from "react";
 import { createPortal } from "react-dom";
 import { ArrowDownToLine, Ellipsis, Share, SquarePlus } from "lucide-react";
@@ -26,6 +27,7 @@ export const usePwaInstall = () => {
 };
 
 export const PwaInstallProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
+  useLanguage();
   const install = React.useSyncExternalStore(subscribeInstall, getInstallSnapshot);
   const [standalone, setStandalone] = React.useState(() => isStandalonePwa() || document.body.classList.contains("pwa-standalone"));
   const [snoozed, setSnoozed] = React.useState(() => {
@@ -122,22 +124,22 @@ export const PwaInstallProvider: React.FC<React.PropsWithChildren> = ({ children
           <div ref={dialogRef} className="noma-install-sheet" role="dialog" aria-modal="true" aria-labelledby="noma-install-title" aria-describedby="noma-install-description" aria-busy={installing}>
             <button ref={closeRef} className="noma-install-close" type="button" onClick={closeGuide} aria-label="Close installation guide"><CloseIcon /></button>
             <img className="noma-install-app-icon" src="/icons/noma-app-icon-180.png" alt="" />
-            <h2 id="noma-install-title">Give noma a home.</h2>
-            <p id="noma-install-description">A full-screen space, one tap away.</p>
-            {embedded && <p className="noma-install-note">Open this page in {platform === "ios" ? "Safari" : "Chrome"} first using this browser’s menu, then follow the steps below.</p>}
+            <h2 id="noma-install-title">{t("Give noma a home.")}</h2>
+            <p id="noma-install-description">{t("A full-screen space, one tap away.")}</p>
+            {embedded && <p className="noma-install-note">{t("Open this page in {browser} first using this browser’s menu, then follow the steps below.", { browser: platform === "ios" ? "Safari" : "Chrome" })}</p>}
             <ol className="noma-install-steps">
               {(platform === "ios" ? iosSteps : androidSteps).map((step, index) => (
                 <li key={step.title}>
                   <span className="noma-install-step-icon" aria-hidden="true">{step.icon}</span>
-                  <div><h3>{index + 1}. {step.title}</h3><p>{step.text}</p></div>
+                  <div><h3>{index + 1}. {t(step.title)}</h3><p>{t(step.text)}</p></div>
                 </li>
               ))}
             </ol>
-            {installError && <p className="noma-install-note" role="status">Use your browser’s menu to add noma instead.</p>}
+            {installError && <p className="noma-install-note" role="status">{t("Use your browser’s menu to add noma instead.")}</p>}
             {install.prompt && !embedded ? (
-              <button className="noma-install-primary" type="button" onClick={() => void installNoma()} disabled={installing}>{installing ? "Opening…" : "Install noma"}</button>
+              <button className="noma-install-primary" type="button" onClick={() => void installNoma()} disabled={installing}>{installing ? t("Opening…") : t("Install noma")}</button>
             ) : (
-              <button className="noma-install-primary" type="button" onClick={closeGuide} disabled={installing}>{installing ? "Opening…" : "Got it"}</button>
+              <button className="noma-install-primary" type="button" onClick={closeGuide} disabled={installing}>{installing ? t("Opening…") : t("Got it")}</button>
             )}
           </div>
         </div>, document.body,
@@ -152,8 +154,8 @@ export const PwaInstallNudge: React.FC<{ active: boolean }> = ({ active }) => {
   return createPortal(
     <aside className="noma-install-nudge" aria-label="Add noma to your Home Screen">
       <img src="/icons/noma-app-icon-180.png" alt="" />
-      <div className="noma-install-nudge-copy"><p>Add to Home Screen</p><p>Organize and find, anywhere.</p></div>
-      <GradientPillButton onClick={openGuide} aria-label="Add noma to Home Screen">Add</GradientPillButton>
+      <div className="noma-install-nudge-copy"><p>{t("Add to Home Screen")}</p><p>{t("Organize and find, anywhere.")}</p></div>
+      <GradientPillButton onClick={openGuide} aria-label="Add noma to Home Screen">{t("Add")}</GradientPillButton>
       <button className="noma-install-dismiss" type="button" onClick={snooze} aria-label="Dismiss installation reminder"><span><CloseIcon /></span></button>
     </aside>, document.body,
   );

@@ -1,0 +1,2 @@
+新增 --profile-* token：参考图个人资料页的头像、分组、字号、圆角、留白、退出操作和页面转场。现有项目没有账户页对应 token；色彩引用现有 install token，导航复用 PageNavigation。
+新增 --memory-tab-gap: 58px，按用户要求增加Memory两个主tab之间的间距。

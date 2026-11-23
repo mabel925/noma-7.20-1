@@ -20,6 +20,7 @@ function spaceCardHarness() {
   const calls = { item: 0, space: 0 };
   const found = item("mug");
   const context = vm.createContext({ exports: {}, require: (name) => name === "react" ? React
+    : name.endsWith("i18n/language") ? { t: (text, values = {}) => text.replace(/\{([^{}]+)\}/g, (token, key) => String(values[key] ?? token)) }
     : name.endsWith("emojiCatalog") ? { emojiAsset: (key) => `/emoji/${key}.png`, classifyEmojiLocally: () => ({ icon_key: "box" }) }
     : name.endsWith("ItemStickerVisual") ? { ItemStickerVisual: () => null }
     : name.endsWith("PersistentImage") ? { PersistentImage: () => null } : {} });

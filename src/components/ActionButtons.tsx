@@ -1,3 +1,4 @@
+import { t } from "../i18n/language";
 import React from "react";
 import { Compass, Plus } from "lucide-react";
 import { MemoryCoreButton } from "./MemoryCoreButton";
@@ -36,10 +37,10 @@ export const ActionButtons: React.FC<ActionButtonsProps> = ({
     >
       {/* 1. Chat toggle button (Upper option with custom icon-chat SVG, no black background, perfectly centered with the add button) */}
       <button
-        aria-label="Toggle Chat View"
+        aria-label={t("Toggle Chat View")}
         onClick={onChatToggle}
         className="w-14 h-14 bg-transparent flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95 text-white cursor-pointer group"
-        title="Toggle Chat View"
+        title={t("Toggle Chat View")}
       >
         <svg
           width="32"
@@ -61,10 +62,10 @@ export const ActionButtons: React.FC<ActionButtonsProps> = ({
 
       {/* 2. Photo/Capture button (Lower option: White background with custom black "+" SVG) */}
       <button
-        aria-label="Camera Scanner Action"
+        aria-label={t("Camera Scanner Action")}
         onClick={onCaptureClick}
         className="w-14 h-14 bg-white hover:bg-neutral-100 rounded-full shadow-[0_6px_24px_rgba(0,0,0,0.3)] flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95 text-black cursor-pointer"
-        title="Camera Scanner Action"
+        title={t("Camera Scanner Action")}
       >
         <svg
           width="18"

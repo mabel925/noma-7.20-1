@@ -1,3 +1,4 @@
+import { t, translateNomaMessage } from "../i18n/language";
 import React from "react";
 import { Plus } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -83,10 +84,10 @@ const ChatSpaceCard: React.FC<{
         <div className="min-w-0 flex-1">
           <div className="truncate text-[18px] font-bold leading-tight text-[#232121]">
             {space.kind === "parent" && <span className="mr-1 text-[15px]">📍</span>}
-            {space.name}{space.kind === "child" ? ` (${space.itemCount} items)` : ""}
+            {space.name}{space.kind === "child" ? ` (${t("{count} items", { count: space.itemCount })})` : ""}
           </div>
           <div className="mt-[8px] truncate text-[14px] font-medium leading-none text-[#232121]/50">
-            {space.kind === "parent" ? `${space.itemCount} items inside` : <><span className="mr-1">📍</span>{space.parentName}</>}
+            {space.kind === "parent" ? t("{count} items inside", { count: space.itemCount }) : <><span className="mr-1">📍</span>{space.parentName}</>}
           </div>
         </div>
       </div>
@@ -95,10 +96,9 @@ const ChatSpaceCard: React.FC<{
         <div className="relative mt-[20px] -mr-[14px] flex gap-[9px] overflow-x-auto no-scrollbar touch-pan-x">
           {space.subSpaces.length > 0 ? space.subSpaces.map((child) => (
             <span key={`${space.id}-${child.name}`} className="h-[38px] shrink-0 rounded-full bg-[#232121]/5 px-[20px] flex items-center text-[13px] font-medium text-neutral-500 whitespace-nowrap">
-              {child.name} ({child.itemCount} items)
-            </span>
+              {child.name} ({child.itemCount}{" "}{t("items)")}{" "}</span>
           )) : (
-            <span className="h-[38px] rounded-full bg-[#232121]/5 px-[20px] flex items-center text-[13px] font-medium text-neutral-500">No sub-spaces</span>
+            <span className="h-[38px] rounded-full bg-[#232121]/5 px-[20px] flex items-center text-[13px] font-medium text-neutral-500">{t("No sub-spaces")}</span>
           )}
         </div>
       ) : (
@@ -230,7 +230,7 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                                   filter: "drop-shadow(0px 6px 15px rgba(0, 0, 0, 0.05))",
                                 }}
                               >
-                                <p className="whitespace-pre-wrap break-words">{msg.text}</p>
+                                <p className="whitespace-pre-wrap break-words">{isNoma ? translateNomaMessage(msg.text) : msg.text}</p>
                                 {isNoma ? (
                                   <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="absolute bottom-[-11px] left-[24px] pointer-events-none">
                                     <path d="M 0 0 L 12 0 L 0 12 Z" fill="white" />
@@ -286,8 +286,8 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                 <button
                   onClick={onTriggerCamera}
                   className="w-8 h-8 flex items-center justify-center text-neutral-800 hover:text-neutral-900 active:scale-90 transition-all cursor-pointer shrink-0"
-                  aria-label="Add item"
-                  title="Add item"
+                  aria-label={t("Add item")}
+                  title={t("Add item")}
                 >
                   <Plus className="h-7 w-7" strokeWidth={2.25} />
                 </button>
@@ -319,13 +319,13 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                       {/* Black blinking input line */}
                       <span className="w-[1.5px] h-[17px] bg-black animate-cursor-blink-black mr-1" />
                       {/* Default text */}
-                      <span className="text-[16px] text-neutral-400 font-sans">Talk to Noma</span>
+                      <span className="text-[16px] text-neutral-400 font-sans">{t("Talk to Noma")}</span>
                     </div>
                   )}
                   {/* Custom placeholder when focused and empty (showing native black caret on the left) */}
                   {!inputValue && isFocused && (
                     <div className="absolute inset-y-0 left-0 flex items-center pointer-events-none select-none">
-                      <span className="text-[16px] text-neutral-400 font-sans ml-[1.5px]">Talk to Noma</span>
+                      <span className="text-[16px] text-neutral-400 font-sans ml-[1.5px]">{t("Talk to Noma")}</span>
                     </div>
                   )}
                 </div>

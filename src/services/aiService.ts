@@ -1,6 +1,7 @@
 import { NOMA_AI_URL } from "./backendUrls";
 import { AiAccessError, getAiRequestAuth } from "./aiAuth";
 import { classifyEmojiLocally, EMOJI_CATALOG, EMOJI_KEY_SET, normalizeItemCategory, type EmojiKind } from "../data/emojiCatalog";
+import { getLanguage, type Language } from "../i18n/language";
 
 export interface RecognitionResult {
   title: string;
@@ -426,6 +427,7 @@ export async function recognizeImage(
   imageInput: File | Blob | string,
   mimeType: string = "image/png",
   scanId?: string,
+  language: Language = getLanguage(),
 ): Promise<RecognitionResult> {
   console.log("[AI Dispatcher] Initializing image recognition...");
   
@@ -438,6 +440,7 @@ export async function recognizeImage(
     const result = await callNomaBackend("vision", {
       image_base64: pureBase64,
       mime_type: "image/jpeg",
+      language,
     }, scanId);
     console.log("[AI Dispatcher] Worker raw response:", result);
 
@@ -484,6 +487,7 @@ export async function processCapturedImage(
   imageInput: File | Blob | string,
   scanId: string,
   signal?: AbortSignal,
+  language: Language = getLanguage(),
 ): Promise<CapturedImageProcessingResult> {
   signal?.throwIfAborted();
   const sharedBase64 = stripBase64Prefix(await prepareImage(imageInput, 512));
@@ -493,6 +497,7 @@ export async function processCapturedImage(
   const result = await callNomaBackend("process-image", {
     image_base64: sharedBase64,
     mime_type: "image/jpeg",
+    language,
   }, scanId, signal);
 
   const directRecognition = result?.recognition;
@@ -559,14 +564,16 @@ export async function processCapturedImage(
 export async function generateStorageTitle(
   title: string,
   category: string,
-  labels: string[] = []
+  labels: string[] = [],
+  language: Language = getLanguage(),
 ): Promise<string> {
   console.log("[AI Dispatcher] Requesting storage title from worker...");
   try {
     const result = await callNomaBackend("title", {
       title,
       category,
-      labels
+      labels,
+      language,
     });
     console.log("[AI Dispatcher] Title generation raw result:", result);
     

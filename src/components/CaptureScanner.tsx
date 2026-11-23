@@ -1,3 +1,4 @@
+import { t, useLanguage } from "../i18n/language";
 import { PersistentImage } from "./PersistentImage";
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
@@ -404,7 +405,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   const itemNameEditedRef = useRef(false);
 
   // Pre-defined list of categories for the interactive fan-out switcher
-  const isChinese = false; // Temporarily forced to English as requested
+  const { language } = useLanguage();
+  const isChinese = language === "zh";
   const defaultSubLocationName = isChinese ? "收纳位置" : "Storage spot";
   const defaultParentLocationName = isChinese ? "房间" : "Room";
 
@@ -3016,7 +3018,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                       {newSpaceTitle}
                     </span>
                     <span className="mt-1 block truncate text-[16px] font-sans font-semibold text-[#232121]">
-                      {newDraft.name || "Untitled Space"}
+                      {newDraft.name || t("Untitled Space")}
                     </span>
                   </span>
                   <SelectorSelectedIcon selected={!isResultLocationExisting(field)} />
@@ -3053,7 +3055,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                               {option.name}
                             </span>
                             <span className="mt-1 block text-[14px] font-sans text-[#232121]/40">
-                              {option.itemCount} {option.itemCount === 1 ? "item" : "items"}
+                              {option.itemCount} {option.itemCount === 1 ? t("item") : t("items")}
                             </span>
                           </span>
                           <SelectorSelectedIcon selected={isSelected} />
@@ -3065,9 +3067,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
               )}
 
               {!newDraft && existingOptions.length === 0 && (
-                <div className="py-8 text-center text-[13px] font-sans text-[#232121]/45">
-                  No saved spaces yet
-                </div>
+                <div className="py-8 text-center text-[13px] font-sans text-[#232121]/45">{" "}{t("No saved spaces yet")}{" "}</div>
               )}
             </div>
           </motion.div>
@@ -3752,7 +3752,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
               onClick={cyclePriceCurrency}
               className="h-10 min-w-[48px] px-3 rounded-full bg-[#232121] text-white text-[17px] font-sans font-bold active:scale-95 transition-transform"
               aria-label={`Switch currency symbol, current ${priceCurrency}`}
-              title="Switch currency"
+              title={t("Switch currency")}
             >
               {priceCurrency}
             </button>
@@ -3785,9 +3785,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                 setIsEditingPrice(false);
               }}
               className="h-10 px-5 rounded-full bg-[#232121] text-white text-[14px] font-sans font-semibold active:scale-95 transition-transform"
-            >
-              Done
-            </button>
+            >{" "}{t("Done")}{" "}</button>
           </div>
         </div>
       </div>
@@ -3810,9 +3808,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                 closeResultLocationEditor();
               }}
               className="h-10 px-4 rounded-full bg-white/80 text-[#232121] text-[14px] font-sans font-semibold active:scale-95 transition-transform"
-            >
-              Cancel
-            </button>
+            >{" "}{t("Cancel")}{" "}</button>
             <input
               autoFocus
               type="text"
@@ -3837,9 +3833,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                 setResultLocationPicker(editingResultLocationField);
               }}
               className="h-10 px-4 rounded-full bg-[#232121] text-white text-[14px] font-sans font-semibold active:scale-95 transition-transform"
-            >
-              Switch
-            </button>
+            >{" "}{t("Switch")}{" "}</button>
           </div>
         </div>
       </div>
@@ -3875,7 +3869,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
           >
-            {aiAccessNotice}
+            {t(aiAccessNotice)}
           </motion.div>
         )}
       </AnimatePresence>
@@ -3898,9 +3892,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
             <h3 
               id="camera-guide-title"
               className="text-white text-[20px] font-sans font-medium tracking-tight text-center max-w-[240px] leading-snug"
-            >
-              Show me what you want to remember.
-            </h3>
+            >{" "}{t("Show me what you want to remember.")}{" "}</h3>
           </div>
         )}
 
@@ -4232,11 +4224,9 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                     >
                       <div className="w-10 h-10 rounded-full border-[3px] border-[#8D7D66]/20 border-t-[#8D7D66] animate-spin mb-3" />
                       <span id="final-sticker-loader-label" className="text-[11px] font-mono font-bold text-[#3E3C3A] leading-tight uppercase tracking-wider block">
-                        {aiProgress || "AI Loading..."}
+                        {aiProgress || t("AI Loading...")}
                       </span>
-                      <span className="text-[8px] text-[#8E7C66]/70 font-mono mt-1 block uppercase tracking-wider">
-                        Please Hold Steady
-                      </span>
+                      <span className="text-[8px] text-[#8E7C66]/70 font-mono mt-1 block uppercase tracking-wider">{" "}{t("Please Hold Steady")}{" "}</span>
                     </div>
                   )}
 
@@ -4360,7 +4350,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                         onClick={() => setIsCategorySelectorOpen(!isCategorySelectorOpen)}
                       >
                         <span className="text-[15px] font-sans font-medium text-black/45 tracking-tight leading-none">
-                          {customCategory}
+                          {t(customCategory)}
                         </span>
                         <TagSwitchIcon />
                       </div>
@@ -4380,7 +4370,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                   <button
                     onClick={onClose}
                     className="w-[62px] h-[62px] rounded-full bg-white flex items-center justify-center border-0 hover:bg-neutral-100 hover:scale-105 active:scale-95 transition-all outline-none cursor-pointer animate-pop-in-1 shadow-none"
-                    title="Cancel"
+                    title={t("Cancel")}
                   >
                     <CloseIcon className="w-6 h-6 text-[#232121]/50" />
                   </button>
@@ -4389,7 +4379,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                   <button
                     onClick={handleObjectConfirmed}
                     className="w-[72px] h-[72px] rounded-full bg-[#232121] flex items-center justify-center border border-transparent hover:bg-[#232121] hover:scale-105 active:scale-95 transition-all outline-none cursor-pointer animate-pop-in-2 shadow-none"
-                    title="Confirm Save"
+                    title={t("Confirm Save")}
                   >
                     <Check className="w-[22px] h-[22px] text-white stroke-[3]" />
                   </button>
@@ -4407,7 +4397,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                       setSkipScanEffects(false);
                     }}
                     className="w-[62px] h-[62px] rounded-full bg-white flex items-center justify-center border-0 hover:bg-neutral-100 hover:scale-105 active:scale-95 transition-all outline-none cursor-pointer animate-pop-in-3 shadow-none"
-                    title="Reset / Retake"
+                    title={t("Reset / Retake")}
                   >
                     <RotateCcw className="w-5 h-5 text-[#232121]/50 stroke-[2]" />
                   </button>
@@ -4420,7 +4410,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                 style={{ width: "316px", height: "56px", bottom: `${resultInputBottomGap}px` }}
               >
                 <CaptureDefaultInput
-                  placeholder="Not what you expected？ Tap to adjust"
+                  placeholder={t("Not what you expected？ Tap to adjust")}
                   value={customName}
                   onChange={setCustomName}
                   ariaLabel="Item name"
@@ -4451,10 +4441,10 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                   <h3 
                     className="text-[20px] font-sans font-semibold tracking-tight text-center max-w-[300px] leading-snug text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)]"
                   >
-                    {storageFlowStep === "sub_capture" && "Now, show me its little home."}
-                    {storageFlowStep === "sub_spot" && "Great! Now, show me the exact spot."}
-                    {storageFlowStep === "parent_capture" && "A bit further... I want to see the whole scene."}
-                    {storageFlowStep === "parent_confirm" && "Does this scene capture it well?"}
+                    {storageFlowStep === "sub_capture" && t("Now, show me its little home.")}
+                    {storageFlowStep === "sub_spot" && t("Great! Now, show me the exact spot.")}
+                    {storageFlowStep === "parent_capture" && t("A bit further... I want to see the whole scene.")}
+                    {storageFlowStep === "parent_confirm" && t("Does this scene capture it well?")}
                   </h3>
                 </div>
               )}
@@ -4669,7 +4659,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                             </defs>
                           </svg>
                           <span className="h-[30px] min-w-[66px] max-w-[122px] rounded-r-[6px] rounded-l-none bg-[#232121] -ml-px pl-0 pr-2.5 flex items-center justify-center font-alkatra text-[15px] leading-none whitespace-nowrap overflow-hidden">
-                            {priceInput ? `${priceCurrency}${priceInput}` : "+ Value"}
+                            {priceInput ? `${priceCurrency}${priceInput}` : t("+ Value")}
                           </span>
                         </button>
 
@@ -4817,7 +4807,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                         onClick={() => setIsCategorySelectorOpen(!isCategorySelectorOpen)}
                       >
                         <span className="text-[15px] font-sans font-medium text-neutral-500 tracking-tight leading-none">
-                          {customCategory || "Select"}
+                          {customCategory ? t(customCategory) : t("Select")}
                         </span>
                         <TagSwitchIcon />
                       </button>
@@ -4886,7 +4876,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                       onClick={handleSaveMemory}
                       disabled={isSavingMemory}
                       className="w-[72px] h-[72px] rounded-full bg-[#232121] flex items-center justify-center hover:bg-[#232121] hover:scale-105 active:scale-95 disabled:opacity-70 transition-all shadow-none cursor-pointer mt-10 flex-shrink-0 z-10 mx-auto"
-                      title={isSavingMemory ? "Saving" : "Confirm Save"}
+                      title={isSavingMemory ? "Saving" : t("Confirm Save")}
                     >
                       <Check className={`w-[22px] h-[22px] text-white stroke-[3] ${isSavingMemory ? "animate-pulse" : ""}`} />
                     </button>
@@ -4898,9 +4888,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                     )}
 
                     {/* Helper text caption */}
-                    <p className="text-[14px] font-sans text-[#232121]/45 font-normal mt-7 pb-2 tracking-tight select-none pointer-events-none text-center z-10">
-                      Tap text to adjust
-                    </p>
+                    <p className="text-[14px] font-sans text-[#232121]/45 font-normal mt-7 pb-2 tracking-tight select-none pointer-events-none text-center z-10">{" "}{t("Tap text to adjust")}{" "}</p>
                   </div>
                 )}
 
@@ -4912,9 +4900,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                     aria-label="Cancel final result"
                     className="absolute right-5 z-[160] pointer-events-auto cursor-pointer text-[16px] font-sans font-medium text-neutral-400 transition-all hover:text-neutral-700 active:scale-95"
                     style={{ top: "calc(var(--noma-navigation-top) + 4px)" }}
-                  >
-                    Cancel
-                  </button>
+                  >{" "}{t("Cancel")}{" "}</button>
                 )}
 
                 {/* Floating cutout sticker + title anchored beside the storage action sheet */}
@@ -5052,12 +5038,12 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                     {/* Step 1: Sub Location Capture */}
                     {storageFlowStep === "sub_capture" && (
                       <StorageActionRow>
-                        <StorageRoundButton onClick={() => fileInputRef.current?.click()} title="Upload file instead" variant="ghost">
+                        <StorageRoundButton onClick={() => fileInputRef.current?.click()} title={t("Upload file instead")} variant="ghost">
                           <ImageIcon className="w-6 h-6" />
                         </StorageRoundButton>
-                        <StorageShutterButton onClick={handleCapture} title="Capture Little Home" />
-                        <StorageRoundButton onClick={() => setStorageFlowStep("none")} title="Back" variant="ghost">
-                          <span className="text-[13px] font-sans font-medium">Back</span>
+                        <StorageShutterButton onClick={handleCapture} title={t("Capture Little Home")} />
+                        <StorageRoundButton onClick={() => setStorageFlowStep("none")} title={t("Back")} variant="ghost">
+                          <span className="text-[13px] font-sans font-medium">{t("Back")}</span>
                         </StorageRoundButton>
                       </StorageActionRow>
                     )}
@@ -5072,7 +5058,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                               setSubLocationImg(null);
                               setIsUsingExistingSubLocation(false);
                             }}
-                            title="Cancel Storage Flow"
+                            title={t("Cancel Storage Flow")}
                           >
                             <CloseIcon className="w-6 h-6 text-[#232121]" />
                           </StorageRoundButton>
@@ -5097,7 +5083,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                               setSubLocationImg(null);
                               setIsUsingExistingSubLocation(false);
                             }}
-                            title="Retry Little Home Capture"
+                            title={t("Retry Little Home Capture")}
                           >
                             <RotateCcw className="w-5 h-5 stroke-[2]" />
                           </StorageRoundButton>
@@ -5117,7 +5103,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                     {/* Step 3: Parent Location Capture */}
                     {storageFlowStep === "parent_capture" && (
                       <StorageActionRow>
-                        <StorageRoundButton onClick={() => fileInputRef.current?.click()} title="Upload file instead" variant="ghost">
+                        <StorageRoundButton onClick={() => fileInputRef.current?.click()} title={t("Upload file instead")} variant="ghost">
                           <ImageIcon className="w-6 h-6" />
                         </StorageRoundButton>
 
@@ -5129,7 +5115,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                               onClick={() => {
                                 setStorageFlowStep("sub_spot");
                               }}
-                              title="View/Edit Sub-location"
+                              title={t("View/Edit Sub-location")}
                             >
                               <PersistentImage
                                 src={subLocationImg}
@@ -5141,11 +5127,11 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                             </div>
                           )}
 
-                          <StorageShutterButton onClick={handleCapture} title="Capture Parent Scene" />
+                          <StorageShutterButton onClick={handleCapture} title={t("Capture Parent Scene")} />
                         </div>
 
-                        <StorageRoundButton onClick={() => setStorageFlowStep("sub_spot")} title="Back" variant="ghost">
-                          <span className="text-[13px] font-sans font-medium">Back</span>
+                        <StorageRoundButton onClick={() => setStorageFlowStep("sub_spot")} title={t("Back")} variant="ghost">
+                          <span className="text-[13px] font-sans font-medium">{t("Back")}</span>
                         </StorageRoundButton>
                       </StorageActionRow>
                     )}
@@ -5160,7 +5146,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                               setParentLocationImg(null);
                               setIsUsingExistingParentLocation(false);
                             }}
-                            title="Cancel Storage Flow"
+                            title={t("Cancel Storage Flow")}
                           >
                             <CloseIcon className="w-6 h-6 text-[#232121]" />
                           </StorageRoundButton>
@@ -5171,7 +5157,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                               }
                               setStorageFlowStep("final_result");
                             }}
-                            title="Save Memory & Storage Spot"
+                            title={t("Save Memory & Storage Spot")}
                             variant="dark"
                           >
                             <Check className="w-[22px] h-[22px] stroke-[3]" />
@@ -5182,7 +5168,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                               setParentLocationImg(null);
                               setIsUsingExistingParentLocation(false);
                             }}
-                            title="Retry Scene Capture"
+                            title={t("Retry Scene Capture")}
                           >
                             <RotateCcw className="w-5 h-5 stroke-[2]" />
                           </StorageRoundButton>
@@ -5266,7 +5252,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   className="w-12 h-12 rounded-full hover:bg-black/5 active:scale-95 flex flex-col items-center justify-center text-[#3A3938] transition-all cursor-pointer"
-                  title="Mock uploaded photo scanning"
+                  title={t("Mock uploaded photo scanning")}
                 >
                   <PhotoUploadIcon className="h-8 w-8" />
                 </button>
@@ -5279,7 +5265,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
                   className="w-12 h-12 flex flex-col items-center justify-center text-neutral-500 hover:text-black transition-all active:scale-95 cursor-pointer"
                   aria-label="Switch to Emoji mode"
                 >
-                  {onSwitchToEmoji ? <img src="/assets/icon-emoji.png" alt="" className="h-14 w-14 max-w-none object-contain" /> : "Cancel"}
+                  {onSwitchToEmoji ? <img src="/assets/icon-emoji.png" alt="" className="h-14 w-14 max-w-none object-contain" /> : t("Cancel")}
                 </button>
               </div>
             </div>
@@ -5289,9 +5275,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
             <div className="w-full h-full flex flex-col items-center justify-center pt-0 pb-4">
               {/* Spinning cute colorful flower loader */}
               <div className="w-9 h-9 border-4 border-[#3A3938]/10 border-t-[#3A3938] rounded-full animate-spin mb-3" />
-              <p className="text-[#3A3938] text-[14px] font-sans font-normal tracking-tight animate-pulse">
-                Recognizing...
-              </p>
+              <p className="text-[#3A3938] text-[14px] font-sans font-normal tracking-tight animate-pulse">{" "}{t("Recognizing...")}{" "}</p>
             </div>
           )}
         </div>
@@ -5347,25 +5331,19 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
               exit={{ scale: 0.94, y: 12 }}
               transition={{ type: "spring", stiffness: 260, damping: 24 }}
             >
-              <h3 className="text-[20px] font-sans font-bold text-[#232121] tracking-tight">Discard this capture?</h3>
-              <p className="mt-3 text-[13px] font-sans leading-relaxed text-[#232121]/55">
-                This will cancel the object and location results from this capture flow.
-              </p>
+              <h3 className="text-[20px] font-sans font-bold text-[#232121] tracking-tight">{t("Discard this capture?")}</h3>
+              <p className="mt-3 text-[13px] font-sans leading-relaxed text-[#232121]/55">{" "}{t("This will cancel the object and location results from this capture flow.")}{" "}</p>
               <div className="mt-6 flex gap-3">
                 <button
                   type="button"
                   onClick={() => setShowDiscardConfirm(false)}
                   className="h-12 flex-1 rounded-full bg-white text-[#232121]/70 text-[14px] font-sans font-semibold active:scale-95 transition-transform"
-                >
-                  Keep Editing
-                </button>
+                >{" "}{t("Keep Editing")}{" "}</button>
                 <button
                   type="button"
                   onClick={handleDiscardAllCaptureResults}
                   className="h-12 flex-1 rounded-full bg-[#232121] text-white text-[14px] font-sans font-semibold active:scale-95 transition-transform"
-                >
-                  Discard
-                </button>
+                >{" "}{t("Discard")}{" "}</button>
               </div>
             </motion.div>
           </motion.div>

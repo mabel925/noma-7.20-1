@@ -1,3 +1,4 @@
+import { useLanguage } from "../i18n/language";
 import React from "react";
 import Keyboard, { type KeyboardReactInterface } from "react-simple-keyboard";
 import chineseLayout from "simple-keyboard-layouts/build/layouts/chinese";
@@ -85,6 +86,7 @@ export const VirtualKeyboard: React.FC<VirtualKeyboardProps> = ({
   sendLabel,
   className = "",
 }) => {
+  const { language: uiLanguage, t } = useLanguage();
   const [language, setLanguage] = React.useState<KeyboardLanguage>("en");
   const [layoutName, setLayoutName] = React.useState<KeyboardLayoutName>("default");
   const [pinyinBuffer, setPinyinBuffer] = React.useState("");
@@ -260,9 +262,9 @@ export const VirtualKeyboard: React.FC<VirtualKeyboardProps> = ({
       "{lang}": language === "en" ? "中" : "EN",
       "{space}": language === "en" ? "Space" : "空格",
       "{hide}": "⌄",
-      "{send}": sendLabel ?? (mode === "numeric" ? "Done" : "Send"),
+      "{send}": sendLabel ?? t(mode === "numeric" ? "Done" : "Send"),
     }),
-    [language, mode, sendLabel]
+    [language, mode, sendLabel, uiLanguage]
   );
 
   return (

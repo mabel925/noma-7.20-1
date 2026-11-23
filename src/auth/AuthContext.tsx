@@ -355,7 +355,10 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
     pendingActionRef.current = null;
     resetEmailLogin();
     await mediaStorage.clearReadSession();
-    if (!MOCK_AUTH_ENABLED && !LOCAL_OTP_BYPASS_ENABLED) await supabase.auth.signOut();
+    if (!MOCK_AUTH_ENABLED && !LOCAL_OTP_BYPASS_ENABLED) {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+    }
     setUser(null);
   }, [resetEmailLogin]);
 
