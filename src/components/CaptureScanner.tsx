@@ -7,6 +7,7 @@ import { remove_background } from "../services/removeBackgroundService";
 import { AiAccessError, createAiScanId } from "../services/aiAuth";
 import { createCaptureResult } from "../services/captureResult.js";
 import { startRecognitionWave, type RecognitionWaveController } from "../animations/recognitionWave";
+import { capturePhotoSnapshot, paintCaptureSnapshot } from "../animations/captureSnapshot";
 import { MemoryItemLimitError } from "../services/memoryStorage";
 import { useAuth } from "../auth/AuthContext";
 import { motion, AnimatePresence } from "motion/react";
@@ -482,6 +483,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   // Canvases for animation effects
   const particlesCanvasRef = useRef<HTMLCanvasElement>(null);
   const recognitionWaveRef = useRef<RecognitionWaveController | null>(null);
+  const scanningPhotoRef = useRef<HTMLImageElement>(null);
+  const disintegrationSnapshotRef = useRef<HTMLCanvasElement | null>(null);
   const pixelateCanvasRef = useRef<HTMLCanvasElement>(null);
   const stickerCanvasRef = useRef<HTMLCanvasElement>(null);
   const outlineTraceCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -795,6 +798,12 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     if (signal.aborted) return;
     await recognitionWaveRef.current?.finish();
     if (signal.aborted) return;
+    const cameraView = document.getElementById("camera-view");
+    disintegrationSnapshotRef.current = directThumbnail ? null : capturePhotoSnapshot(
+      scanningPhotoRef.current,
+      cameraView?.clientWidth || containerWidth,
+      cameraView?.clientHeight || containerHeight,
+    );
     const sourceLayout = getCoverLayoutFromDimensions(sourceWidth, sourceHeight);
     const boundsSourceWidth = cutoutBounds?.sourceWidth || sourceWidth || sourceLayout.width;
     const boundsSourceHeight = cutoutBounds?.sourceHeight || sourceHeight || sourceLayout.height;
@@ -1605,7 +1614,10 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     const signal = captureSessionRef.current.signal;
     if (signal.aborted) return transparentCutout;
     calculateTargetScaleFromDimensions(width, height);
-    const assets = await generateStickerAssets(transparentCutout);
+    const [assets] = await Promise.all([
+      generateStickerAssets(transparentCutout),
+      recognitionWaveRef.current?.finish(),
+    ]);
     if (signal.aborted) return assets.finalSticker;
     setAlignedCutoutUrl(null);
     setFlightCutoutUrl(assets.paddedCutout);
@@ -2295,8 +2307,8 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     };
   }, [scanStep, isOutlineTraceReady, traceCompleted, paddedCutoutUrl, transparentCutoutUrl, OUTLINE_TRACE_DURATION]);
 
-  // Step 3-2 PixiJS dynamic quantum pixelate background disintegrating simulator with continuous organic particle physics flight
-  useEffect(() => {
+  // Paint the handoff photo before the browser can display the new scene.
+  React.useLayoutEffect(() => {
     if (scanStep !== "disintegrating") return;
 
     if (skipScanEffects) {
@@ -2325,27 +2337,35 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     const sCtx = sCanvas.getContext("2d");
 
     let isReady = false;
-    let fallbackGradientGenerated = false;
+    let disposed = false;
 
     const renderSnapshotBase = () => {
       if (!sCtx) return;
       sCtx.clearRect(0, 0, W, H);
-      if (uploadedImageUrl) {
-        const existingImg = document.querySelector('img[alt="scanning upload container"]') || document.querySelector('img[alt="uploaded preview"]') as HTMLImageElement;
-        if (existingImg && (existingImg as HTMLImageElement).complete) {
+      const snapshot = disintegrationSnapshotRef.current;
+      if (snapshot) {
+        paintCaptureSnapshot(sCtx, snapshot, W, H);
+        isReady = true;
+      } else if (uploadedImageUrl) {
+        const existingImg = scanningPhotoRef.current;
+        if (existingImg?.complete && existingImg.naturalWidth) {
           sCtx.drawImage(existingImg as HTMLImageElement, layout.left, layout.top, layout.width, layout.height);
           isReady = true;
         } else {
           const img = new Image();
           img.crossOrigin = "anonymous";
-          img.src = uploadedImageUrl;
           img.onload = () => {
+            if (disposed) return;
             sCtx.drawImage(img, layout.left, layout.top, layout.width, layout.height);
             isReady = true;
+            paintInitialFrame();
           };
           img.onerror = () => {
+            if (disposed) return;
             fallbackGrad();
+            paintInitialFrame();
           };
+          img.src = uploadedImageUrl;
         }
       } else if (videoRef.current && cameraActive) {
         try {
@@ -2380,7 +2400,13 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
       isReady = true;
     };
 
+    const paintInitialFrame = () => {
+      if (!isReady || disposed) return;
+      // Fill the new canvas synchronously; the next rAF may arrive a frame later.
+      ctx.drawImage(sCanvas, 0, 0);
+    };
     renderSnapshotBase();
+    paintInitialFrame();
 
     // Setup physical continuous organic particles
     interface DisintegrateParticle {
@@ -2400,29 +2426,25 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     }
 
     let particles: DisintegrateParticle[] | null = null;
-    const startTime = performance.now();
+    let startTime: number | null = null;
     const duration = DISINTEGRATE_DURATION;
 
     let frameId: number;
 
     const drawPixelate = (time: number) => {
+      if (disposed) return;
+      // Keep the original photo visible until its particle source is ready.
+      if (!isReady) {
+        frameId = requestAnimationFrame(drawPixelate);
+        return;
+      }
+      if (startTime === null) startTime = time;
       const elapsed = time - startTime;
       const progress = Math.min(elapsed / duration, 1);
 
       ctx.clearRect(0, 0, W, H);
       ctx.fillStyle = "#E9E6E1";
       ctx.fillRect(0, 0, W, H);
-
-      // If snapshot is still loading, keep the result bed warm so no black frame flashes through.
-      if (!isReady && elapsed < 300) {
-        ctx.fillStyle = "#E9E6E1";
-        ctx.fillRect(0, 0, W, H);
-        frameId = requestAnimationFrame(drawPixelate);
-        return;
-      } else if (!isReady && !fallbackGradientGenerated) {
-        fallbackGrad();
-        fallbackGradientGenerated = true;
-      }
 
       // Populate continuous particle map once screenshot color values are ready
       if (isReady && !particles) {
@@ -2542,7 +2564,9 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
         }
         frameId = requestAnimationFrame(drawPixelate);
       } else {
-        ctx.clearRect(0, 0, W, H);
+        // Keep the completed result bed opaque until React commits the result scene.
+        ctx.fillStyle = "#E9E6E1";
+        ctx.fillRect(0, 0, W, H);
         if (canvas) {
           canvas.style.opacity = "1";
         }
@@ -2560,7 +2584,10 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
     };
 
     frameId = requestAnimationFrame(drawPixelate);
-    return () => cancelAnimationFrame(frameId);
+    return () => {
+      disposed = true;
+      cancelAnimationFrame(frameId);
+    };
   }, [scanStep, activeItem, uploadedImageUrl, skipScanEffects, DIRECT_THUMBNAIL_FLIGHT_DURATION, DISINTEGRATE_DURATION]);
 
   // Helper function to render dilated borders & original subject graphic over canvas
@@ -3950,6 +3977,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
               {/* Display original video feed or uploaded custom photo */}
               {uploadedImageUrl ? (
                 <img
+                  ref={scanningPhotoRef}
                   src={uploadedImageUrl}
                   alt="scanning upload container"
                   className="absolute w-full h-full object-cover"
@@ -3992,6 +4020,9 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
             <div 
               className="absolute inset-0 z-10 w-full h-full overflow-hidden bg-[#E9E6E1]"
             >
+              {!skipScanEffects && uploadedImageUrl && (
+                <img src={uploadedImageUrl} alt="" aria-hidden="true" className="absolute inset-0 w-full h-full object-cover" />
+              )}
               {!skipScanEffects && (
                 <canvas
                   ref={pixelateCanvasRef}
