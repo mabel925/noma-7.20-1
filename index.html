@@ -2,13 +2,17 @@
 <html lang="en" style="background:#E9E6E1">
   <head>
     <meta charset="UTF-8" />
+    <meta name="description" content="Snap, organize, and find your things with noma. AI item recognition, automatic background removal, and a memory of where everything belongs. Open on your phone to get started." />
+    <link rel="canonical" href="https://nomaspace.app/" />
     <style>html, body { background:#E9E6E1; }</style>
+    <!--noma-desktop-head-->
     <link rel="preload" href="/apple-touch-icon.png" as="image" type="image/png" fetchpriority="high" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="apple-touch-icon-precomposed" sizes="180x180" href="/apple-touch-icon.png" />
-    <link rel="icon" type="image/png" sizes="192x192" href="/icons/noma-app-icon-192.png" />
-    <link rel="shortcut icon" type="image/png" href="/icons/noma-app-icon-192.png" />
-    <link rel="image_src" href="/icons/noma-app-icon-512.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/noma-browser-rounded-32.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/noma-browser-rounded-192.png" />
+    <link rel="shortcut icon" type="image/png" href="/icons/noma-browser-rounded-32.png" />
+    <link rel="image_src" href="/icons/noma-browser-rounded-512.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -19,7 +23,7 @@
     <meta property="og:type" content="website">
     <meta property="og:title" content="Noma">
     <meta property="og:description" content="AI Smart Storage">
-    <meta property="og:image" content="/icons/noma-app-icon-512.png">
+    <meta property="og:image" content="/icons/noma-browser-rounded-512.png">
     <meta property="og:image:width" content="512">
     <meta property="og:image:height" content="512">
     <title>Noma</title>
@@ -128,6 +132,7 @@
     </div>
     <script>
       (() => {
+        if (document.documentElement.dataset.nomaEntry === 'desktop') return;
         let handoff = null;
         try {
           const saved = sessionStorage.getItem('noma-startup-update');
@@ -186,6 +191,7 @@
       })();
     </script>
     <!-- 页面根容器，让背景色/图片和应用布局自适应自撑满整个视口 -->
+    <div id="desktop-entry"><!--noma-desktop-content--></div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
 

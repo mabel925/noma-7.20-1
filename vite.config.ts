@@ -3,12 +3,37 @@ import react from '@vitejs/plugin-react';
 import {readFileSync, writeFileSync} from 'node:fs';
 import path from 'path';
 import {defineConfig, type Plugin} from 'vite';
+import React from 'react';
+import {renderToString} from 'react-dom/server';
+import {DesktopLanding} from './src/desktop/DesktopLanding';
+import {shouldShowDesktopEntry} from './src/utils/desktopEntry';
 
 const pwaBuildId = (
   process.env.CF_PAGES_COMMIT_SHA ||
   process.env.GITHUB_SHA ||
   `local-${Date.now().toString(36)}`
 ).slice(0, 16);
+
+const desktopEntryPlugin = (development: boolean): Plugin => ({
+  name: 'noma-desktop-entry',
+  transformIndexHtml: {
+    order: 'pre',
+    handler(html) {
+      const css = readFileSync(path.resolve(__dirname, 'src/desktop/desktop.css'), 'utf8');
+      // The same pure device rule runs before the splash paints and in the app entry.
+      const detection = `const desktop = (${shouldShowDesktopEntry.toString()})({
+        userAgent: navigator.userAgent, platform: navigator.platform,
+        maxTouchPoints: navigator.maxTouchPoints || 0, mobile: navigator.userAgentData?.mobile,
+        standalone: navigator.standalone === true || matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches,
+        finePointer: matchMedia('(hover: hover) and (pointer: fine)').matches,
+        developmentPreview: ${development} && ['mockAuth', 'appPreview', 'pwa'].some(key => new URLSearchParams(location.search).get(key) === '1')
+      }); document.documentElement.dataset.nomaEntry = desktop ? 'desktop' : 'app';`;
+      const noScript = '<noscript><style>@media (hover: hover) and (pointer: fine) { #desktop-entry { display: block; } #startup-splash, #root { display: none !important; } html, body { height: auto !important; overflow: auto !important; background: #f7f6f2 !important; } }</style></noscript>';
+      return html.replace('<!--noma-desktop-head-->', `<style data-noma-desktop-styles>${css}</style><script data-noma-entry-detection>(() => { ${detection} })();</script>${noScript}`)
+        .replace('<!--noma-desktop-content-->', renderToString(React.createElement(DesktopLanding)));
+    },
+  },
+});
 
 const inlineStartupImagePlugin = () => {
   const source = 'src="/startup.jpg"';
@@ -90,9 +115,9 @@ const pwaVersionPlugin = () => ({
   },
 });
 
-export default defineConfig(() => {
+export default defineConfig(({ command }) => {
   return {
-    plugins: [inlineStartupImagePlugin(), react(), tailwindcss(), inlineEntryStylesPlugin(), pwaVersionPlugin()],
+    plugins: [desktopEntryPlugin(command === 'serve'), inlineStartupImagePlugin(), react(), tailwindcss(), inlineEntryStylesPlugin(), pwaVersionPlugin()],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
