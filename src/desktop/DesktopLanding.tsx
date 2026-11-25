@@ -3,7 +3,7 @@ import { useLanguage } from "../i18n/language";
 import { startRecognitionWave } from "../animations/recognitionWave";
 import { DEMO_DURATION_MS, getDemoStage } from "./demoTimeline";
 
-export const MOBILE_APP_URL = "https://nomaspace.app/";
+export const MOBILE_APP_URL = "https://noma-b85.pages.dev/";
 const copy = {
   en: {
     eyebrow: "LESS SEARCHING. MORE LIVING.", title: <>A little memory.<br />A lighter home.</>,
@@ -12,7 +12,7 @@ const copy = {
     mobile: "Made for iPhone & Android", install: "Open on your phone. Add to Home Screen for the full experience.",
     demo: "A little look inside", duration: "15-second product demo", pause: "Pause demo", play: "Play demo", replay: "Replay demo",
     snap: "Snap", save: "Save", find: "Find", copy: "Copy link", copied: "Link copied", copyFailed: "Select the link to copy it.",
-    footer: "A place for everything. A little less on your mind.", qr: "QR code: open nomaspace.app on your phone",
+    footer: "A place for everything. A little less on your mind.", qr: "QR code: open noma-b85.pages.dev on your phone",
     stages: { capture: "One photo is all it takes.", scan: "AI gets to know your things.", cutout: "A clean little cutout. Just like that.", save: "Give it a home. We'll remember.", find: "Ask noma. There it is." },
     guide: "Show me what you want to remember.", recognizing: "Recognizing your item…", cup: "Coffee cup", category: "Housewares",
     saved: "Saved to your memory", kitchen: "Kitchen", shelf: "Coffee shelf", question: "Where's my coffee cup?", answer: "Find it!!", location: "Kitchen · Coffee shelf",
@@ -25,7 +25,7 @@ const copy = {
     mobile: "支持 iPhone 与 Android", install: "在手机打开后，添加到主屏幕，体验更顺畅。",
     demo: "看看 noma 怎么用", duration: "15 秒产品演示", pause: "暂停演示", play: "播放演示", replay: "重新播放",
     snap: "拍下来", save: "收起来", find: "找得到", copy: "复制链接", copied: "已复制链接", copyFailed: "可以选中网址，手动复制。",
-    footer: "物品各有所归，心里少点牵挂。", qr: "二维码：在手机打开 nomaspace.app",
+    footer: "物品各有所归，心里少点牵挂。", qr: "二维码：在手机打开 noma-b85.pages.dev",
     stages: { capture: "拍一张，就这么简单。", scan: "让 AI 认识你的物品。", cutout: "自动抠图，清清爽爽。", save: "给它一个家，noma 帮你记住。", find: "问问 noma，找到了。" },
     guide: "让我看看你想记住的物品。", recognizing: "正在识别物品…", cup: "咖啡杯", category: "家居日用",
     saved: "已存入你的记忆库", kitchen: "厨房", shelf: "咖啡架", question: "我的咖啡杯在哪？", answer: "找到了！", location: "厨房 · 咖啡架",
@@ -141,7 +141,7 @@ export function DesktopLanding() {
           <div className="desktop-qr"><img src="/desktop/noma-qr.svg" width="144" height="144" alt={text.qr} /></div>
           <div className="desktop-portal-copy"><h2>{text.scan}</h2><p>{text.scanHint}</p><span className="desktop-mobile-support"><svg width="12" height="16" viewBox="0 0 12 16" fill="none" aria-hidden="true"><rect x="2" y="1" width="8" height="14" rx="2" stroke="currentColor" /><path d="M5 12h2" stroke="currentColor" strokeLinecap="round" /></svg>{text.mobile}</span></div>
         </div>
-        <div className="desktop-link-row"><a href={MOBILE_APP_URL}>nomaspace.app<Arrow /></a><button type="button" onClick={() => void copyLink()}>{copied === "copied" ? text.copied : text.copy}</button></div>
+        <div className="desktop-link-row"><a href={MOBILE_APP_URL}>noma-b85.pages.dev<Arrow /></a><button type="button" onClick={() => void copyLink()}>{copied === "copied" ? text.copied : text.copy}</button></div>
         {copied === "failed" && <p className="desktop-copy-error" role="status">{text.copyFailed}</p>}
         <p className="desktop-install-hint">{text.install}</p>
       </section>
