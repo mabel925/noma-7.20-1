@@ -26,6 +26,7 @@ const desktopEntryPlugin = (development: boolean): Plugin => ({
         maxTouchPoints: navigator.maxTouchPoints || 0, mobile: navigator.userAgentData?.mobile,
         standalone: navigator.standalone === true || matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches,
         finePointer: matchMedia('(hover: hover) and (pointer: fine)').matches,
+        viewportWidth: window.innerWidth,
         developmentPreview: ${development} && ['mockAuth', 'appPreview', 'pwa'].some(key => new URLSearchParams(location.search).get(key) === '1')
       }); document.documentElement.dataset.nomaEntry = desktop ? 'desktop' : 'app';`;
       const noScript = '<noscript><style>@media (hover: hover) and (pointer: fine) { #desktop-entry { display: block; } #startup-splash, #root { display: none !important; } html, body { height: auto !important; overflow: auto !important; background: #f7f6f2 !important; } }</style></noscript>';

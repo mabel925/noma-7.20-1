@@ -19,6 +19,9 @@ test("desktop browsers get the introduction; touch laptops and narrow desktop wi
   assert.equal(shouldShowDesktopEntry(desktop), true);
   assert.equal(shouldShowDesktopEntry({ ...desktop, userAgent: "Windows NT 10.0", platform: "Win32", maxTouchPoints: 10 }), true);
   assert.equal(shouldShowDesktopEntry({ ...desktop, userAgent: "X11; Linux x86_64", platform: "Linux x86_64" }), true);
+  assert.equal(shouldShowDesktopEntry({ ...desktop, viewportWidth: 393 }), false);
+  assert.equal(shouldShowDesktopEntry({ ...desktop, viewportWidth: 767 }), false);
+  assert.equal(shouldShowDesktopEntry({ ...desktop, viewportWidth: 768 }), true);
 });
 test("phones, landscape tablets, iPad desktop mode and installed apps keep the application", () => {
   for (const userAgent of ["iPhone", "Android Mobile", "Android Tablet", "iPad", "iPod"]) {
@@ -38,15 +41,16 @@ test("the 15-second demo moves through the complete workflow and loops", () => {
 
 async function entryHarness({ phone = false, standalone = false, preview = false, dev = true, existingWorker = false } = {}) {
   const calls = { hydrate: 0, mount: 0, preload: 0, update: 0, viewport: 0, install: 0, removeSplash: 0, workerRefresh: 0 };
+  const events = new Map();
   const context = vm.createContext({ exports: {}, URLSearchParams, React: { createElement: () => ({}) },
     navigator: { userAgent: phone ? "iPhone" : desktop.userAgent, platform: phone ? "iPhone" : "MacIntel", maxTouchPoints: phone ? 5 : 0, standalone,
       ...(existingWorker ? { serviceWorker: { getRegistration: async () => ({ update: async () => calls.workerRefresh++ }) } } : {}),
     },
     document: { documentElement: { dataset: {} }, getElementById: () => ({ remove: () => calls.removeSplash++ }) },
-    window: { location: { search: preview ? "?appPreview=1" : "" }, matchMedia: query => ({ matches: query.includes("pointer: fine") }) },
+    window: { innerWidth: 1440, addEventListener: (name, callback) => events.set(name, callback), location: { search: preview ? "?appPreview=1" : "" }, matchMedia: query => ({ matches: query.includes("pointer: fine") }) },
     require(name) {
       if (name === "react") return { StrictMode: "strict", createElement: () => ({}) };
-      if (name === "react-dom/client") return { hydrateRoot: () => calls.hydrate++, createRoot: () => ({ render: () => calls.mount++ }) };
+      if (name === "react-dom/client") return { hydrateRoot: () => { calls.hydrate++; return {}; }, createRoot: () => ({ render: () => calls.mount++ }) };
       if (name.endsWith("desktopEntry")) return { shouldShowDesktopEntry };
       if (name.endsWith("startupPreload")) return { preloadStartupAssets: () => { calls.preload++; return Promise.resolve(); } };
       if (name.endsWith("appUpdate")) return { checkForAppUpdate: async () => { calls.update++; return "ready"; } };
@@ -57,7 +61,9 @@ async function entryHarness({ phone = false, standalone = false, preview = false
   });
   vm.runInContext(compile(mainSource.replaceAll("import.meta.env.DEV", String(dev)).replaceAll("import.meta.env.PROD", String(!dev))), context);
   await new Promise(setImmediate);
-  return { calls, entry: context.document.documentElement.dataset.nomaEntry };
+  return { calls, get entry() { return context.document.documentElement.dataset.nomaEntry; },
+    async resize(width) { context.window.innerWidth = width; events.get('resize')(); await new Promise(setImmediate); },
+  };
 }
 test("desktop entry hydrates the product page without starting the mobile startup or auth tree", async () => {
   const { calls, entry } = await entryHarness();
@@ -89,4 +95,18 @@ test("existing desktop app-shell workers refresh in the background without a lau
   assert.equal(calls.workerRefresh, 1);
   assert.equal(calls.update, 0);
   assert.equal(calls.mount, 0);
+});
+test("switching desktop device emulation to phone width mounts the app without reloading or losing its state", async () => {
+  const h = await entryHarness({ dev: false });
+  assert.equal(h.entry, 'desktop');
+  await h.resize(393);
+  assert.equal(h.entry, 'app');
+  assert.equal(h.calls.mount, 1);
+  await h.resize(1440);
+  assert.equal(h.entry, 'desktop');
+  await h.resize(393);
+  assert.equal(h.entry, 'app');
+  assert.equal(h.calls.mount, 1);
+  assert.equal(h.calls.hydrate, 1);
+  assert.equal(h.calls.update, 1);
 });

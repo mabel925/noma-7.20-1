@@ -1,7 +1,7 @@
 /* The desktop introduction is rendered into the HTML; it never covers the mobile app. */
 #desktop-entry { display: none; }
 html[data-noma-entry="desktop"], html[data-noma-entry="desktop"] body { height: auto !important; min-height: 100%; overflow: auto !important; background: #f7f6f2 !important; overscroll-behavior: auto !important; }
-html[data-noma-entry="desktop"] #root, html[data-noma-entry="desktop"] #startup-splash { display: none !important; }
+html[data-noma-entry="desktop"] body > :not(#desktop-entry):not(script):not(style) { display: none !important; }
 html[data-noma-entry="desktop"] #desktop-entry { display: block; }
 .desktop-landing { --desktop-ink: #232121; --desktop-muted: #7b7974; --desktop-line: #e2e0d9; --desktop-accent: #addec9; min-height: 100svh; color: var(--desktop-ink); font-family: "Outfit", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
 .desktop-landing *, .desktop-landing *::before, .desktop-landing *::after { box-sizing: border-box; }
