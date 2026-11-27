@@ -784,11 +784,18 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
   z-index: 9999 !important;
 }
 
-.memory-space-waterfall { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; align-items: start; }
-.memory-space-waterfall-column { display: flex; min-width: 0; flex-direction: column; gap: 8px; }
+.memory-space-waterfall { display: grid; width: 360px; margin-left: 50%; grid-template-columns: repeat(2, 176px); column-gap: 8px; row-gap: 20px; align-items: start; transform: translateX(-50%); }
+.memory-space-waterfall-column { display: flex; min-width: 0; flex-direction: column; gap: 20px; }
+.memory-space-shelf-list { display: flex; width: 360px; max-width: calc(100% + 10px); margin-top: 30px; margin-left: 50%; flex-direction: column; gap: 32px; transform: translateX(-50%); }
+.memory-space-shelf-surface { box-shadow: inset 0 2px 2px rgba(255, 255, 255, 0.6); -webkit-backdrop-filter: blur(15px); backdrop-filter: blur(15px); }
+.memory-space-shelf-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .memory-space-card { width: 100%; min-width: 0; }
 .memory-space-card-title { display: -webkit-box; max-height: 2.75em; overflow: hidden; text-overflow: ellipsis; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .memory-space-sub-tag { display: block; box-sizing: border-box; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.memory-space-folder-card { appearance: none; border: 0; background: transparent; isolation: isolate; }
+.memory-space-folder-name { display: -webkit-box; max-height: 34px; overflow: hidden; overflow-wrap: anywhere; text-overflow: ellipsis; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.memory-space-item-previews { clip-path: inset(0 -8px 0 -8px); }
+.memory-space-folder-frost { background: rgba(255, 255, 255, 0.5); box-shadow: inset 0 2px 2px rgba(255, 255, 255, 0.8); -webkit-backdrop-filter: blur(15px); backdrop-filter: blur(15px); }
 
 @media (max-width: 767px) {
   .pwa-standalone .home-action-buttons-fixed {
@@ -873,7 +880,7 @@ body:not(.pwa-standalone) .home-keyboard-container .virtual-keyboard-mock-indica
   position: fixed !important;
   top: var(--capture-viewport-top) !important;
   bottom: auto !important;
-  z-index: 20001 !important;
+  z-index: var(--capture-layer, 20001) !important;
   left: 0 !important;
   right: 0 !important;
   width: auto !important;

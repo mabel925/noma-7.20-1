@@ -1,4 +1,5 @@
 import React from "react";
+import { t } from "../i18n/language";
 import { Check, Cloud, ShieldCheck } from "lucide-react";
 import { motion } from "motion/react";
 import { CloseIcon } from "./CloseIcon";
@@ -43,9 +44,9 @@ export const SystemSettingsPanel: React.FC<SystemSettingsPanelProps> = ({
           <div className="bg-neutral-950/50 border border-white/5 rounded-xl p-3.5 flex gap-3">
             <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
             <div>
-              <h4 className="text-xs font-semibold text-neutral-100">密钥已托管到 Cloudflare Workers</h4>
+              <h4 className="text-xs font-semibold text-neutral-100">{t("API keys are managed by Cloudflare Workers")}</h4>
               <p className="text-[11px] text-neutral-400 leading-relaxed mt-1">
-                识物、标题生成和抠图请求都会直接发送到统一 Worker，前端不保存或校验第三方 API 密钥。
+                {t("Recognition, title generation, and background removal run through the Worker. API keys are never stored in the app.")}
               </p>
             </div>
           </div>

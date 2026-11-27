@@ -51,9 +51,6 @@ export function DesktopLanding() {
   const running = playing && visible && inView;
 
   React.useEffect(() => {
-    try {
-      if (!localStorage.getItem("noma-language") && navigator.language.toLowerCase().startsWith("zh")) setLanguage("zh");
-    } catch { /* A blocked preference store does not block the landing page. */ }
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
     const reduceMotion = () => { if (media.matches) { setPlaying(false); setElapsed(8000); } };
     reduceMotion();
@@ -64,7 +61,7 @@ export function DesktopLanding() {
     const observer = typeof IntersectionObserver === "undefined" ? null : new IntersectionObserver(entries => setInView(entries[0]?.isIntersecting ?? true));
     if (demoRef.current) observer?.observe(demoRef.current);
     return () => { document.removeEventListener("visibilitychange", visibility); media.removeEventListener("change", reduceMotion); observer?.disconnect(); };
-  }, [setLanguage]);
+  }, []);
   React.useEffect(() => {
     if (!running) return;
     let previous = performance.now();

@@ -12,7 +12,7 @@
     "test:startup": "node --test tests/startup.test.mjs",
     "test:chat": "node --test tests/chat-keyboard.test.mjs",
     "test:camera": "node --test tests/camera-session.test.mjs",
-    "test:memory": "node --test tests/location-snapshot.test.mjs tests/media-read.test.mjs",
+    "test:memory": "node --test tests/location-snapshot.test.mjs tests/media-read.test.mjs tests/item-retake-flow.test.mjs tests/item-detail-swipe.test.mjs tests/memory-space-folder.test.mjs",
     "test:worker": "node --test cloudflare/noma-ai-worker.test.mjs tests/capture-result.test.mjs tests/qwen-stream.test.mjs"
   },
   "dependencies": {

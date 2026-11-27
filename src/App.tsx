@@ -185,7 +185,7 @@ const DEFAULT_MEMORIES: MemoryItem[] = [
 ];
 
 export default function App() {
-  useLanguage();
+  const { t } = useLanguage();
   const { user, authLoading, requireAuth, openLogin, isLoginOpen } = useAuth();
   const userRef = React.useRef(user);
   React.useEffect(() => {
@@ -519,7 +519,7 @@ export default function App() {
         memorySnapshotRef.current = rollbackItems;
         customMemoriesRef.current = rollbackItems;
         setCustomMemories(rollbackItems);
-        setToast(/VERSION_CONFLICT|40001/i.test(String(error)) ? "该物品已在其他设备修改，请重试" : "保存失败，已恢复上一次数据");
+        setToast(t(/VERSION_CONFLICT|40001/i.test(String(error)) ? "This item was changed on another device. Please try again." : "Unable to save. Your previous data has been restored."));
       });
   }, [customMemories, enqueueMemorySync, isMemoryHydrated, hydratedUserId, user?.id, user?.isMock]);
 
@@ -876,7 +876,7 @@ export default function App() {
     persistedMemorySnapshotsRef.current.set(currentUser.id, persistedItems);
     customMemoriesRef.current = persistedItems;
     setCustomMemories(persistedItems);
-    setToast("保存成功");
+    setToast(t("Saved successfully"));
     
     // Smooth transition message from Noma
     setTimeout(() => {

@@ -3845,7 +3845,7 @@ export const CaptureScanner: React.FC<CaptureScannerProps> = ({
   return createPortal(
     <div 
       className="camera-page-container camera-wrapper absolute inset-0 bg-[#161616] overflow-hidden select-none pb-0"
-      style={{ height: "var(--app-height, 100vh)", paddingBottom: "0px", zIndex: layer }}
+      style={{ height: "var(--app-height, 100vh)", paddingBottom: "0px", "--capture-layer": layer } as React.CSSProperties}
     >
 	      {/* Hidden element to force immediate pre-loading and browser initialization of the Alkatra font */}
 	      <span className="font-alkatra opacity-0 absolute pointer-events-none select-none w-1 h-1 overflow-hidden" aria-hidden="true">AI</span>

@@ -16,6 +16,7 @@ import { CameraIcon } from "./CameraIcon";
 import { RestartIcon } from "./RestartIcon";
 import { PhotoUploadIcon } from "./PhotoUploadIcon";
 import { CaptureShutterButton } from "./CaptureShutterButton";
+import { CaptureScanner } from "./CaptureScanner";
 import { CollapseLocationIcon, ExpandLocationIcon } from "./LocationViewIcons";
 import { classifyEmojiLocally, EMOJI_CATALOG, emojiAsset, refreshEmojiAssetUrl, type EmojiKind } from "../data/emojiCatalog";
 import type { MemoryOpenTarget } from "../types/chat";
@@ -70,6 +71,8 @@ const emojiKeyFromImageUrl = (src?: string) => {
 export interface MemoryItem {
   id: string;
   version?: number;
+  createdAt?: string;
+  updatedAt?: string;
   name: string;
   category: string;
   price: string;
@@ -288,11 +291,12 @@ const useDetailModalScale = () => {
 const matchesText = (value: string | undefined, query: string): boolean =>
   Boolean(value && value.toLowerCase().includes(query));
 
-const MemorySearchItem: React.FC<{ item: MemoryItem; compact?: boolean; size?: number; onClick?: () => void }> = ({
+const MemorySearchItem: React.FC<{ item: MemoryItem; compact?: boolean; size?: number; onClick?: () => void; tilted?: boolean }> = ({
   item,
   compact = false,
   size,
   onClick,
+  tilted = true,
 }) => {
   const boxSize = size ?? (compact ? 76 : 124);
   const tileWidth = size ?? (compact ? 76 : 150);
@@ -308,7 +312,7 @@ const MemorySearchItem: React.FC<{ item: MemoryItem; compact?: boolean; size?: n
       }`}
     >
       <div
-        className="relative rotate-[-1.5deg] flex items-center justify-center overflow-visible"
+        className={`relative flex items-center justify-center overflow-visible ${tilted ? "rotate-[-1.5deg]" : ""}`}
         style={{ width: boxSize, height: boxSize }}
       >
         {item.stickerUrl ? (
@@ -349,17 +353,10 @@ export const PriceTag: React.FC<{ price: string; className?: string }> = ({ pric
       className="h-[30px] w-[19px] shrink-0"
       aria-hidden="true"
     >
-      <g clipPath="url(#clip0_283_2038_memory)">
-        <path
-          d="M19.0738 0H14.2594C12.7704 2.47955e-05 11.3486 0.621836 10.3385 1.71582L1.41561 11.3799C-0.47187 13.4241 -0.471871 16.5759 1.41561 18.6201L10.3385 28.2842C11.3486 29.3782 12.7704 30 14.2594 30H19.0738V0ZM8.19882 17C6.83613 17 5.73104 15.8807 5.73104 14.5C5.73104 13.1193 6.83613 12 8.19882 12C9.56152 12 10.6666 13.1193 10.6666 14.5C10.6666 15.8807 9.56152 17 8.19882 17Z"
-          fill="#232121"
-        />
-      </g>
-      <defs>
-        <clipPath id="clip0_283_2038_memory">
-          <rect width="19" height="30" fill="white" />
-        </clipPath>
-      </defs>
+      <path
+        d="M19.0738 0H14.2594C12.7704 2.47955e-05 11.3486 0.621836 10.3385 1.71582L1.41561 11.3799C-0.47187 13.4241 -0.471871 16.5759 1.41561 18.6201L10.3385 28.2842C11.3486 29.3782 12.7704 30 14.2594 30H19.0738V0ZM8.19882 17C6.83613 17 5.73104 15.8807 5.73104 14.5C5.73104 13.1193 6.83613 12 8.19882 12C9.56152 12 10.6666 13.1193 10.6666 14.5C10.6666 15.8807 9.56152 17 8.19882 17Z"
+        fill="#232121"
+      />
     </svg>
     <span className="h-[30px] max-w-[122px] rounded-r-[6px] rounded-l-none bg-[#232121] -ml-px pl-0 pr-3 flex items-center justify-center font-alkatra text-[15px] leading-none whitespace-nowrap overflow-hidden">
       {price || t("+ Value")}
@@ -466,6 +463,303 @@ const ItemSticker: React.FC<{
         </div>
       </div>
     </div>
+  );
+};
+
+const SUB_LOCATION_EMOJI_COLORS = ["#AFE9E3", "#FAA9D2", "#FFBA7B", "#E6BAFF"] as const;
+const SPACE_LIST_ACCENT_COLORS = ["#D6A4F7", "#FFA6D3", "#84CAC2"] as const;
+const SPACE_LIST_SURFACE_COLORS = ["#CBAEE3", "#E3978D", "#7CBFBB"] as const;
+
+const stableColorForLocation = (value: string) => {
+  const hash = Array.from(value).reduce((total, char) => ((total * 31) + (char.codePointAt(0) || 0)) >>> 0, 0);
+  return SUB_LOCATION_EMOJI_COLORS[hash % SUB_LOCATION_EMOJI_COLORS.length];
+};
+
+const getRecentSpaceItems = (items: MemoryItem[]) => items
+  .map((item, index) => {
+    const timestamp = Date.parse(item.createdAt || "");
+    return { item, index, timestamp: Number.isFinite(timestamp) ? timestamp : null };
+  })
+  .sort((left, right) => (
+    left.timestamp !== null && right.timestamp !== null
+      ? right.timestamp - left.timestamp
+      : left.index - right.index
+  ))
+  .slice(0, 3)
+  .map(({ item }) => item);
+
+const MemorySpaceFolderCard: React.FC<{
+  space: SpaceSummary;
+  onClick: () => void;
+  footerMode?: "space" | "sub-summary";
+  accentColor?: string;
+  onLongPress?: () => void;
+  isEditing?: boolean;
+  isSelected?: boolean;
+  onToggle?: () => void;
+}> = ({ space, onClick, footerMode = "space", accentColor = SPACE_LIST_ACCENT_COLORS[0], onLongPress, isEditing = false, isSelected = false, onToggle }) => {
+  const recentItems = getRecentSpaceItems(space.items);
+  const visibleSubLocations = footerMode === "space" ? space.subLocations.slice(0, 4) : [];
+  const remainingSubLocations = Math.max(0, space.subLocations.length - visibleSubLocations.length);
+  const longPressTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pressStartRef = React.useRef<{ x: number; y: number } | null>(null);
+  const didLongPressRef = React.useRef(false);
+  const previewLayouts = recentItems.length === 1
+    ? [{ left: -18, top: -7, rotate: -14.73 }]
+    : recentItems.length === 2
+      ? [
+          { left: -14, top: -4, rotate: -15.46 },
+          { left: 75, top: 1, rotate: 9.02 },
+        ]
+      : [
+          { left: -14, top: -4, rotate: -15.46 },
+          { left: 24, top: 7, rotate: 23.26 },
+          { left: 76, top: 1, rotate: 9.02 },
+        ];
+  const locationIsEmoji = isEmojiImageUrl(space.imgUrl);
+  const clearLongPress = () => {
+    if (longPressTimerRef.current !== null) clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = null;
+    pressStartRef.current = null;
+  };
+
+  React.useEffect(() => clearLongPress, []);
+
+  return (
+    <button
+      type="button"
+      onPointerDown={(event) => {
+        didLongPressRef.current = false;
+        clearLongPress();
+        if (isEditing || !onLongPress || !event.isPrimary || event.button !== 0) return;
+        event.stopPropagation();
+        pressStartRef.current = { x: event.clientX, y: event.clientY };
+        longPressTimerRef.current = setTimeout(() => {
+          clearLongPress();
+          didLongPressRef.current = true;
+          onLongPress();
+        }, 320);
+      }}
+      onPointerMove={(event) => {
+        const start = pressStartRef.current;
+        if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) {
+          clearLongPress();
+          didLongPressRef.current = true;
+        }
+      }}
+      onPointerUp={clearLongPress}
+      onPointerCancel={clearLongPress}
+      onPointerLeave={clearLongPress}
+      onContextMenu={(event) => event.preventDefault()}
+      onDragStart={(event) => event.preventDefault()}
+      onClick={() => {
+        clearLongPress();
+        if (didLongPressRef.current) {
+          didLongPressRef.current = false;
+          return;
+        }
+        if (isEditing) onToggle?.();
+        else onClick();
+      }}
+      className={`memory-space-folder-card relative block ${footerMode === "space" ? "h-[212px]" : "h-[180px]"} w-[176px] min-w-0 overflow-visible text-left select-none active:scale-[0.98] transition-transform`}
+      style={{ WebkitTouchCallout: "none", WebkitUserSelect: "none" }}
+      aria-label={isEditing ? `Select ${space.name}` : `${space.name}, ${space.itemCount} ${t("items")}`}
+      aria-pressed={isEditing ? isSelected : undefined}
+    >
+      <div className="memory-space-item-previews absolute left-[-8px] top-0 z-[2] h-[84px] w-[192px] overflow-visible" aria-hidden="true">
+        {recentItems.map((item, index) => {
+          const layout = previewLayouts[index];
+          return (
+            <div
+              key={item.id}
+              className="absolute h-[100px] w-[100px] origin-center"
+              style={{
+                left: layout.left + 8,
+                top: layout.top,
+                zIndex: index + 1,
+                transform: `rotate(${layout.rotate}deg)`,
+              }}
+            >
+              <div className="-translate-x-[6px] -translate-y-[6px]">
+                <MemorySearchItem item={item} size={112} tilted={false} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <img
+        src="/assets/memory-folder.svg"
+        alt=""
+        aria-hidden="true"
+        className="pointer-events-none absolute left-[7px] top-[19px] z-[1] h-[161px] w-[162px] select-none opacity-70"
+        draggable={false}
+      />
+
+      <div className="memory-space-folder-frost pointer-events-none absolute left-[7px] top-[62px] z-20 h-[118px] w-[162px] rounded-[24px]" />
+
+      {footerMode === "space" && visibleSubLocations.length > 0 && (
+        <div className="absolute left-[15px] top-[141px] z-30 flex items-center">
+          {visibleSubLocations.map((subLocation, index) => {
+            const isEmoji = isEmojiImageUrl(subLocation.imgUrl);
+            return (
+              <div
+                key={`${space.key}-${subLocation.parentName}-${subLocation.name}`}
+                className="relative mr-[-7.5px] flex h-[30px] w-[30px] shrink-0 items-center justify-center overflow-hidden rounded-full border-[2.5px] border-white"
+                style={{
+                  backgroundColor: isEmoji ? stableColorForLocation(`${subLocation.parentName}:${subLocation.name}`) : "#E9E6E1",
+                  zIndex: index + 1,
+                }}
+                title={subLocation.name}
+              >
+                <SkeletonImage
+                  src={subLocation.imgUrl}
+                  alt={subLocation.name}
+                  className={`h-full w-full rounded-full ${isEmoji ? "object-contain p-[3px]" : "object-cover"}`}
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+            );
+          })}
+          {remainingSubLocations > 0 && (
+            <div className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-[#F0EEEB] text-[13px] font-sans font-semibold leading-none text-[#232121]/50">
+              +{remainingSubLocations}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="absolute left-[99px] top-[62px] z-30 flex h-[66px] w-[66px] items-center justify-center">
+        <div
+          className={`flex h-[58px] w-[58px] -rotate-9 items-center justify-center overflow-hidden rounded-[12px] border-[2.5px] border-white shadow-[2px_2px_4px_rgba(0,0,0,0.08)] ${locationIsEmoji ? "p-[6px]" : ""}`}
+          style={{ backgroundColor: locationIsEmoji ? stableColorForLocation(space.name) : "#E9E6E1" }}
+        >
+          <SkeletonImage
+            src={space.imgUrl}
+            alt={space.name}
+            className={`h-full w-full rounded-[9px] ${locationIsEmoji ? "object-contain" : "object-cover"}`}
+            referrerPolicy="no-referrer"
+          />
+        </div>
+      </div>
+
+      <img
+        src="/assets/memory-pin@3x.png"
+        alt=""
+        aria-hidden="true"
+        className="pointer-events-none absolute left-[122px] top-[54px] z-40 h-[30px] w-[30px] select-none object-contain"
+        draggable={false}
+      />
+
+      {footerMode === "space" ? (
+        <div className="absolute left-1/2 top-[194px] flex w-[176px] -translate-x-1/2 items-end justify-center px-[2px] text-center font-sans text-[14px] leading-[17px] tracking-[0]">
+          {space.sourceField === "parent" && <span className="mb-[1px] mr-[4px] shrink-0 text-[14px] leading-[17px]" aria-hidden="true">📍</span>}
+          <span className="memory-space-folder-name min-w-0 font-semibold text-[#080808]">{space.name}</span>
+          <span className="ml-[2px] shrink-0 whitespace-nowrap font-normal leading-[17px] text-[#232121]/50">({space.itemCount})</span>
+        </div>
+      ) : (
+        <div className="absolute bottom-[13px] left-[23px] z-30 max-w-[120px] text-left font-sans tracking-[0]">
+          <div className="truncate text-[16px] font-semibold leading-[20px] text-[#080808]">{space.name}</div>
+          <div className="mt-[3px] flex items-center gap-[5px] whitespace-nowrap text-[14px] font-normal leading-[18px] text-[#232121]/50">
+            <span className="h-[8px] w-[8px] shrink-0 rounded-full" style={{ backgroundColor: accentColor }} />
+            <span>{space.itemCount} {space.itemCount === 1 ? t("item") : t("items")}</span>
+          </div>
+        </div>
+      )}
+      {isEditing && (
+        <div className="pointer-events-none absolute right-[2px] top-[20px] z-50">
+          <MemorySelectorIcon selected={isSelected} />
+        </div>
+      )}
+    </button>
+  );
+};
+
+const MemorySpaceShelfCard: React.FC<{ space: SpaceSummary; index: number; onClick: () => void }> = ({ space, index, onClick }) => {
+  const accentColor = SPACE_LIST_ACCENT_COLORS[index % SPACE_LIST_ACCENT_COLORS.length];
+  const surfaceColor = SPACE_LIST_SURFACE_COLORS[index % SPACE_LIST_SURFACE_COLORS.length];
+  const recentItems = getRecentSpaceItems(space.items);
+  const hasHierarchy = space.sourceField === "parent" && space.subLocations.length > 0;
+  const backgroundLocations = hasHierarchy ? space.subLocations.slice(0, 5) : [];
+  const locationIsEmoji = isEmojiImageUrl(space.imgUrl);
+  // Rotated bounds from Figma 671:3845; the 77 × 107 photo is centered inside each slot.
+  const backgroundTemplate = [
+    { left: 40, top: 15, width: 85.847, height: 113.178, rotate: -4.89, zIndex: 1 },
+    { left: 90.39, top: 13, width: 87.235, height: 114.111, rotate: 5.69, zIndex: 3 },
+    { left: 142.003, top: 12, width: 79.374, height: 108.695, rotate: -1.28, zIndex: 5 },
+    { left: 186, top: 11.55, width: 94.825, height: 119.003, rotate: -10.26, zIndex: 4 },
+    { left: 244.78, top: 20, width: 91.436, height: 116.864, rotate: 8.18, zIndex: 2 },
+  ];
+  const firstBackgroundSlot = Math.floor((backgroundTemplate.length - backgroundLocations.length) / 2);
+  const backgroundLayouts = backgroundTemplate.slice(firstBackgroundSlot, firstBackgroundSlot + backgroundLocations.length);
+  const backgroundCenterOffset = backgroundLayouts.length > 0
+    ? 180 - (backgroundLayouts[0].left + Math.max(...backgroundLayouts.map((layout) => layout.left + layout.width))) / 2
+    : 0;
+  const itemLayouts = [
+    { left: 82, top: 90, rotate: -15.46 },
+    { left: 179, top: 91, rotate: 13.16 },
+    { left: 259, top: 86, rotate: -5.23 },
+  ];
+  const visualTop = hasHierarchy ? -10 : -77;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`relative block w-[360px] max-w-full overflow-hidden bg-transparent text-left active:scale-[0.99] transition-transform ${hasHierarchy ? "h-[206px]" : "h-[139px]"}`}
+      aria-label={`${space.name}, ${space.itemCount} ${t("items")}`}
+    >
+      <div className="absolute left-1/2 h-[164px] w-[360px] -translate-x-1/2 overflow-hidden rounded-[24px]" style={{ top: visualTop }}>
+        <div className="pointer-events-none absolute inset-0 z-0" aria-hidden="true">
+          {backgroundLocations.map((subLocation, backgroundIndex) => {
+            const layout = backgroundLayouts[backgroundIndex];
+            const isEmoji = isEmojiImageUrl(subLocation.imgUrl);
+            return (
+              <div
+                key={`${space.key}-background-${subLocation.parentName}-${subLocation.name}`}
+                className="absolute flex items-center justify-center"
+                style={{ left: layout.left + backgroundCenterOffset, top: layout.top, width: layout.width, height: layout.height, zIndex: layout.zIndex }}
+              >
+                <div
+                  className="h-[107px] w-[77px] shrink-0 overflow-hidden rounded-[8px] border-[3px] border-white"
+                  style={{ transform: `rotate(${layout.rotate}deg)`, backgroundColor: isEmoji ? stableColorForLocation(subLocation.name) : "#E9E6E1" }}
+                >
+                  <SkeletonImage src={subLocation.imgUrl} alt="" className={`h-full w-full ${isEmoji ? "object-contain p-[7px]" : "object-cover"}`} referrerPolicy="no-referrer" />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="memory-space-shelf-surface pointer-events-none absolute left-0 top-[83px] z-10 h-[81px] w-[360px] rounded-[24px]" style={{ backgroundColor: `${surfaceColor}99` }} />
+
+        <div className="absolute left-[6px] top-[82px] z-20 flex h-[66px] w-[66px] items-center justify-center">
+          <div className={`flex h-[58px] w-[58px] -rotate-9 items-center justify-center overflow-hidden rounded-[12px] border-[2.5px] border-white shadow-[2px_2px_4px_rgba(0,0,0,0.08)] ${locationIsEmoji ? "p-[6px]" : ""}`} style={{ backgroundColor: locationIsEmoji ? stableColorForLocation(space.name) : "#E9E6E1" }}>
+            <SkeletonImage src={space.imgUrl} alt={space.name} className={`h-full w-full rounded-[9px] ${locationIsEmoji ? "object-contain" : "object-cover"}`} referrerPolicy="no-referrer" />
+          </div>
+        </div>
+        <img src="/assets/memory-pin@3x.png" alt="" aria-hidden="true" className="pointer-events-none absolute left-[29px] top-[74px] z-30 h-[30px] w-[30px] select-none object-contain" draggable={false} />
+
+        {recentItems.map((item, itemIndex) => {
+          const layout = itemLayouts[itemIndex];
+          return (
+            <div key={item.id} className="absolute z-20 h-[60px] w-[60px]" style={{ left: layout.left, top: layout.top, transform: `rotate(${layout.rotate}deg)` }}>
+              <MemorySearchItem item={item} size={60} tilted={false} />
+            </div>
+          );
+        })}
+      </div>
+
+      <div className={`absolute left-[calc(50%-7.5px)] flex w-[250px] -translate-x-1/2 flex-col items-center font-sans tracking-[0] ${hasHierarchy ? "top-[168px]" : "top-[101px]"}`}>
+        <div className="memory-space-shelf-name max-w-full text-center text-[16px] font-semibold leading-[20px] text-[#080808]">
+          {space.sourceField === "parent" ? "📍" : ""}{space.name}
+        </div>
+        <div className="mt-[1px] flex items-center justify-center gap-[4px] whitespace-nowrap text-[14px] font-normal leading-[18px] text-[#232121]/50">
+          <span className="h-[8px] w-[8px] shrink-0 rounded-full" style={{ backgroundColor: accentColor }} />
+          <span>{space.itemCount} {space.itemCount === 1 ? t("item") : t("items")}</span>
+        </div>
+      </div>
+    </button>
   );
 };
 
@@ -781,15 +1075,6 @@ const RetakePhotoButton: React.FC<{
   >
     {icon || <CameraIcon className="h-[22px] w-[22px]" />}
   </button>
-);
-
-const ParentDetailEditIcon: React.FC = () => (
-  <svg width="24" height="24" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-    <path
-      d="M4.54301 13.2234C4.57813 13.2234 4.61325 13.2199 4.64837 13.2146L7.60213 12.6966C7.63725 12.6895 7.67062 12.6737 7.6952 12.6474L15.1393 5.2033C15.2078 5.13481 15.2078 5.02418 15.1393 4.95569L12.2207 2.0353C12.1873 2.00194 12.1434 1.98438 12.096 1.98438C12.0486 1.98438 12.0047 2.00194 11.9713 2.0353L4.5272 9.4794C4.50086 9.50574 4.48506 9.53735 4.47803 9.57247L3.95998 12.5262C3.92662 12.7212 3.98633 12.9108 4.12506 13.0495C4.24096 13.1619 4.38672 13.2234 4.54301 13.2234ZM5.72662 10.1608L12.096 3.79316L13.3832 5.08037L7.01384 11.448L5.45267 11.7237L5.72662 10.1608ZM15.4712 14.6985H2.54633C2.2355 14.6985 1.98438 14.9496 1.98438 15.2605V15.8927C1.98438 15.9699 2.04759 16.0332 2.12486 16.0332H15.8927C15.9699 16.0332 16.0332 15.9699 16.0332 15.8927V15.2605C16.0332 14.9499 15.782 14.6985 15.4712 14.6985Z"
-      fill="#232121"
-    />
-  </svg>
 );
 
 const LocationRetakeCapture: React.FC<{
@@ -1397,7 +1682,8 @@ const MemoryItemsEditBubble: React.FC<{
   onSelectAll: () => void;
   onDelete: () => void;
   onCancel: () => void;
-}> = ({ open, allSelected, hasSelected, onSelectAll, onDelete, onCancel }) => (
+  deleteLabel?: string;
+}> = ({ open, allSelected, hasSelected, onSelectAll, onDelete, onCancel, deleteLabel = "Delete selected items" }) => (
   <AnimatePresence>
     {open && (
       <motion.div
@@ -1419,8 +1705,8 @@ const MemoryItemsEditBubble: React.FC<{
             disabled={!hasSelected}
             className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full active:scale-[0.98] disabled:cursor-default"
             style={{ backgroundColor: hasSelected ? "#ED435F" : "#FFFFFF" }}
-            aria-label={t("Delete selected items")}
-            title={t("Delete selected items")}
+            aria-label={t(deleteLabel)}
+            title={t(deleteLabel)}
           >
             <DeleteActionIcon color={hasSelected ? "#FFFFFF" : "#232121"} opacity={hasSelected ? 1 : 0.5} />
           </button>
@@ -1442,39 +1728,44 @@ const MemoryItemsEditBubble: React.FC<{
 const SubLocationListCard: React.FC<{
   space: SubLocationSummary;
   onClick: () => void;
-  onDelete?: () => void;
-}> = ({ space, onClick, onDelete }) => {
+  onLongPress?: () => void;
+  isEditing?: boolean;
+  isSelected?: boolean;
+  onToggle?: () => void;
+}> = ({ space, onClick, onLongPress, isEditing = false, isSelected = false, onToggle }) => {
   const hasOverflow = space.itemCount > 5;
   const previewItems = space.items.slice(0, hasOverflow ? 4 : 5);
   const remainingItems = Math.max(0, space.itemCount - previewItems.length);
-  const [swipeX, setSwipeX] = React.useState(0);
-  const swipeStartXRef = React.useRef<number | null>(null);
-  const didSwipeRef = React.useRef(false);
+  const longPressTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pressStartRef = React.useRef<{ x: number; y: number } | null>(null);
+  const didLongPressRef = React.useRef(false);
+
+  const clearLongPress = () => {
+    if (longPressTimerRef.current !== null) clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = null;
+    pressStartRef.current = null;
+  };
+
+  React.useEffect(() => clearLongPress, []);
 
   const handlePointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
-    if (!onDelete) return;
-    swipeStartXRef.current = event.clientX;
-    didSwipeRef.current = false;
-    event.currentTarget.setPointerCapture?.(event.pointerId);
+    clearLongPress();
+    didLongPressRef.current = false;
+    if (isEditing || !onLongPress || !event.isPrimary || event.button !== 0) return;
+    pressStartRef.current = { x: event.clientX, y: event.clientY };
+    longPressTimerRef.current = setTimeout(() => {
+      clearLongPress();
+      didLongPressRef.current = true;
+      onLongPress();
+    }, 320);
   };
 
   const handlePointerMove = (event: React.PointerEvent<HTMLButtonElement>) => {
-    if (!onDelete) return;
-    if (swipeStartXRef.current === null) return;
-    const delta = event.clientX - swipeStartXRef.current;
-    if (delta >= 0) {
-      setSwipeX(0);
-      return;
+    const start = pressStartRef.current;
+    if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) {
+      clearLongPress();
+      didLongPressRef.current = true;
     }
-    if (Math.abs(delta) > 8) didSwipeRef.current = true;
-    setSwipeX(Math.max(-84, delta));
-  };
-
-  const handlePointerEnd = () => {
-    if (!onDelete) return;
-    if (swipeStartXRef.current === null) return;
-    setSwipeX((current) => current <= -44 ? -84 : 0);
-    swipeStartXRef.current = null;
   };
 
   return (
@@ -1482,21 +1773,24 @@ const SubLocationListCard: React.FC<{
       <button
         type="button"
         onClick={() => {
-          if (didSwipeRef.current) {
-            didSwipeRef.current = false;
+          clearLongPress();
+          if (didLongPressRef.current) {
+            didLongPressRef.current = false;
             return;
           }
-          if (onDelete && swipeX < 0) {
-            setSwipeX(0);
-            return;
-          }
-          onClick();
+          if (isEditing) onToggle?.();
+          else onClick();
         }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerEnd}
-        onPointerCancel={() => { swipeStartXRef.current = null; setSwipeX(0); }}
-        style={{ transform: `translateX(${onDelete ? swipeX : 0}px)`, touchAction: onDelete ? "pan-y" : "auto" }}
+        onPointerUp={clearLongPress}
+        onPointerCancel={clearLongPress}
+        onPointerLeave={clearLongPress}
+        onContextMenu={(event) => event.preventDefault()}
+        onDragStart={(event) => event.preventDefault()}
+        style={{ WebkitTouchCallout: "none", WebkitUserSelect: "none" }}
+        aria-label={`${isEditing ? "Select" : "Open"} ${space.name}`}
+        aria-pressed={isEditing ? isSelected : undefined}
         className="relative z-10 h-[160px] w-full rounded-[28px] bg-white px-[14px] py-[18px] text-left select-none transition-transform duration-200"
       >
         <div className="flex items-center gap-[14px]">
@@ -1535,18 +1829,12 @@ const SubLocationListCard: React.FC<{
             )}
           </div>
         )}
+        {isEditing && (
+          <div className="pointer-events-none absolute right-[14px] top-[14px] z-20">
+            <MemorySelectorIcon selected={isSelected} />
+          </div>
+        )}
       </button>
-      {onDelete && (
-        <button
-          type="button"
-          onClick={onDelete}
-          className="absolute right-0 top-0 flex h-full w-[84px] items-center justify-center bg-[#ED435F] text-white active:scale-95"
-          aria-label={`Delete ${space.name}`}
-          title={`Delete ${space.name}`}
-        >
-          <DeleteActionIcon color="#FFFFFF" opacity={1} size={20} />
-        </button>
-      )}
     </div>
   );
 };
@@ -2044,10 +2332,8 @@ const SpaceDetailModal: React.FC<{
   );
 };
 
-/** Unified location detail used by both first-level and second-level spaces.
- *  A second-level space promoted to an entry has the same layout; only its
- *  relation metadata differs. This intentionally removes the old flip-card
- *  interaction so every location detail follows the Figma 437:1747 layout.
+/** Shared location detail. Parent spaces reuse the Memory folder cards for
+ *  their children, with each child's name and item count inside the folder.
  */
 const LocationDetailModal: React.FC<{
   location: SpaceSummary;
@@ -2061,6 +2347,7 @@ const LocationDetailModal: React.FC<{
   canEditLocation: boolean;
   nameExists: (name: string) => boolean;
 }> = ({ location, onClose, onOpenItem, onOpenSubLocation, onSaveLocation, onDeleteItems, onDeleteSubLocation, onDeleteLocation, canEditLocation, nameExists }) => {
+  const isParentLocation = location.sourceField === "parent";
   const locationKind = location.sourceField === "sub" ? "sub-space" : "parent-space";
   const image = refreshEmojiAssetUrl(location.imgUrl) || emojiAsset(classifyEmojiLocally(location.name, locationKind).icon_key);
   const locationItems = location.directItems;
@@ -2069,7 +2356,9 @@ const LocationDetailModal: React.FC<{
   const [selectedItemIds, setSelectedItemIds] = React.useState<string[]>([]);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = React.useState(false);
   const [isLocationDeleteConfirmOpen, setIsLocationDeleteConfirmOpen] = React.useState(false);
-  const [pendingDeleteSubLocation, setPendingDeleteSubLocation] = React.useState<SubLocationSummary | null>(null);
+  const [isEditingSubLocations, setIsEditingSubLocations] = React.useState(false);
+  const [selectedSubLocationNames, setSelectedSubLocationNames] = React.useState<string[]>([]);
+  const [isSubLocationDeleteConfirmOpen, setIsSubLocationDeleteConfirmOpen] = React.useState(false);
   const [draftImage, setDraftImage] = React.useState(image);
   const [draftName, setDraftName] = React.useState(location.name);
   const [isEditingName, setIsEditingName] = React.useState(false);
@@ -2112,6 +2401,16 @@ const LocationDetailModal: React.FC<{
     setIsEditing(false);
   };
 
+  const startEditing = () => {
+    resetEditing();
+    setReplacementMode(isEmojiImageUrl(image) ? "emoji" : "camera");
+    setIsEditingItems(false);
+    setSelectedItemIds([]);
+    setIsEditingSubLocations(false);
+    setSelectedSubLocationNames([]);
+    setIsEditing(true);
+  };
+
   const toggleItemsEditing = () => {
     setIsEditingItems((current) => !current);
     setSelectedItemIds([]);
@@ -2134,7 +2433,7 @@ const LocationDetailModal: React.FC<{
     >
       <div className="absolute inset-0 overflow-y-auto overscroll-contain">
       <MatrixDotBackground />
-      <div className={`relative z-10 min-h-full px-[15px] ${isEditingItems ? "pb-[112px]" : "pb-[28px]"}`}>
+      <div className={`relative z-10 min-h-full px-[15px] ${isEditingItems || isEditingSubLocations ? "pb-[112px]" : "pb-[28px]"}`}>
         <div
           className="flex items-center justify-between px-[5px]"
           style={{
@@ -2154,7 +2453,17 @@ const LocationDetailModal: React.FC<{
                 <Check className="h-5 w-5" strokeWidth={2.5} />
               </button>
             </div>
-          ) : <span className="h-9 w-9" aria-hidden="true" />}
+          ) : (
+            <MemoryActionButton
+              label="Edit location"
+              onClick={(event) => {
+                event.stopPropagation();
+                startEditing();
+              }}
+            >
+              <EditPencilIcon />
+            </MemoryActionButton>
+          )}
         </div>
 
         <div className="flex flex-col items-center text-center">
@@ -2166,11 +2475,11 @@ const LocationDetailModal: React.FC<{
             <motion.div
               layout
               initial={false}
-              className={`relative flex items-center justify-center ${isEditing ? "mt-[47px]" : "mt-[17px]"}`}
-              animate={{ width: isEditing ? 228 : 174, height: isEditing ? 228 : 128 }}
+              className={`relative flex items-center justify-center ${isEditing ? "mt-[47px]" : isParentLocation ? "-mt-[20px]" : "mt-[17px]"}`}
+              animate={{ width: isEditing ? 228 : isParentLocation ? 114 : 174, height: isEditing ? 228 : isParentLocation ? 114 : 128 }}
             >
-              {!isEditing && <LocationHeaderGradientCard className="absolute left-[55px] top-[22px] z-[1] h-[100px] w-[100px]" />}
-              <div className={`relative z-10 overflow-hidden ${isEditing ? "h-[228px] w-[228px] rounded-[32px] border-[6px]" : "h-[114px] w-[114px] -translate-x-[10px] rotate-[-9deg] rounded-[20px] border-[3px]"} border-white ${isEmojiImageUrl(draftImage) ? "bg-[#E9E6E1]" : "bg-neutral-100"}`}>
+              {!isEditing && !isParentLocation && <LocationHeaderGradientCard className="absolute left-[55px] top-[22px] z-[1] h-[100px] w-[100px]" />}
+              <div className={`relative z-10 overflow-hidden ${isEditing ? "h-[228px] w-[228px] rounded-[32px] border-[6px]" : isParentLocation ? "h-[114px] w-[114px] rounded-[25px] border-[3px]" : "h-[114px] w-[114px] -translate-x-[10px] rotate-[-9deg] rounded-[20px] border-[3px]"} border-white ${isEmojiImageUrl(draftImage) ? "bg-[#E9E6E1]" : "bg-neutral-100"}`}>
                 <SkeletonImage src={draftImage} alt={location.name} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
                 {isEditing && (
                   <div className="absolute inset-0 z-20 flex items-center justify-center">
@@ -2186,8 +2495,8 @@ const LocationDetailModal: React.FC<{
             transition={{ type: "tween", duration: 0.38, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
             className="flex flex-col items-center"
           >
-            <div className={`${isEditing ? "mt-[70px]" : "mt-[12px]"} relative flex max-w-[320px] items-center justify-center text-[24px] font-sans font-extrabold leading-tight tracking-tight text-[#232121]`}>
-              {location.sourceField === "parent" && <span className={`${isEditing ? "absolute right-full top-1/2 -translate-y-1/2" : ""} mr-[4px] text-[21px]`}>📍</span>}
+            <div className={`${isEditing ? "mt-[70px]" : "mt-[12px]"} relative flex max-w-[320px] items-center justify-center ${!isEditing && isParentLocation ? "text-[20px]" : "text-[24px]"} font-sans font-extrabold leading-tight tracking-tight text-[#232121]`}>
+              {location.sourceField === "parent" && <span className="absolute right-full top-1/2 mr-[4px] -translate-y-1/2 text-[21px]">📍</span>}
               {isEditing ? (
                 isEditingName ? (
                   <input
@@ -2210,7 +2519,6 @@ const LocationDetailModal: React.FC<{
                   </button>
                 )
               ) : <span className="max-w-[270px] truncate">{truncateLocationTitle(location.name)}</span>}
-              {!isEditing && <button type="button" onClick={() => { resetEditing(); setReplacementMode(isEmojiImageUrl(image) ? "emoji" : "camera"); setIsEditingItems(false); setSelectedItemIds([]); setIsEditing(true); }} className="ml-[10px] flex h-[18px] w-[18px] shrink-0 items-center justify-center active:scale-95" aria-label="Edit location"><EditPencilIcon /></button>}
             </div>
             {isEditing && nameError && <p role="alert" className="mt-2 max-w-[280px] text-[13px] text-red-700">{nameError}</p>}
             {location.parentName && location.sourceField === "sub" && (
@@ -2239,10 +2547,10 @@ const LocationDetailModal: React.FC<{
           initial={{ y: 32, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ type: "tween", duration: 0.38, delay: 0.16, ease: [0.22, 1, 0.36, 1] }}
-          className="mt-[26px] flex flex-col gap-[16px]"
+          className={`${isParentLocation ? "mt-[37px]" : "mt-[26px]"} flex flex-col gap-[32px]`}
         >
           {locationItems.length > 0 && (
-            <section>
+            <section inert={isEditingSubLocations}>
               <DirectLocationItemsCard
                 items={locationItems}
                 onItemClick={onOpenItem}
@@ -2256,13 +2564,18 @@ const LocationDetailModal: React.FC<{
 
           {location.subLocations.length > 0 && !isEditingItems && (
             <section>
-              <div className="flex flex-col gap-[8px]">
-                {location.subLocations.map((sub) => (
-                  <SubLocationListCard
+              <div className="memory-space-waterfall">
+                {location.subLocations.map((sub, index) => (
+                  <MemorySpaceFolderCard
                     key={`${location.key}-${sub.name}`}
-                    space={sub}
+                    space={{ key: `${sub.parentName}::${sub.name}`, name: sub.name, imgUrl: sub.imgUrl, itemCount: sub.itemCount, items: sub.items, directItems: sub.items, subLocations: [], sourceField: "sub", parentName: sub.parentName }}
+                    footerMode="sub-summary"
+                    accentColor={SPACE_LIST_ACCENT_COLORS[index % SPACE_LIST_ACCENT_COLORS.length]}
                     onClick={() => onOpenSubLocation(sub)}
-                    onDelete={() => setPendingDeleteSubLocation(sub)}
+                    onLongPress={() => { setIsEditingSubLocations(true); setSelectedSubLocationNames([sub.name]); }}
+                    isEditing={isEditingSubLocations}
+                    isSelected={selectedSubLocationNames.includes(sub.name)}
+                    onToggle={() => setSelectedSubLocationNames((current) => current.includes(sub.name) ? current.filter((name) => name !== sub.name) : [...current, sub.name])}
                   />
                 ))}
               </div>
@@ -2280,6 +2593,16 @@ const LocationDetailModal: React.FC<{
         onSelectAll={selectAllItems}
         onDelete={() => selectedItemIds.length > 0 && setIsDeleteConfirmOpen(true)}
         onCancel={toggleItemsEditing}
+      />
+
+      <MemoryItemsEditBubble
+        open={isEditingSubLocations}
+        allSelected={location.subLocations.length > 0 && selectedSubLocationNames.length === location.subLocations.length}
+        hasSelected={selectedSubLocationNames.length > 0}
+        onSelectAll={() => setSelectedSubLocationNames((current) => current.length === location.subLocations.length ? [] : location.subLocations.map((sub) => sub.name))}
+        onDelete={() => selectedSubLocationNames.length > 0 && setIsSubLocationDeleteConfirmOpen(true)}
+        onCancel={() => { setIsEditingSubLocations(false); setSelectedSubLocationNames([]); }}
+        deleteLabel="Delete selected sub-locations"
       />
 
       <AnimatePresence>
@@ -2320,13 +2643,17 @@ const LocationDetailModal: React.FC<{
       />
 
       <MemoryConfirmModal
-        open={pendingDeleteSubLocation !== null}
-        title={t("Delete {name}?", { name: pendingDeleteSubLocation?.name || "sub-location" })}
-        message="This will delete the sub-location and all items inside it."
-        onCancel={() => setPendingDeleteSubLocation(null)}
+        open={isSubLocationDeleteConfirmOpen}
+        title={selectedSubLocationNames.length === 1
+          ? t("Delete {name}?", { name: selectedSubLocationNames[0] })
+          : t("Delete selected sub-locations?")}
+        message="This will delete the selected sub-locations and all items inside them."
+        onCancel={() => setIsSubLocationDeleteConfirmOpen(false)}
         onConfirm={() => {
-          if (pendingDeleteSubLocation) onDeleteSubLocation(pendingDeleteSubLocation);
-          setPendingDeleteSubLocation(null);
+          location.subLocations.filter((sub) => selectedSubLocationNames.includes(sub.name)).forEach(onDeleteSubLocation);
+          setIsSubLocationDeleteConfirmOpen(false);
+          setIsEditingSubLocations(false);
+          setSelectedSubLocationNames([]);
         }}
       />
     </div>
@@ -2337,6 +2664,8 @@ type MemoryDetailModalProps = {
   item: MemoryItem;
   parentOptions: MemoryParentLocationOption[];
   subOptions: MemorySubLocationOption[];
+  siblingItems?: MemoryItem[];
+  onNavigateItem?: (item: MemoryItem) => void;
   onClose: () => void;
   onDelete: () => void;
   onSave: (updates: Partial<MemoryItem>) => void;
@@ -2395,7 +2724,16 @@ export const MemoryItemDetailOverlay: React.FC<Omit<MemoryDetailModalProps, "par
   );
 };
 
-const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({ item, parentOptions, subOptions, onClose, onDelete, onSave }) => {
+const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({
+  item,
+  parentOptions,
+  subOptions,
+  siblingItems = [],
+  onNavigateItem,
+  onClose,
+  onDelete,
+  onSave,
+}) => {
   const reduceMotion = useReducedMotion();
   const [isFlipped, setIsFlipped] = React.useState(false);
   const [locationView, setLocationView] = React.useState<"sub" | "parent">("sub");
@@ -2407,9 +2745,11 @@ const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({ item, parentOptio
   const [editingField, setEditingField] = React.useState<"title" | "parent" | "sub" | null>(null);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = React.useState(false);
   const [isCardEditing, setIsCardEditing] = React.useState(false);
-  const [isItemImageEditOpen, setIsItemImageEditOpen] = React.useState(false);
-  const [itemImageEditMode, setItemImageEditMode] = React.useState<"emoji" | "camera">("emoji");
+  const [isItemRetakeOpen, setIsItemRetakeOpen] = React.useState(false);
+  const [itemTransitionDirection, setItemTransitionDirection] = React.useState<-1 | 0 | 1>(0);
   const [itemImageDraft, setItemImageDraft] = React.useState(item.stickerUrl || (item.emoji ? emojiAsset(item.emoji) : ""));
+  const [itemAliases, setItemAliases] = React.useState(item.aliases);
+  const [itemAttributes, setItemAttributes] = React.useState(item.attributes);
   const [parentLocationImg, setParentLocationImg] = React.useState(refreshEmojiAssetUrl(item.parentLocationImg) || "");
   const [subLocationImg, setSubLocationImg] = React.useState(refreshEmojiAssetUrl(item.subLocationImg) || "");
   const [subLocationHighlight, setSubLocationHighlight] = React.useState(item.subLocationHighlight || { x: 70, y: 62 });
@@ -2419,6 +2759,45 @@ const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({ item, parentOptio
   const locationPhotoRef = React.useRef<HTMLDivElement>(null);
   const isDraggingHighlightRef = React.useRef(false);
   const didDragHighlightRef = React.useRef(false);
+  const didSwipeItemRef = React.useRef(false);
+  const previousItemIdRef = React.useRef(item.id);
+  const isSwitchingItem = previousItemIdRef.current !== item.id;
+  const siblingIndex = siblingItems.findIndex((candidate) => candidate.id === item.id);
+  const canSwipeItems = siblingItems.length > 1
+    && siblingIndex >= 0
+    && Boolean(onNavigateItem)
+    && !isCardEditing
+    && !editingField
+    && !isCategorySelectorOpen
+    && !locationPickerField
+    && !isItemRetakeOpen
+    && !isDeleteConfirmOpen;
+
+  React.useLayoutEffect(() => {
+    if (previousItemIdRef.current === item.id) return;
+    previousItemIdRef.current = item.id;
+    setIsFlipped(false);
+    setLocationView("sub");
+    setSelectedCategory(item.category || "Others");
+    setIsCategorySelectorOpen(false);
+    setItemTitle(item.name || "Item");
+    setParentLocationName(item.parentLocationName || "Main Bedroom");
+    setSubLocationName(item.subLocationName || "Nightstand");
+    setEditingField(null);
+    setIsDeleteConfirmOpen(false);
+    setIsCardEditing(false);
+    setIsItemRetakeOpen(false);
+    setItemImageDraft(item.stickerUrl || (item.emoji ? emojiAsset(item.emoji) : ""));
+    setItemAliases(item.aliases);
+    setItemAttributes(item.attributes);
+    setParentLocationImg(refreshEmojiAssetUrl(item.parentLocationImg) || "");
+    setSubLocationImg(refreshEmojiAssetUrl(item.subLocationImg) || "");
+    setSubLocationHighlight(item.subLocationHighlight || { x: 70, y: 62 });
+    setLocationPickerField(null);
+    editRestoreValueRef.current = "";
+    isDraggingHighlightRef.current = false;
+    didDragHighlightRef.current = false;
+  }, [item]);
   const fallbackLocationImage =
     "https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=700&auto=format&fit=crop&q=80";
   const parentDisplayImage = parentLocationImg || subLocationImg || fallbackLocationImage;
@@ -2458,9 +2837,9 @@ const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({ item, parentOptio
   const openItemImageEditor = (event?: React.MouseEvent) => {
     event?.stopPropagation();
     if (!isCardEditing) return;
-    setItemImageDraft("");
-    setItemImageEditMode(isEmojiImageUrl(item.stickerUrl || (item.emoji ? emojiAsset(item.emoji) : "")) ? "emoji" : "camera");
-    setIsItemImageEditOpen(true);
+    setIsCategorySelectorOpen(false);
+    setEditingField(null);
+    setIsItemRetakeOpen(true);
   };
 
   const setEditingValue = (field: "title" | "parent" | "sub", value: string) => {
@@ -2529,6 +2908,8 @@ const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({ item, parentOptio
         subLocationHighlight,
         stickerUrl: itemImageDraft || undefined,
         emoji: emojiKeyFromImageUrl(itemImageDraft) || item.emoji,
+        aliases: itemAliases,
+        attributes: itemAttributes,
       });
       setIsCategorySelectorOpen(false);
       setLocationPickerField(null);
@@ -2550,7 +2931,9 @@ const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({ item, parentOptio
       setSubLocationImg(refreshEmojiAssetUrl(item.subLocationImg) || "");
       setSubLocationHighlight(item.subLocationHighlight || { x: 70, y: 62 });
       resetItemImageDraft();
-      setIsItemImageEditOpen(false);
+      setItemAliases(item.aliases);
+      setItemAttributes(item.attributes);
+      setIsItemRetakeOpen(false);
       setEditingField(null);
       setIsCategorySelectorOpen(false);
       setLocationPickerField(null);
@@ -2619,6 +3002,14 @@ const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({ item, parentOptio
     handleEditCancel();
   };
 
+  const navigateSiblingItem = (direction: -1 | 1) => {
+    if (!canSwipeItems) return;
+    const nextItem = siblingItems[siblingIndex + direction];
+    if (!nextItem) return;
+    setItemTransitionDirection(direction);
+    onNavigateItem?.(nextItem);
+  };
+
   return (
     <motion.div
       className="absolute inset-0 z-[200] overflow-y-auto overscroll-contain"
@@ -2644,6 +3035,7 @@ const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({ item, parentOptio
           transform: "translate(-50%, -50%)",
         }}
       >
+        <div>
         <div style={{ transform: `scale(${modalScale})`, transformOrigin: "center center" }}>
           <div className="relative h-[534px] w-[350px]">
             <div
@@ -2671,24 +3063,70 @@ const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({ item, parentOptio
             />
             </motion.div>
 
+        <AnimatePresence initial custom={itemTransitionDirection}>
         <motion.div
-          className="relative h-[534px] w-[350px]"
-          initial={reduceMotion ? false : { opacity: 0, scale: 0.5, rotateY: -180 }}
-          animate={{ opacity: 1, scale: 1, rotateY: 0 }}
-          transition={{ type: "tween", duration: reduceMotion ? 0 : 0.5, ease: [0.22, 0.61, 0.36, 1] }}
-          style={{ transformPerspective: 1200, transformOrigin: "center center" }}
+          key={item.id}
+          custom={itemTransitionDirection}
+          className="absolute inset-0 h-[534px] w-[350px]"
+          variants={{
+            enter: (direction: number) => ({ x: direction * 390, opacity: 1, scale: 1, rotateY: 0 }),
+            center: (direction: number) => ({
+              x: 0,
+              opacity: 1,
+              scale: 1,
+              rotateY: 0,
+              transition: {
+                type: "tween",
+                duration: reduceMotion ? 0 : direction === 0 ? 0.5 : 0.28,
+                ease: [0.22, 0.61, 0.36, 1],
+              },
+            }),
+            exit: (direction: number) => ({
+              x: direction * -390,
+              opacity: 1,
+              scale: 1,
+              rotateY: 0,
+              transition: { type: "tween", duration: reduceMotion ? 0 : 0.28, ease: [0.22, 0.61, 0.36, 1] },
+            }),
+          }}
+          initial={isSwitchingItem ? "enter" : reduceMotion ? false : { opacity: 0, scale: 0.5, rotateY: -180, x: 0 }}
+          animate="center"
+          exit="exit"
+          drag={canSwipeItems ? "x" : false}
+          dragConstraints={{ left: 0, right: 0 }}
+          dragElastic={0.18}
+          dragMomentum={false}
+          onDragStart={() => {
+            didSwipeItemRef.current = false;
+          }}
+          onDragEnd={(_, info) => {
+            const isHorizontalSwipe = Math.abs(info.offset.x) >= 56
+              && Math.abs(info.offset.x) > Math.abs(info.offset.y);
+            if (!isHorizontalSwipe) return;
+            didSwipeItemRef.current = true;
+            navigateSiblingItem(info.offset.x < 0 ? 1 : -1);
+            window.setTimeout(() => {
+              didSwipeItemRef.current = false;
+            }, 0);
+          }}
+          style={{
+            transformPerspective: 1200,
+            transformOrigin: "center center",
+            touchAction: canSwipeItems ? "pan-y" : "auto",
+          }}
         >
 
         <motion.div
           className="relative w-full h-[534px] cursor-pointer"
-          animate={{ rotateY: isFlipped ? 180 : 0 }}
-          transition={{ type: "spring", stiffness: 210, damping: 26 }}
+          animate={{ rotateY: isSwitchingItem ? 0 : isFlipped ? 180 : 0 }}
+          transition={isSwitchingItem ? { duration: 0 } : { type: "spring", stiffness: 210, damping: 26 }}
           style={{ transformStyle: "preserve-3d", WebkitTransformStyle: "preserve-3d", willChange: "transform" }}
           onClick={(event) => {
-            if (didDragHighlightRef.current) {
+            if (didDragHighlightRef.current || didSwipeItemRef.current) {
               event.preventDefault();
               event.stopPropagation();
               didDragHighlightRef.current = false;
+              didSwipeItemRef.current = false;
               return;
             }
             if (isFlipped) setLocationView("sub");
@@ -2893,6 +3331,7 @@ const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({ item, parentOptio
           </div>
           </motion.div>
           </motion.div>
+          </AnimatePresence>
           </div>
 
           <motion.div
@@ -2918,6 +3357,7 @@ const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({ item, parentOptio
             </button>
           </motion.div>
           </div>
+        </div>
         </div>
       </div>
 
@@ -2961,23 +3401,21 @@ const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({ item, parentOptio
         />
       )}
 
-      <AnimatePresence>
-        {isItemImageEditOpen && (
-          <LocationImageEditFlow
-            initialImage={itemImageDraft}
-            initialMode={itemImageEditMode}
-            emojiKind="item"
-            onCancel={() => {
-              resetItemImageDraft();
-              setIsItemImageEditOpen(false);
-            }}
-            onConfirm={(imageUrl) => {
-              setItemImageDraft(imageUrl);
-              setIsItemImageEditOpen(false);
-            }}
-          />
-        )}
-      </AnimatePresence>
+      {isItemRetakeOpen && (
+        <CaptureScanner
+          isOpen
+          layer={30020}
+          onClose={() => setIsItemRetakeOpen(false)}
+          onCutoutComplete={({ name, category, stickerUrl, labels, attributes }) => {
+            if (stickerUrl) setItemImageDraft(stickerUrl);
+            setItemTitle(name);
+            setSelectedCategory(category);
+            setItemAliases(labels);
+            setItemAttributes(attributes);
+            setIsItemRetakeOpen(false);
+          }}
+        />
+      )}
 
       <MemoryConfirmModal
         open={isDeleteConfirmOpen}
@@ -3016,6 +3454,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
   const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
   const [isMemoryKeyboardOpen, setIsMemoryKeyboardOpen] = useState<boolean>(false);
   const [selectedDetailItem, setSelectedDetailItem] = useState<MemoryItem | null>(null);
+  const [selectedDetailSource, setSelectedDetailSource] = useState<"items" | "other">("other");
   const [selectedParentSpace, setSelectedParentSpace] = useState<SpaceSummary | null>(null);
   const [selectedSpaceDetail, setSelectedSpaceDetail] = useState<SubLocationSummary | null>(null);
   const [selectedLocationDetail, setSelectedLocationDetail] = useState<SpaceSummary | null>(null);
@@ -3128,6 +3567,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
 
     if (openTarget.kind === "item") {
       setSelectedLocationDetail(null);
+      setSelectedDetailSource("other");
       setSelectedDetailItem(openTarget.item);
       onOpenTargetHandled?.();
       return;
@@ -3218,14 +3658,6 @@ export const MemoryList: React.FC<MemoryListProps> = ({
   const hasSelectedItems = selectedItemsListIds.length > 0;
   const isAllFilteredSelected = filteredItemIds.length > 0 && filteredItemIds.every((id) => selectedItemsListIds.includes(id));
 
-  // Helper to split Space Cards into 2 Columns for Waterfall View
-  const col1: typeof spacesList = [];
-  const col2: typeof spacesList = [];
-  spacesList.forEach((space, idx) => {
-    if (idx % 2 === 0) col1.push(space);
-    else col2.push(space);
-  });
-
   const handleCancelSearch = () => {
     setSearchQuery("");
     setIsMemoryKeyboardOpen(false);
@@ -3247,9 +3679,10 @@ export const MemoryList: React.FC<MemoryListProps> = ({
     setIsMemoryKeyboardOpen(true);
   };
 
-  const openDetail = (item?: MemoryItem) => {
+  const openDetail = (item?: MemoryItem, source: "items" | "other" = "other") => {
     if (!item) return;
     setIsMemoryKeyboardOpen(false);
+    setSelectedDetailSource(source);
     setSelectedDetailItem(item);
   };
 
@@ -3329,6 +3762,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
     if (!selectedDetailItem) return;
     const itemId = selectedDetailItem.id;
     onMemoriesChange((currentMemories) => currentMemories.filter((item) => item.id !== itemId));
+    setSelectedDetailSource("other");
     setSelectedDetailItem(null);
   };
 
@@ -3626,14 +4060,15 @@ export const MemoryList: React.FC<MemoryListProps> = ({
               </MemoryActionButton>
             </div>
           ) : (
-            <button
-              onClick={startParentEdit}
-              className="w-[24px] h-[24px] active:scale-95 flex items-center justify-center transition-all cursor-pointer border-0 outline-none bg-transparent hover:opacity-70"
-              aria-label={t("Edit parent location")}
-              title={t("Edit parent location")}
+            <MemoryActionButton
+              label={t("Edit parent location")}
+              onClick={(event) => {
+                event.stopPropagation();
+                startParentEdit();
+              }}
             >
-              <ParentDetailEditIcon />
-            </button>
+              <EditPencilIcon />
+            </MemoryActionButton>
           )}
         />
       ) : isSearchOpen ? (
@@ -3711,9 +4146,9 @@ export const MemoryList: React.FC<MemoryListProps> = ({
         ) : !memories.length ? (
           <div className="flex h-full flex-col items-center justify-center px-8 pb-20 text-center text-[#232121]">
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white/70 text-[27px]">✦</div>
-            <p className="mt-5 text-[16px] font-semibold">{isAuthenticated ? "暂无内容" : "暂无内容，请登录查看更多"}</p>
+            <p className="mt-5 text-[16px] font-semibold">{t(isAuthenticated ? "No memories yet" : "No memories yet. Log in to see more.")}</p>
             <p className="mt-2 max-w-[250px] text-[13px] leading-5 text-[#232121]/45">
-              {isAuthenticated ? "拍照添加你的第一个物品，开始建立专属记忆库。" : "登录后，你的物品和空间会安全保存在自己的记忆库中。"}
+              {t(isAuthenticated ? "Snap your first item to start building your memory." : "Log in to keep your items and spaces safely in your own memory.")}
             </p>
             {!isAuthenticated && (
               <button
@@ -3721,7 +4156,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
                 onClick={onLogin}
                 className="mt-6 flex h-10 min-w-[96px] items-center justify-center rounded-full bg-[#232121] px-5 text-[14px] font-semibold text-white active:scale-95"
               >
-                登录
+                {t("Log in")}
               </button>
             )}
           </div>
@@ -3934,115 +4369,10 @@ export const MemoryList: React.FC<MemoryListProps> = ({
 
         {/* Render Tab Contents */}
         {activeTab === "spaces" ? (
-          /* Spaces: Column-based Waterfall Flow Layout */
-          <div className="memory-space-waterfall mt-0 select-none">
-            {/* Column 1 */}
-            <div className="memory-space-waterfall-column">
-              {col1.map((space) => (
-                <div
-                  key={space.name}
-                  onClick={() => openParentSpace(space)}
-                  className="memory-space-card bg-white rounded-[12px] p-[8px] pb-3 hover:shadow-[0_4px_12px_rgba(35,33,33,0.08)] active:scale-[0.98] transition-[transform,box-shadow] flex flex-col overflow-hidden select-none"
-                >
-                  {/* Space Parent Image with exact 4:5 aspect */}
-                  <div className={`relative rounded-[8px] overflow-hidden aspect-square w-full flex-shrink-0 ${isEmojiImageUrl(space.imgUrl) ? "bg-[#E9E6E1]" : "bg-neutral-100"}`}>
-                    <SkeletonImage
-                      src={space.imgUrl}
-                      alt={space.name}
-                      className="w-full h-full object-cover"
-                      referrerPolicy="no-referrer"
-                    />
-                  </div>
-
-                  {/* Title & Info */}
-                  <div className="mt-2.5 px-1 flex flex-col">
-                    <div className="flex items-start text-[#232121]">
-                      <span className="text-[14px] mt-[1.5px] mr-1 select-none shrink-0">📍</span>
-                      <div className="flex min-w-0 flex-1 flex-col">
-                        <span className="memory-space-card-title font-sans font-bold text-[14px] tracking-tight leading-snug">
-                          {space.name}
-                        </span>
-                        <span className="text-[11px] font-sans font-semibold text-neutral-400/80 mt-0.5 tracking-tight">
-                          {space.itemCount}{" "}{t("items")}{" "}</span>
-                      </div>
-                    </div>
-
-                    {/* Sub-location Tags (truncated intelligently, max 2 rows) */}
-                    {space.subLocations.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-3 pl-0">
-                        {space.subLocations.slice(0, 3).map((sub, sidx) => (
-                          <div
-                            key={`${sub.name}-${sidx}`}
-                            className="memory-space-sub-tag bg-[#F3F1EC] text-neutral-500 font-sans text-[10px] px-2.5 py-1 rounded-full whitespace-nowrap"
-                          >
-                            {sub.name}
-                          </div>
-                        ))}
-                        {space.subLocations.length > 3 && (
-                          <div className="memory-space-sub-tag bg-[#F3F1EC] text-neutral-500 font-sans text-[10px] px-2.5 py-1 rounded-full whitespace-nowrap">
-                            +{space.subLocations.length - 3}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Column 2 */}
-            <div className="memory-space-waterfall-column">
-              {col2.map((space) => (
-                <div
-                  key={space.name}
-                  onClick={() => openParentSpace(space)}
-                  className="memory-space-card bg-white rounded-[12px] p-[8px] pb-3 hover:shadow-[0_4px_12px_rgba(35,33,33,0.08)] active:scale-[0.98] transition-[transform,box-shadow] flex flex-col overflow-hidden select-none"
-                >
-                  {/* Space Parent Image with exact 4:5 aspect */}
-                  <div className={`relative rounded-[8px] overflow-hidden aspect-square w-full flex-shrink-0 ${isEmojiImageUrl(space.imgUrl) ? "bg-[#E9E6E1]" : "bg-neutral-100"}`}>
-                    <SkeletonImage
-                      src={space.imgUrl}
-                      alt={space.name}
-                      className="w-full h-full object-cover"
-                      referrerPolicy="no-referrer"
-                    />
-                  </div>
-
-                  {/* Title & Info */}
-                  <div className="mt-2.5 px-1 flex flex-col">
-                    <div className="flex items-start text-[#232121]">
-                      <span className="text-[14px] mt-[1.5px] mr-1 select-none shrink-0">📍</span>
-                      <div className="flex min-w-0 flex-1 flex-col">
-                        <span className="memory-space-card-title font-sans font-bold text-[14px] tracking-tight leading-snug">
-                          {space.name}
-                        </span>
-                        <span className="text-[11px] font-sans font-semibold text-neutral-400/80 mt-0.5 tracking-tight">
-                          {space.itemCount}{" "}{t("items")}{" "}</span>
-                      </div>
-                    </div>
-
-                    {/* Sub-location Tags (truncated intelligently, max 2 rows) */}
-                    {space.subLocations.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-3 pl-0">
-                        {space.subLocations.slice(0, 3).map((sub, sidx) => (
-                          <div
-                            key={`${sub.name}-${sidx}`}
-                            className="memory-space-sub-tag bg-[#F3F1EC] text-neutral-500 font-sans text-[10px] px-2.5 py-1 rounded-full whitespace-nowrap"
-                          >
-                            {sub.name}
-                          </div>
-                        ))}
-                        {space.subLocations.length > 3 && (
-                          <div className="memory-space-sub-tag bg-[#F3F1EC] text-neutral-500 font-sans text-[10px] px-2.5 py-1 rounded-full whitespace-nowrap">
-                            +{space.subLocations.length - 3}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+          <div className="memory-space-shelf-list select-none">
+            {spacesList.map((space, index) => (
+              <MemorySpaceShelfCard key={space.key} space={space} index={index} onClick={() => openParentSpace(space)} />
+            ))}
           </div>
         ) : (
           /* Items: Category tabs and 2x2 grid */
@@ -4086,7 +4416,7 @@ export const MemoryList: React.FC<MemoryListProps> = ({
                         toggleItemsListSelection(item.id);
                         return;
                       }
-                      openDetail(item);
+                      openDetail(item, "items");
                     }}
                     className="relative flex flex-col items-center justify-center overflow-visible select-none h-[160px] cursor-pointer hover:scale-105 active:scale-95 transition-all"
                     onPointerDown={() => {
@@ -4169,7 +4499,22 @@ export const MemoryList: React.FC<MemoryListProps> = ({
           <MemoryItemDetailOverlay
             item={selectedDetailItem}
             memories={memories}
-            onClose={() => setSelectedDetailItem(null)}
+            siblingItems={
+              selectedLocationDetail?.sourceField === "sub"
+              && selectedLocationDetail.directItems.some((item) => item.id === selectedDetailItem.id)
+                ? selectedLocationDetail.directItems
+                : selectedDetailSource === "items"
+                  && activeTab === "items"
+                  && !isSearchOpen
+                  && filteredItems.some((item) => item.id === selectedDetailItem.id)
+                  ? filteredItems
+                  : undefined
+            }
+            onNavigateItem={setSelectedDetailItem}
+            onClose={() => {
+              setSelectedDetailSource("other");
+              setSelectedDetailItem(null);
+            }}
             onDelete={deleteSelectedDetailItem}
             onSave={saveSelectedDetailItem}
           />
