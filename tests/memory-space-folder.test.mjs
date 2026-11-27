@@ -6,9 +6,9 @@ const memorySource = await readFile(new URL("../src/components/MemoryList.tsx", 
 const cssSource = await readFile(new URL("../src/index.css", import.meta.url), "utf8");
 
 test("space cards keep the three most recent item previews inside a clipped composition", () => {
-  assert.match(memorySource, /const getRecentSpaceItems = \(items: MemoryItem\[\]\)/);
+  assert.match(memorySource, /const getRecentSpaceItems = \(items: MemoryItem\[\], limit = 3\)/);
   assert.match(memorySource, /Date\.parse\(item\.createdAt \|\| ""\)/);
-  assert.match(memorySource, /\.slice\(0, 3\)/);
+  assert.match(memorySource, /\.slice\(0, limit\)/);
   assert.match(memorySource, /recentItems\.map\(\(item, index\)/);
   assert.match(memorySource, /-translate-x-\[6px\] -translate-y-\[6px\][\s\S]*<MemorySearchItem item=\{item\} size=\{112\} tilted=\{false\} \/>/);
   assert.match(memorySource, /memory-space-item-previews/);

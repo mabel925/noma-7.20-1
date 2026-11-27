@@ -475,7 +475,7 @@ const stableColorForLocation = (value: string) => {
   return SUB_LOCATION_EMOJI_COLORS[hash % SUB_LOCATION_EMOJI_COLORS.length];
 };
 
-const getRecentSpaceItems = (items: MemoryItem[]) => items
+const getRecentSpaceItems = (items: MemoryItem[], limit = 3) => items
   .map((item, index) => {
     const timestamp = Date.parse(item.createdAt || "");
     return { item, index, timestamp: Number.isFinite(timestamp) ? timestamp : null };
@@ -485,7 +485,7 @@ const getRecentSpaceItems = (items: MemoryItem[]) => items
       ? right.timestamp - left.timestamp
       : left.index - right.index
   ))
-  .slice(0, 3)
+  .slice(0, limit)
   .map(({ item }) => item);
 
 const MemorySpaceFolderCard: React.FC<{
@@ -631,8 +631,7 @@ const MemorySpaceFolderCard: React.FC<{
 
       <div className="absolute left-[99px] top-[62px] z-30 flex h-[66px] w-[66px] items-center justify-center">
         <div
-          className={`flex h-[58px] w-[58px] -rotate-9 items-center justify-center overflow-hidden rounded-[12px] border-[2.5px] border-white shadow-[2px_2px_4px_rgba(0,0,0,0.08)] ${locationIsEmoji ? "p-[6px]" : ""}`}
-          style={{ backgroundColor: locationIsEmoji ? stableColorForLocation(space.name) : "#E9E6E1" }}
+          className={`flex h-[58px] w-[58px] -rotate-9 items-center justify-center overflow-hidden rounded-[12px] shadow-[2px_2px_4px_rgba(0,0,0,0.08)] ${locationIsEmoji ? "memory-space-emoji-cover border border-[#FFB775] p-[9px]" : "border-[2.5px] border-white bg-[#E9E6E1]"}`}
         >
           <SkeletonImage
             src={space.imgUrl}
@@ -678,54 +677,46 @@ const MemorySpaceFolderCard: React.FC<{
 const MemorySpaceShelfCard: React.FC<{ space: SpaceSummary; index: number; onClick: () => void }> = ({ space, index, onClick }) => {
   const accentColor = SPACE_LIST_ACCENT_COLORS[index % SPACE_LIST_ACCENT_COLORS.length];
   const surfaceColor = SPACE_LIST_SURFACE_COLORS[index % SPACE_LIST_SURFACE_COLORS.length];
-  const recentItems = getRecentSpaceItems(space.items);
-  const hasHierarchy = space.sourceField === "parent" && space.subLocations.length > 0;
-  const backgroundLocations = hasHierarchy ? space.subLocations.slice(0, 5) : [];
+  const recentItems = getRecentSpaceItems(space.items, 5);
+  const visibleSubLocations = space.subLocations.slice(0, 4);
+  const remainingSubLocations = Math.max(0, space.subLocations.length - visibleSubLocations.length);
   const locationIsEmoji = isEmojiImageUrl(space.imgUrl);
-  // Rotated bounds from Figma 671:3845; the 77 × 107 photo is centered inside each slot.
-  const backgroundTemplate = [
-    { left: 40, top: 15, width: 85.847, height: 113.178, rotate: -4.89, zIndex: 1 },
-    { left: 90.39, top: 13, width: 87.235, height: 114.111, rotate: 5.69, zIndex: 3 },
-    { left: 142.003, top: 12, width: 79.374, height: 108.695, rotate: -1.28, zIndex: 5 },
-    { left: 186, top: 11.55, width: 94.825, height: 119.003, rotate: -10.26, zIndex: 4 },
-    { left: 244.78, top: 20, width: 91.436, height: 116.864, rotate: 8.18, zIndex: 2 },
+  // Centers and rotations from Figma 672:4242, with the first 1–5 slots recentered as a group.
+  const itemTemplate = [
+    { centerX: 61.908, centerY: 61.908, size: 100, rotate: -15.46, zIndex: 1 },
+    { centerX: 111.802, centerY: 82.802, size: 100, rotate: 23.26, zIndex: 2 },
+    { centerX: 165.548, centerY: 73.348, size: 100, rotate: 9.02, zIndex: 4 },
+    { centerX: 227.58, centerY: 69.577, size: 78.4, rotate: -8.52, zIndex: 3 },
+    { centerX: 291.218, centerY: 75.218, size: 100, rotate: 9.02, zIndex: 5 },
   ];
-  const firstBackgroundSlot = Math.floor((backgroundTemplate.length - backgroundLocations.length) / 2);
-  const backgroundLayouts = backgroundTemplate.slice(firstBackgroundSlot, firstBackgroundSlot + backgroundLocations.length);
-  const backgroundCenterOffset = backgroundLayouts.length > 0
-    ? 180 - (backgroundLayouts[0].left + Math.max(...backgroundLayouts.map((layout) => layout.left + layout.width))) / 2
+  const itemLayouts = itemTemplate.slice(0, recentItems.length);
+  const itemBounds = itemLayouts.map((layout) => {
+    const angle = layout.rotate * Math.PI / 180;
+    const halfWidth = layout.size * (Math.abs(Math.cos(angle)) + Math.abs(Math.sin(angle))) / 2;
+    return { left: layout.centerX - halfWidth, right: layout.centerX + halfWidth };
+  });
+  const itemCenterOffset = itemBounds.length > 0
+    ? 180 - (Math.min(...itemBounds.map((bounds) => bounds.left)) + Math.max(...itemBounds.map((bounds) => bounds.right))) / 2
     : 0;
-  const itemLayouts = [
-    { left: 82, top: 90, rotate: -15.46 },
-    { left: 179, top: 91, rotate: 13.16 },
-    { left: 259, top: 86, rotate: -5.23 },
-  ];
-  const visualTop = hasHierarchy ? -10 : -77;
 
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`relative block w-[360px] max-w-full overflow-hidden bg-transparent text-left active:scale-[0.99] transition-transform ${hasHierarchy ? "h-[206px]" : "h-[139px]"}`}
+      className="relative block h-[197px] w-[360px] max-w-full overflow-hidden bg-transparent text-left active:scale-[0.99] transition-transform"
       aria-label={`${space.name}, ${space.itemCount} ${t("items")}`}
     >
-      <div className="absolute left-1/2 h-[164px] w-[360px] -translate-x-1/2 overflow-hidden rounded-[24px]" style={{ top: visualTop }}>
-        <div className="pointer-events-none absolute inset-0 z-0" aria-hidden="true">
-          {backgroundLocations.map((subLocation, backgroundIndex) => {
-            const layout = backgroundLayouts[backgroundIndex];
-            const isEmoji = isEmojiImageUrl(subLocation.imgUrl);
+      <div className="absolute left-1/2 top-[-19px] h-[164px] w-[360px] -translate-x-1/2 overflow-hidden rounded-[24px]">
+        <div className="memory-space-shelf-item-previews pointer-events-none absolute inset-0 z-0" aria-hidden="true">
+          {recentItems.map((item, itemIndex) => {
+            const layout = itemLayouts[itemIndex];
             return (
               <div
-                key={`${space.key}-background-${subLocation.parentName}-${subLocation.name}`}
-                className="absolute flex items-center justify-center"
-                style={{ left: layout.left + backgroundCenterOffset, top: layout.top, width: layout.width, height: layout.height, zIndex: layout.zIndex }}
+                key={item.id}
+                className="absolute"
+                style={{ left: layout.centerX + itemCenterOffset - layout.size / 2, top: layout.centerY - layout.size / 2, width: layout.size, height: layout.size, zIndex: layout.zIndex, transform: `rotate(${layout.rotate}deg)` }}
               >
-                <div
-                  className="h-[107px] w-[77px] shrink-0 overflow-hidden rounded-[8px] border-[3px] border-white"
-                  style={{ transform: `rotate(${layout.rotate}deg)`, backgroundColor: isEmoji ? stableColorForLocation(subLocation.name) : "#E9E6E1" }}
-                >
-                  <SkeletonImage src={subLocation.imgUrl} alt="" className={`h-full w-full ${isEmoji ? "object-contain p-[7px]" : "object-cover"}`} referrerPolicy="no-referrer" />
-                </div>
+                <MemorySearchItem item={item} size={layout.size} tilted={false} />
               </div>
             );
           })}
@@ -734,23 +725,37 @@ const MemorySpaceShelfCard: React.FC<{ space: SpaceSummary; index: number; onCli
         <div className="memory-space-shelf-surface pointer-events-none absolute left-0 top-[83px] z-10 h-[81px] w-[360px] rounded-[24px]" style={{ backgroundColor: `${surfaceColor}99` }} />
 
         <div className="absolute left-[6px] top-[82px] z-20 flex h-[66px] w-[66px] items-center justify-center">
-          <div className={`flex h-[58px] w-[58px] -rotate-9 items-center justify-center overflow-hidden rounded-[12px] border-[2.5px] border-white shadow-[2px_2px_4px_rgba(0,0,0,0.08)] ${locationIsEmoji ? "p-[6px]" : ""}`} style={{ backgroundColor: locationIsEmoji ? stableColorForLocation(space.name) : "#E9E6E1" }}>
+          <div className={`flex h-[58px] w-[58px] -rotate-9 items-center justify-center overflow-hidden rounded-[12px] shadow-[2px_2px_4px_rgba(0,0,0,0.08)] ${locationIsEmoji ? "memory-space-emoji-cover border border-[#FFB775] p-[9px]" : "border-[2.5px] border-white bg-[#E9E6E1]"}`}>
             <SkeletonImage src={space.imgUrl} alt={space.name} className={`h-full w-full rounded-[9px] ${locationIsEmoji ? "object-contain" : "object-cover"}`} referrerPolicy="no-referrer" />
           </div>
         </div>
         <img src="/assets/memory-pin@3x.png" alt="" aria-hidden="true" className="pointer-events-none absolute left-[29px] top-[74px] z-30 h-[30px] w-[30px] select-none object-contain" draggable={false} />
 
-        {recentItems.map((item, itemIndex) => {
-          const layout = itemLayouts[itemIndex];
-          return (
-            <div key={item.id} className="absolute z-20 h-[60px] w-[60px]" style={{ left: layout.left, top: layout.top, transform: `rotate(${layout.rotate}deg)` }}>
-              <MemorySearchItem item={item} size={60} tilted={false} />
-            </div>
-          );
-        })}
+        {visibleSubLocations.length > 0 && (
+          <div className="absolute right-[20px] top-[108px] z-20 flex items-center -space-x-[8px]">
+            {visibleSubLocations.map((subLocation, subIndex) => {
+              const isEmoji = isEmojiImageUrl(subLocation.imgUrl);
+              return (
+                <div
+                  key={`${space.key}-${subLocation.parentName}-${subLocation.name}`}
+                  className="relative flex h-[32px] w-[32px] shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white"
+                  style={{ backgroundColor: isEmoji ? stableColorForLocation(`${subLocation.parentName}:${subLocation.name}`) : "#E9E6E1", zIndex: subIndex + 1 }}
+                  title={subLocation.name}
+                >
+                  <SkeletonImage src={subLocation.imgUrl} alt={subLocation.name} className={`h-full w-full rounded-full ${isEmoji ? "object-contain p-[3px]" : "object-cover"}`} referrerPolicy="no-referrer" />
+                </div>
+              );
+            })}
+            {remainingSubLocations > 0 && (
+              <div className="relative z-10 flex h-[32px] w-[32px] shrink-0 items-center justify-center rounded-full bg-[#F0EEEB] text-[14px] font-sans font-semibold leading-none text-[#232121]/50">
+                +{remainingSubLocations}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      <div className={`absolute left-[calc(50%-7.5px)] flex w-[250px] -translate-x-1/2 flex-col items-center font-sans tracking-[0] ${hasHierarchy ? "top-[168px]" : "top-[101px]"}`}>
+      <div className="absolute left-[calc(50%-7.5px)] top-[159px] flex w-[250px] -translate-x-1/2 flex-col items-center font-sans tracking-[0]">
         <div className="memory-space-shelf-name max-w-full text-center text-[16px] font-semibold leading-[20px] text-[#080808]">
           {space.sourceField === "parent" ? "📍" : ""}{space.name}
         </div>
